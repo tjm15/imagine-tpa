@@ -1,0 +1,12 @@
+profile: oss
+providers:
+  BlobStoreProvider: MinIO
+  CanonicalDBProvider: PostgreSQL
+  RetrievalProvider: PgVectorHybrid
+  DocParseProvider: Docling
+  EmbeddingProvider: Qwen3Embedding
+  LLMProvider: GPT_OSS
+  VLMProvider: Qwen3_VL
+  SegmentationProvider: SAM2
+  WorkflowProvider: LangGraph
+  ObservabilityProvider: OpenTelemetry

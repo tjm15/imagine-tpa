@@ -1,0 +1,71 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Framing",
+    "type": "object",
+    "properties": {
+        "frame_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "frame_title": {
+            "type": "string"
+        },
+        "political_framing_id": {
+            "type": "string"
+        },
+        "purpose": {
+            "type": "string"
+        },
+        "scope": {
+            "type": "object",
+            "properties": {
+                "area": {
+                    "type": "string"
+                },
+                "sites": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "time_horizon": {
+                    "type": "string"
+                }
+            }
+        },
+        "decision_audience": {
+            "type": "string",
+            "enum": [
+                "planner",
+                "inspector",
+                "cabinet",
+                "public"
+            ]
+        },
+        "explicit_goals": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "explicit_constraints": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "non_goals": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        }
+    },
+    "required": [
+        "frame_id",
+        "frame_title",
+        "political_framing_id",
+        "purpose",
+        "scope"
+    ]
+}

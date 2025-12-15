@@ -1,0 +1,64 @@
+moves:
+  framing:
+    input:
+      - user_intent
+      - culp_stage
+      - political_framing_selection
+      - anchors
+    output:
+      - Framing
+      - Assumption[]
+  
+  issue_surfacing:
+    input:
+      - RunGraph (slice)
+      - Framing
+    output:
+      - Issue[]
+      - IssueMap
+  
+  evidence_curation:
+    input:
+      - Issue[]
+      - KG (Knowledge Graph)
+    output:
+      - CuratedEvidenceSet
+      - ToolRequests[]
+  
+  evidence_interpretation:
+    input:
+      - CuratedEvidenceSet
+      - ToolOutputs
+    output:
+      - Interpretation[]
+      - PlanRealityInterpretation
+  
+  considerations_formation:
+    input:
+      - Interpretation[]
+      - Issue[]
+    output:
+      - ConsiderationLedgerEntry[]
+  
+  weighing_and_balance:
+    input:
+      - ConsiderationLedgerEntry[]
+      - Framing
+    output:
+      - WeighingRecord
+  
+  negotiation_and_alteration:
+    input:
+      - WeighingRecord
+      - ConsiderationLedgerEntry[]
+    output:
+      - NegotiationMove[]
+  
+  positioning_and_narration:
+    input:
+      - WeighingRecord
+      - NegotiationMove[]
+      - Framing
+    output:
+      - Trajectory[]
+      - ScenarioJudgementSheet

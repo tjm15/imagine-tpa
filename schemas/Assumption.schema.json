@@ -1,0 +1,36 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Assumption",
+    "type": "object",
+    "properties": {
+        "assumption_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "statement": {
+            "type": "string"
+        },
+        "scope": {
+            "type": "string"
+        },
+        "justification": {
+            "type": "string"
+        },
+        "type": {
+            "type": "string",
+            "enum": [
+                "political",
+                "practical",
+                "data-gap",
+                "other"
+            ]
+        }
+    },
+    "required": [
+        "assumption_id",
+        "statement",
+        "scope",
+        "justification",
+        "type"
+    ]
+}

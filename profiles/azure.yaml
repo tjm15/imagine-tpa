@@ -1,0 +1,12 @@
+profile: azure
+providers:
+  BlobStoreProvider: AzureBlobStorage
+  CanonicalDBProvider: AzurePostgreSQL
+  RetrievalProvider: AzureAISearch
+  DocParseProvider: AzureDocumentIntelligence
+  EmbeddingProvider: AzureOpenAIEmbeddings
+  LLMProvider: AzureOpenAI
+  VLMProvider: AzureOpenAI
+  SegmentationProvider: AzureContainerApps_SAM2 # Hosted custom container
+  WorkflowProvider: MicrosoftAgentFramework
+  ObservabilityProvider: AzureApplicationInsights

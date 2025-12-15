@@ -1,0 +1,42 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Issue",
+    "type": "object",
+    "properties": {
+        "issue_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "title": {
+            "type": "string"
+        },
+        "why_material": {
+            "type": "string"
+        },
+        "initial_evidence_hooks": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "uncertainty_flags": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "related_issues": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "format": "uuid"
+            }
+        }
+    },
+    "required": [
+        "issue_id",
+        "title",
+        "why_material",
+        "initial_evidence_hooks"
+    ]
+}

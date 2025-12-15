@@ -1,0 +1,18 @@
+instruments:
+  - id: dft_connectivity
+    name: "DfT Connectivity Tool"
+    type: "external_api"
+    description: "Returns PTAL-like connectivity scores for a site."
+    required_inputs: ["lat", "lon"]
+    
+  - id: environment_agency_flood
+    name: "EA Flood Risk"
+    type: "external_api"
+    description: "Returns flood zone designation."
+    required_inputs: ["polygon_wkt"]
+    
+  - id: casa_quant
+    name: "CASA QUANT"
+    type: "model_inference"
+    description: "Urban simulation model for transport/land use."
+    required_inputs: ["scenario_params"]

@@ -1,0 +1,62 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "WeighingRecord",
+    "type": "object",
+    "properties": {
+        "weighing_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "consideration_weights": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "entry_id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "weight": {
+                        "type": "string",
+                        "enum": [
+                            "decisive",
+                            "significant",
+                            "moderate",
+                            "minor",
+                            "negligible"
+                        ]
+                    },
+                    "justification": {
+                        "type": "string"
+                    }
+                },
+                "required": [
+                    "entry_id",
+                    "weight",
+                    "justification"
+                ]
+            }
+        },
+        "trade_offs": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "decisive_factors": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "format": "uuid"
+            }
+        },
+        "uncertainty_impact": {
+            "type": "string"
+        }
+    },
+    "required": [
+        "weighing_id",
+        "consideration_weights",
+        "decisive_factors"
+    ]
+}

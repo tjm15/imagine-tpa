@@ -1,0 +1,40 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "FIGURE_SPEC",
+    "type": "object",
+    "properties": {
+        "chart_type": {
+            "type": "string",
+            "enum": [
+                "bar",
+                "line",
+                "scatter",
+                "map",
+                "table"
+            ]
+        },
+        "data_source_ref": {
+            "type": "string"
+        },
+        "encodings": {
+            "type": "object"
+        },
+        "title": {
+            "type": "string"
+        },
+        "caption": {
+            "type": "string"
+        },
+        "annotations": {
+            "type": "array",
+            "items": {
+                "type": "object"
+            }
+        }
+    },
+    "required": [
+        "chart_type",
+        "data_source_ref",
+        "encodings"
+    ]
+}

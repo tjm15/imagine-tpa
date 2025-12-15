@@ -1,0 +1,46 @@
+stages:
+  - id: notice_and_boundary
+    title: "Notice & Boundary"
+    required_artefacts:
+      - notice_html
+      - boundary_map
+      - geometry_download
+    gov_uk_ref: "https://www.gov.uk/guidance/giving-notice-of-your-plan-making"
+
+  - id: timetable
+    title: "Timetable"
+    required_artefacts:
+      - milestones_table
+      - updates_log
+    gov_uk_ref: "https://www.gov.uk/guidance/giving-notice-of-your-plan-making"
+
+  - id: gateway_1
+    title: "Gateway 1"
+    required_artefacts:
+      - self_assessment_summary
+      - readiness_checker_output
+    gov_uk_ref: "https://www.gov.uk/guidance/gateway-1-what-you-need-to-do"
+
+  - id: baselining_place_portrait
+    title: "Baselining & Place Portrait"
+    required_artefacts:
+      - place_portrait_sheet
+      - evidence_base_index
+
+  - id: vision_outcomes
+    title: "Vision & Outcomes"
+    required_artefacts:
+      - vision_statement
+      - outcomes_list_max_10
+
+  - id: sites_stage_1_4
+    title: "Sites Stages 1-4"
+    required_artefacts:
+      - site_assessments_bulk
+      - allocation_decisions
+    gov_uk_ref: "https://www.gov.uk/guidance/assessing-sites-for-local-plans-stage-2"
+
+  - id: consultation_summaries
+    title: "Consultation Summaries"
+    required_artefacts:
+      - consultation_report

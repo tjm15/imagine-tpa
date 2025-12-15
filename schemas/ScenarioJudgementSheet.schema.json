@@ -1,0 +1,53 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "ScenarioJudgementSheet",
+    "type": "object",
+    "properties": {
+        "title": {
+            "type": "string"
+        },
+        "sections": {
+            "type": "object",
+            "properties": {
+                "framing_summary": {
+                    "type": "string"
+                },
+                "key_issues": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "evidence_cards": {
+                    "type": "array",
+                    "items": {
+                        "type": "object"
+                    }
+                },
+                "planning_balance": {
+                    "type": "string"
+                },
+                "conditional_position": {
+                    "type": "string"
+                },
+                "uncertainty_summary": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                }
+            },
+            "required": [
+                "framing_summary",
+                "key_issues",
+                "evidence_cards",
+                "planning_balance",
+                "conditional_position"
+            ]
+        }
+    },
+    "required": [
+        "title",
+        "sections"
+    ]
+}

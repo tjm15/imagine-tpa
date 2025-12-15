@@ -1,0 +1,28 @@
+openapi: 3.0.0
+info:
+  title: Ingestion API
+  version: 1.0.0
+paths:
+  /ingest/document:
+    post:
+      summary: Upload and process a document
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+  /ingest/plan_reality:
+    post:
+      summary: Register a visual asset to world coordinates
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                asset_id: { type: string }
+                transform_matrix: { type: array }

@@ -1,0 +1,35 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "NegotiationMove",
+    "type": "object",
+    "properties": {
+        "negotiation_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "proposed_alterations": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "addressed_considerations": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "format": "uuid"
+            }
+        },
+        "validation_evidence_needed": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        }
+    },
+    "required": [
+        "negotiation_id",
+        "proposed_alterations",
+        "addressed_considerations"
+    ]
+}

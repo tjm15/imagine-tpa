@@ -1,0 +1,40 @@
+{
+    "$schema": "http://json-schema.org/draft-07/schema#",
+    "title": "Trajectory",
+    "type": "object",
+    "properties": {
+        "trajectory_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "framing_id": {
+            "type": "string",
+            "format": "uuid"
+        },
+        "position_statement": {
+            "type": "string"
+        },
+        "explicit_assumptions": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "format": "uuid"
+            }
+        },
+        "key_evidence_refs": {
+            "type": "array",
+            "items": {
+                "type": "string"
+            }
+        },
+        "judgement_sheet_data": {
+            "$ref": "ScenarioJudgementSheet.schema.json"
+        }
+    },
+    "required": [
+        "trajectory_id",
+        "framing_id",
+        "position_statement",
+        "judgement_sheet_data"
+    ]
+}
