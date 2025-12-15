@@ -132,7 +132,7 @@ This profile is deployable on your own hardware (home GPU or on-prem or any clou
 
 **LLM for reasoning**
 
-* **Qwen3** open-weight models for grammar-bound abductive reasoning (dense + MoE options) ([Qwen][11])
+* **GPT-OSS** open-weight models for grammar-bound abductive reasoning (dense + MoE options)
 
 **Model serving**
 
@@ -622,7 +622,7 @@ This is the “contract pack” that freezes the system’s shape.
 # Part H — The “SOTA Dec 2025” stance in one line
 
 * **Azure profile** uses Azure AI Search hybrid retrieval ([Microsoft Learn][2]), Azure Document Intelligence ([Microsoft Azure][3]), and Azure OpenAI (Foundry Models) ([Microsoft Learn][4]) on Azure Container Apps ([Microsoft Learn][5]).
-* **OSS profile** uses Docling ([IBM Research][17]), SAM2 ([arXiv][10]), Qwen3‑VL ([Qwen][9]), Qwen3/Qwen3‑Embedding ([Qwen][11]), served via vLLM/SGLang ([GitHub][12]), orchestrated with LangGraph 1.0 ([LangChain Blog][13]).
+* **OSS profile** uses Docling ([IBM Research][17]), SAM2 ([arXiv][10]), Qwen3‑VL ([Qwen][9]), Qwen3 Embedding + reranker family ([Qwen][8]), GPT-OSS ([GPT-OSS][11]), served via vLLM/SGLang ([GitHub][12]), orchestrated with LangGraph 1.0 ([LangChain Blog][13]).
 
 ---
 
@@ -648,11 +648,10 @@ That gives you a stable mental map and prevents drift while keeping creativity f
 [8]: https://qwenlm.github.io/blog/qwen3-embedding/?utm_source=chatgpt.com "Qwen3 Embedding: Advancing Text Embedding and ..."
 [9]: https://qwen.ai/blog?from=research.latest-advancements-list&id=99f0335c4ad9ff6153e517418d48535ab6d8afef&utm_source=chatgpt.com "Today, we officially launch the all-new Qwen3-VL ..."
 [10]: https://arxiv.org/abs/2408.00714?utm_source=chatgpt.com "SAM 2: Segment Anything in Images and Videos"
-[11]: https://qwenlm.github.io/blog/qwen3/?utm_source=chatgpt.com "Qwen3: Think Deeper, Act Faster"
+[11]: https://hf.co/openai/gpt-oss-20b "openai/gpt-oss-20b (model card)"
 [12]: https://github.com/vllm-project/vllm?utm_source=chatgpt.com "vllm-project/vllm: A high-throughput and memory-efficient ..."
 [13]: https://blog.langchain.com/langchain-langgraph-1dot0/?utm_source=chatgpt.com "LangChain and LangGraph Agent Frameworks Reach v1.0 ..."
 [14]: https://www.gov.uk/guidance/giving-notice-of-your-plan-making?utm_source=chatgpt.com "Giving notice of your plan-making"
 [15]: https://www.gov.uk/guidance/gateway-1-what-you-need-to-do?utm_source=chatgpt.com "Gateway 1: what you need to do"
 [16]: https://www.gov.uk/guidance/assessing-sites-for-local-plans-stage-2?utm_source=chatgpt.com "Stage 2: Assessing sites"
 [17]: https://research.ibm.com/blog/docling-generative-AI?utm_source=chatgpt.com "IBM is open-sourcing a new toolkit for document conversion"
-
