@@ -1,0 +1,19 @@
+version: 1
+description: >
+  Version pinning for the Open Systems Lab (OSL) digital planning data schemas used for
+  interoperability with PlanX, BOPS and DPR.
+
+  Implementations MUST pin a specific upstream git ref and vendor the required schema subset
+  into this repo, so connector validation behaviour is replayable.
+
+sources:
+  - id: osl_digital_planning_data_schemas
+    docs_url: "https://theopensystemslab.github.io/digital-planning-data-schemas-docs/"
+    repo_url: "https://github.com/theopensystemslab/digital-planning-data-schemas"
+    pinned_ref: "d8743bc8f79c938f0b6395866dec553a98b4b9bf"
+    vendored_path: "external_schemas/osl_digital_planning_data_schemas"
+    schema_ids:
+      - preApplication
+      - application
+      - enforcement
+      - postSubmissionApplication

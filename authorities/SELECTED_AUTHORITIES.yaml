@@ -1,0 +1,83 @@
+version: 1
+description: >
+  The selected authorities used as first-class real working cases for Spatial Strategy
+  (plan-making) and demo/sandbox Development Management feeds.
+
+  This selection is referenced by connector configs (e.g., PlanIt) and by the fixture/project
+  creation flow described in `IMPLEMENTATION_PLAN.md`.
+
+selected_authorities:
+  - authority_id: brighton_and_hove
+    name: "Brighton & Hove City Council"
+    codes:
+      statistical_geography_gss: "E06000043"
+      local_planning_authority: "E60000222"
+      local_authority_reference: "BNH"
+    website: "https://www.brighton-hove.gov.uk"
+
+  - authority_id: cornwall
+    name: "Cornwall Council"
+    codes:
+      statistical_geography_gss: "E06000052"
+      local_planning_authority: "E60000291"
+      local_authority_reference: "CON"
+    website: "https://www.cornwall.gov.uk"
+
+  - authority_id: croydon
+    name: "London Borough of Croydon"
+    codes:
+      statistical_geography_gss: "E09000008"
+      local_planning_authority: "E60000207"
+      local_authority_reference: "CRY"
+    website: "https://www.croydon.gov.uk"
+
+  - authority_id: greater_manchester
+    name: "Greater Manchester Combined Authority"
+    codes:
+      statistical_geography_gss: "E47000001"
+      local_authority_reference: "GMCA"
+    website: "https://www.greatermanchester-ca.gov.uk"
+    notes: >
+      GMCA is not itself a single local planning authority; it is included here to support
+      joint plan-making (e.g., Places for Everyone) and combined authority evidence contexts.
+
+  - authority_id: kensington_and_chelsea
+    name: "Royal Borough of Kensington and Chelsea"
+    codes:
+      statistical_geography_gss: "E09000020"
+      local_planning_authority: "E60000194"
+      local_authority_reference: "KEC"
+    website: "https://www.rbkc.gov.uk/"
+
+  - authority_id: milton_keynes
+    name: "Milton Keynes City Council"
+    codes:
+      statistical_geography_gss: "E06000042"
+      local_planning_authority: "E60000225"
+      local_authority_reference: "MIK"
+    website: "https://www.milton-keynes.gov.uk/"
+
+  - authority_id: newham
+    name: "London Borough of Newham"
+    codes:
+      statistical_geography_gss: "E09000025"
+      local_planning_authority: "E60000197"
+      local_authority_reference: "NWM"
+    website: "https://www.newham.gov.uk"
+
+  - authority_id: south_cambridgeshire
+    name: "South Cambridgeshire District Council"
+    codes:
+      statistical_geography_gss: "E07000012"
+      local_planning_authority: "E60000153"
+      local_authority_reference: "SCA"
+    website: "https://www.scambs.gov.uk"
+
+  - authority_id: south_oxfordshire
+    name: "South Oxfordshire District Council"
+    codes:
+      statistical_geography_gss: "E07000179"
+      local_planning_authority: "E60000267"
+      local_authority_reference: "SOX"
+    website: "https://www.southoxon.gov.uk"
+

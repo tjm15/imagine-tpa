@@ -1,0 +1,26 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "dependencyDashboard": true,
+  "labels": ["dependencies"],
+  "commitMessagePrefix": "chore(deps):",
+  "packageRules": [
+    {
+      "matchManagers": ["dockerfile", "docker-compose"],
+      "groupName": "docker images"
+    },
+    {
+      "matchManagers": ["pip_requirements"],
+      "groupName": "python dependencies"
+    }
+  ],
+  "regexManagers": [
+    {
+      "fileMatch": ["^docker/db/Dockerfile$"],
+      "matchStrings": ["--branch (?<currentValue>v\\d+\\.\\d+\\.\\d+) https://github\\.com/pgvector/pgvector\\.git"],
+      "depNameTemplate": "pgvector/pgvector",
+      "datasourceTemplate": "github-tags"
+    }
+  ]
+}
+

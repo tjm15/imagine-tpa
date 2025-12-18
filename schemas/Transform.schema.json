@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Transform",
+  "type": "object",
+  "description": "A registration transform between two frames (plan image ↔ world, camera ↔ world). Carries uncertainty and provenance; may be backed by control points.",
+  "properties": {
+    "transform_id": { "type": "string", "format": "uuid" },
+    "from_frame_id": { "type": "string", "format": "uuid" },
+    "to_frame_id": { "type": "string", "format": "uuid" },
+    "method": {
+      "type": "string",
+      "enum": [
+        "manual_control_points",
+        "auto_feature_match",
+        "homography",
+        "affine",
+        "thin_plate_spline",
+        "camera_pose_estimation",
+        "other"
+      ]
+    },
+    "matrix": {
+      "type": "array",
+      "description": "Flattened matrix values (interpret using matrix_shape).",
+      "items": { "type": "number" }
+    },
+    "matrix_shape": {
+      "type": "array",
+      "description": "Matrix shape, e.g., [3,3] or [4,4].",
+      "items": { "type": "integer", "minimum": 1 },
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "uncertainty_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
+    "control_point_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "metadata": { "type": "object" }
+  },
+  "required": ["transform_id", "from_frame_id", "to_frame_id", "method", "matrix", "matrix_shape", "uncertainty_score", "created_at"]
+}
+

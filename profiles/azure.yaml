@@ -8,5 +8,7 @@ providers:
   LLMProvider: AzureOpenAI # model: gpt-5.2-preview
   VLMProvider: AzureOpenAI # model: gpt-5.2-preview
   SegmentationProvider: SAM2_AzureContainerApps # Raster segmentation for plans/images; vector geoprocessing handled separately (PostGIS/GDAL tools)
+  WebAutomationProvider: Playwright_AzureContainerApps # Optional governed web capture for acquisition/discovery (HTML + screenshots + network logs)
+  VectorizationProvider: RasterVectorize_AzureContainerApps # Optional raster→vector digitisation (e.g., boundary extraction from scanned policies maps)
   WorkflowProvider: MicrosoftAgentFramework
   ObservabilityProvider: AzureApplicationInsights

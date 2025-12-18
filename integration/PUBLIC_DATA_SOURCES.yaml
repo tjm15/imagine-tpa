@@ -52,6 +52,15 @@ sources:
     licence_notes: "Respect council site terms/robots; cache and store artefacts for audit."
     refresh_cadence: "on-demand"
 
+  - id: planit_applications
+    name: "UK PlanIt planning applications feed"
+    method: api
+    domain: development_management
+    outputs:
+      - planning_applications
+    licence_notes: "Respect PlanIt rate limits and attribution; store provenance and links back to the authority portal."
+    refresh_cadence: "daily_or_on-demand"
+
   - id: arcgis_endpoint_discovery
     name: "ArcGIS endpoint discovery (web)"
     method: scrape
@@ -61,4 +70,3 @@ sources:
       - layer_catalogues
     licence_notes: "Respect service terms; avoid heavy automated querying; store limitations."
     refresh_cadence: "on-demand"
-

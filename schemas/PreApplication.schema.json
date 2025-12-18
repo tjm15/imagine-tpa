@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PreApplication",
+  "type": "object",
+  "description": "A pre-application enquiry / submission (e.g., PlanX) represented as a canonical reasoning object. This is distinct from a formal planning Application.",
+  "properties": {
+    "pre_application_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": "string" },
+    "reference": { "type": "string", "description": "Authority or external reference for the enquiry/pre-app." },
+    "source_refs": {
+      "type": "array",
+      "description": "External source references for this pre-application (e.g. PlanX).",
+      "items": { "$ref": "ExternalRecordRef.schema.json" }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["new", "in_review", "closed", "archived"]
+    },
+    "site_id": { "type": ["string", "null"], "format": "uuid" },
+    "site_geometry_wkt": { "type": ["string", "null"] },
+    "submission_metadata": { "type": "object", "description": "Structured metadata extracted from the submission (kept distinct from evidence docs)." },
+    "received_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["pre_application_id", "authority_id", "reference", "status", "received_at"]
+}
+

@@ -5,12 +5,12 @@
   "description": "A set of scenarios for a plan project and stage, shown as tabs in Judgement Mode and the Spatial Strategy workspace.",
   "properties": {
     "scenario_set_id": { "type": "string", "format": "uuid" },
-    "plan_project_id": { "type": "string" },
+    "plan_project_id": { "type": "string", "format": "uuid" },
     "culp_stage_id": { "type": "string" },
-    "framing_ids": {
+    "political_framing_ids": {
       "type": "array",
-      "description": "Frame IDs (one per political framing) used to generate scenario×framing tabs.",
-      "items": { "type": "string", "format": "uuid" }
+      "description": "Political framing preset ids used to generate Scenario × Political Framing tabs (see framing/POLITICAL_FRAMINGS.yaml).",
+      "items": { "type": "string" }
     },
     "scenario_ids": {
       "type": "array",
@@ -25,5 +25,5 @@
     "selection_rationale": { "type": ["string", "null"] },
     "selected_at": { "type": ["string", "null"], "format": "date-time" }
   },
-  "required": ["scenario_set_id", "scenario_ids", "framing_ids"]
+  "required": ["scenario_set_id", "plan_project_id", "culp_stage_id", "scenario_ids", "political_framing_ids"]
 }

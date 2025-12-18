@@ -1,0 +1,247 @@
+name: tpa-oss
+
+x-service-defaults: &service_defaults
+  restart: unless-stopped
+
+services:
+  tpa-db:
+    build:
+      context: ../
+      dockerfile: docker/db/Dockerfile
+    environment:
+      POSTGRES_DB: ${TPA_POSTGRES_DB:-tpa}
+      POSTGRES_USER: ${TPA_POSTGRES_USER:-tpa}
+      POSTGRES_PASSWORD: ${TPA_POSTGRES_PASSWORD:-tpa}
+    ports:
+      - "${TPA_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - tpa_db_data:/var/lib/postgresql/data
+      - ../docker/db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # Use TCP + password so the check is robust regardless of local socket auth config.
+      test:
+        [
+          "CMD-SHELL",
+          "PGPASSWORD=$$POSTGRES_PASSWORD pg_isready -h 127.0.0.1 -p 5432 -U $$POSTGRES_USER -d $$POSTGRES_DB",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+    <<: *service_defaults
+
+  tpa-minio:
+    image: ${TPA_MINIO_IMAGE:-minio/minio:latest}
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${TPA_S3_ACCESS_KEY:-tpa}
+      MINIO_ROOT_PASSWORD: ${TPA_S3_SECRET_KEY:-change-me}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - tpa_minio_data:/data
+    <<: *service_defaults
+
+  tpa-minio-init:
+    image: ${TPA_MINIO_MC_IMAGE:-minio/mc:latest}
+    depends_on:
+      tpa-minio:
+        condition: service_started
+    environment:
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+    entrypoint: /bin/sh -c
+    command: >
+      set -eu;
+      echo "MinIO init: endpoint=$${TPA_S3_ENDPOINT} bucket=$${TPA_S3_BUCKET}";
+      i=0;
+      until mc alias set tpa "$${TPA_S3_ENDPOINT}" "$${TPA_S3_ACCESS_KEY}" "$${TPA_S3_SECRET_KEY}" >/dev/null 2>&1; do
+        i=$$((i+1));
+        if [ "$$i" -ge 30 ]; then
+          echo "ERROR: could not connect/auth to MinIO at '$${TPA_S3_ENDPOINT}' after $$i attempts." >&2;
+          echo "Check: 'tpa-minio' is running, and TPA_S3_SECRET_KEY (MINIO_ROOT_PASSWORD) is >= 8 chars." >&2;
+          exit 1;
+        fi;
+        echo "Waiting for MinIO... ($$i/30)" >&2;
+        sleep 1;
+      done;
+      mc mb -p "tpa/$${TPA_S3_BUCKET}" >/dev/null 2>&1 || true;
+      echo "MinIO init: bucket ready: tpa/$${TPA_S3_BUCKET}"
+
+  tpa-redis:
+    image: ${TPA_REDIS_IMAGE:-redis:alpine}
+    ports:
+      - "6379:6379"
+    <<: *service_defaults
+
+  tpa-phoenix:
+    image: ${TPA_PHOENIX_IMAGE:-arizephoenix/phoenix:latest}
+    ports:
+      - "${TPA_PHOENIX_PORT:-6006}:6006"
+    <<: *service_defaults
+
+  # --- Application layer (scaffold) ---
+  # These images are placeholders so the Docker stack is end-to-end runnable
+  # while implementation is built out.
+  tpa-api:
+    build:
+      context: ../
+      dockerfile: apps/api/Dockerfile
+    environment:
+      TPA_PROFILE: oss
+      TPA_SPEC_ROOT: /app/spec
+      TPA_DB_DSN: "postgresql://${TPA_POSTGRES_USER:-tpa}:${TPA_POSTGRES_PASSWORD:-tpa}@${TPA_POSTGRES_HOST:-tpa-db}:${TPA_POSTGRES_PORT:-5432}/${TPA_POSTGRES_DB:-tpa}"
+      TPA_REDIS_URL: ${TPA_REDIS_URL:-redis://tpa-redis:6379/0}
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
+      TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
+      TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
+      TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
+      TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
+      PHOENIX_HOST: tpa-phoenix
+      PHOENIX_PORT: "6006"
+    depends_on:
+      tpa-db:
+        condition: service_healthy
+      tpa-minio-init:
+        condition: service_completed_successfully
+      tpa-redis:
+        condition: service_started
+    ports:
+      - "${TPA_API_PORT:-8000}:8000"
+    <<: *service_defaults
+
+  tpa-ui:
+    build:
+      context: ../
+      dockerfile: apps/ui/Dockerfile
+      args:
+        NODE_IMAGE: ${TPA_UI_NODE_IMAGE:-node:alpine}
+        NGINX_IMAGE: ${TPA_UI_NGINX_IMAGE:-nginx:alpine}
+    depends_on:
+      - tpa-api
+    ports:
+      - "${TPA_UI_PORT:-3000}:80"
+    <<: *service_defaults
+
+  # React/Vite dev server (hot reload). Bring up with: `--profile ui-dev`.
+  # Prefer this for active UI work; `tpa-ui` is the production-like build.
+  tpa-ui-dev:
+    profiles: ["ui-dev"]
+    image: ${TPA_UI_NODE_IMAGE:-node:alpine}
+    working_dir: /app
+    environment:
+      VITE_API_PROXY_TARGET: http://tpa-api:8000
+    volumes:
+      - ../apps/ui:/app
+      - tpa_ui_node_modules:/app/node_modules
+    depends_on:
+      - tpa-api
+    command: >
+      sh -c "npm install && npm run dev -- --host 0.0.0.0 --port ${TPA_UI_DEV_PORT:-5173}"
+    ports:
+      - "${TPA_UI_DEV_PORT:-5173}:5173"
+    <<: *service_defaults
+
+  # --- Optional model/tool services (bring up with: `--profile models`) ---
+  # NOTE: These are intentionally opt-in because they require large model weights and (often) a GPU.
+  tpa-llm:
+    profiles: ["models", "full"]
+    image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
+    command: >
+      --host 0.0.0.0
+      --port 8000
+      --model openai/gpt-oss-20b
+    environment:
+      HF_HOME: /models/cache
+    ports:
+      - "8010:8000"
+    volumes:
+      - tpa_models:/models
+    <<: *service_defaults
+
+  tpa-vlm:
+    profiles: ["models", "full"]
+    image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
+    command: >
+      --host 0.0.0.0
+      --port 8000
+      --model Qwen/Qwen3-VL-30B
+    environment:
+      HF_HOME: /models/cache
+    ports:
+      - "8020:8000"
+    volumes:
+      - tpa_models:/models
+    <<: *service_defaults
+
+  tpa-embeddings:
+    profiles: ["models", "full"]
+    image: ${TPA_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:turing-latest}
+    environment:
+      MODEL_ID: Qwen/Qwen3-Embedding-8B
+    ports:
+      - "8030:8080"
+    <<: *service_defaults
+
+  # --- Governed web capture / scraping (Playwright) ---
+  # Implements the optional WebAutomationProvider contract. Enable with: `--profile web` (or `--profile full`).
+  tpa-web-automation:
+    profiles: ["web", "full"]
+    build:
+      context: ../
+      dockerfile: apps/web_automation/Dockerfile
+      args:
+        PLAYWRIGHT_IMAGE: ${TPA_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:latest}
+    environment:
+      PORT: "8085"
+      MAX_HTML_BYTES: ${TPA_WEB_MAX_HTML_BYTES:-4000000}
+      MAX_SCREENSHOT_BYTES: ${TPA_WEB_MAX_SCREENSHOT_BYTES:-6000000}
+      DEFAULT_TIMEOUT_MS: ${TPA_WEB_DEFAULT_TIMEOUT_MS:-30000}
+    ports:
+      - "${TPA_WEB_AUTOMATION_PORT:-8085}:8085"
+    <<: *service_defaults
+
+  # --- Vision tool runners (segmentation + raster→vector) ---
+  # These are OSS tool services intended to back SegmentationProvider and VectorizationProvider calls.
+  # Enable with: `--profile vision` (or `--profile full`).
+  tpa-segmentation-worker:
+    profiles: ["vision", "full"]
+    build:
+      context: ../
+      dockerfile: apps/vision_tools/Dockerfile
+      args:
+        PYTHON_IMAGE: ${TPA_VISION_PYTHON_IMAGE:-python:3.13-slim}
+    environment:
+      PORT: "8086"
+      TOOL_MODE: segmentation
+    ports:
+      - "${TPA_SEGMENTATION_PORT:-8086}:8086"
+    <<: *service_defaults
+
+  tpa-vectorization-worker:
+    profiles: ["vision", "full"]
+    build:
+      context: ../
+      dockerfile: apps/vision_tools/Dockerfile
+      args:
+        PYTHON_IMAGE: ${TPA_VISION_PYTHON_IMAGE:-python:3.13-slim}
+    environment:
+      PORT: "8087"
+      TOOL_MODE: vectorization
+    ports:
+      - "${TPA_VECTORIZE_PORT:-8087}:8087"
+    <<: *service_defaults
+
+volumes:
+  tpa_db_data:
+  tpa_minio_data:
+  tpa_models:
+  tpa_ui_node_modules:

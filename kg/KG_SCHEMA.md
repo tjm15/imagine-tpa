@@ -4,7 +4,8 @@
 * `Document`, `Page`, `Chunk`
 * `Policy`, `PolicyClause`, `PolicyMapZone`
 * `Site`, `Area`
-* `VisualAsset`, `VisualFeature`
+* `VisualAsset`, `VisualFeature`, `SegmentationMask`
+* `Frame`, `Transform`, `ControlPoint`, `ProjectionArtifact`
 * `MoveEvent`, `Assumption`, `Issue`
 * `Interpretation`, `ConsiderationLedgerEntry`, `Trajectory`
 * `Application` (DM)
@@ -22,6 +23,9 @@
 * `INTERSECTS`: Site -> SpatialFeature
 * `HAS_VISUAL_EVIDENCE`: Site -> VisualAsset
 * `REGISTERED_TO`: VisualAsset -> Transform
+* `DERIVES_OVERLAY`: Transform -> ProjectionArtifact
+* `HAS_MASK`: VisualAsset -> SegmentationMask
+* `IN_FRAME`: VisualAsset -> Frame
 * `EVIDENCE_FOR`: EvidenceRef -> Interpretation
 * `SUPPORTS`: Interpretation -> ConsiderationLedgerEntry
 * `CONTRADICTS`: Interpretation -> ConsiderationLedgerEntry

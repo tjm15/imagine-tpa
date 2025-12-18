@@ -7,7 +7,12 @@
     "tab_id": { "type": "string", "format": "uuid" },
     "scenario_set_id": { "type": "string", "format": "uuid" },
     "scenario_id": { "type": "string", "format": "uuid" },
-    "framing_id": { "type": "string", "format": "uuid" },
+    "political_framing_id": { "type": "string" },
+    "framing_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Run-specific Framing instance id produced by Move 1 for this tab run."
+    },
     "run_id": { "type": ["string", "null"], "format": "uuid" },
     "status": {
       "type": "string",
@@ -17,6 +22,5 @@
     "judgement_sheet_ref": { "type": ["string", "null"], "description": "Reference to the rendered sheet artefact (HTML path/blob ref)." },
     "last_updated_at": { "type": ["string", "null"], "format": "date-time" }
   },
-  "required": ["tab_id", "scenario_id", "framing_id", "status"]
+  "required": ["tab_id", "scenario_set_id", "scenario_id", "political_framing_id", "status"]
 }
-

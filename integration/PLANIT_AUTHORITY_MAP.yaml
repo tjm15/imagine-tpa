@@ -1,0 +1,85 @@
+version: 1
+source: "https://www.planit.org.uk/api/"
+description: >
+  Mapping between this repo’s selected authority ids and PlanIt planning area identifiers.
+  This supports stable, explicit PlanIt sync configuration (recommended) without relying on
+  name-based matching at runtime.
+
+  Generated from `/api/areas/json` lookups (selecting area_id/area_name/long_name/gss_code/area_type).
+
+authority_area_map:
+  brighton_and_hove:
+    planit:
+      area_id: 43
+      area_name: "Brighton"
+      long_name: "Brighton & Hove City Council"
+      gss_code: "E06000043"
+      area_type: "English Unitary Authority"
+
+  cornwall:
+    planit:
+      area_id: 52
+      area_name: "Cornwall"
+      long_name: "Cornwall Council"
+      gss_code: "E06000052"
+      area_type: "English Unitary Authority"
+
+  croydon:
+    planit:
+      area_id: 301
+      area_name: "Croydon"
+      long_name: "Croydon London Borough Council"
+      gss_code: "E09000008"
+      area_type: "London Borough"
+
+  greater_manchester:
+    planit:
+      area_id: 481
+      area_name: "Greater Manchester"
+      long_name: "Greater Manchester"
+      gss_code: "E11000001"
+      area_type: "Metropolitan County"
+    notes: >
+      PlanIt models Greater Manchester as a metropolitan county (GSS E11000001).
+      This repo’s authority selection includes GMCA (GSS E47000001) for combined authority plan-making.
+
+  kensington_and_chelsea:
+    planit:
+      area_id: 313
+      area_name: "Kensington"
+      long_name: "Kensington and Chelsea Royal Borough Council"
+      gss_code: "E09000020"
+      area_type: "London Borough"
+
+  milton_keynes:
+    planit:
+      area_id: 42
+      area_name: "Milton Keynes"
+      long_name: "Milton Keynes Council"
+      gss_code: "E06000042"
+      area_type: "English Unitary Authority"
+
+  newham:
+    planit:
+      area_id: 318
+      area_name: "Newham"
+      long_name: "Newham London Borough Council"
+      gss_code: "E09000025"
+      area_type: "London Borough"
+
+  south_cambridgeshire:
+    planit:
+      area_id: 65
+      area_name: "South Cambridgeshire"
+      long_name: "South Cambridgeshire District Council"
+      gss_code: "E07000012"
+      area_type: "English District"
+
+  south_oxfordshire:
+    planit:
+      area_id: 206
+      area_name: "South Oxfordshire"
+      long_name: "South Oxfordshire District Council"
+      gss_code: "E07000179"
+      area_type: "English District"
+

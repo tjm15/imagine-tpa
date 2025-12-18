@@ -37,6 +37,11 @@ Repo alignment:
 * 8‑move orchestrator (`agents/GRAMMAR_ORCHESTRATION_SPEC.md`) running over typed tools and producing move logs
 * Provider abstraction enforcing profile purity (`platform/PROVIDER_INTERFACES.md`)
 
+Note on “model routing”:
+* the public architecture describes routing across model types; this repo enforces **no hybrid runtime**,
+  so routing happens **within the active profile** (e.g., small/large LLM, text vs VLM, reranker vs embedder),
+  never across Azure/OSS at runtime.
+
 ### 2.3 Senses (evidence/perception layers)
 Published components:
 * Policy & Knowledge Base
@@ -44,10 +49,17 @@ Published components:
 * Visual Context Layer
 
 Repo alignment:
-* Authority pack ingestion + chunking/atomisation (`ingest/PIPELINE_SPEC.md`, `ingest/DOC_PARSE_SPEC.md`)
-* Retrieval/indexing (`ingest/RETRIEVAL_INDEX_SPEC.md`, `platform/PROVIDER_INTERFACES.md#RetrievalProvider`)
-* Spatial enrichment + site fingerprints (Slice C: `tests/SLICES_SPEC.md`, KG schema: `kg/KG_SCHEMA.md`)
-* Plan↔reality + raster segmentation (Slice B: `ingest/PLAN_REALITY_SLICE_B_SPEC.md`)
+* **Policy & Knowledge Base**
+  - document parity + policy-atom chunking (`ingest/PIPELINE_SPEC.md`)
+  - hybrid retrieval frames + relevance narratives (`ingest/RETRIEVAL_INDEX_SPEC.md`)
+  - clause-aware citeability (`schemas/PolicyClause.schema.json`, `schemas/EvidenceRef.schema.json`)
+* **Spatial Analysis Engine**
+  - GIS ingestion + layer metadata (`ingest/PIPELINE_SPEC.md`)
+  - spatial enrichment + site fingerprints (Slice C: `tests/SLICES_SPEC.md`)
+  - KG edges for intersects/distances (`kg/KG_SCHEMA.md`)
+* **Visual Context Layer**
+  - visual assets + segmentation + registration (`ingest/VISUAL_SPEC.md`, `ingest/PLAN_REALITY_SLICE_B_SPEC.md`)
+  - visuospatial canvases (map/plan/photomontage) (`ux/VISUOSPATIAL_WORKBENCH_SPEC.md`)
 
 ### 2.4 Governance (auditability + resilience)
 Published components:
@@ -56,7 +68,7 @@ Published components:
 
 Repo alignment:
 * Event/audit logging (`schemas/AuditEvent.schema.json`, `db/DDL_CONTRACT.md`)
+* Snapshot/diff support (“what was known when?”) (`schemas/Snapshot.schema.json`, `schemas/SnapshotDiff.schema.json`, `db/DDL_CONTRACT.md`)
 * Reasonableness linter (`governance/REASONABLENESS_LINTER_SPEC.md`)
 * Replayability definition (render replay) (`tests/REPLAYABILITY_SPEC.md`)
 * Two full deployment profiles (Azure vs OSS) with no hybrid runtime (`profiles/*.yaml`)
-

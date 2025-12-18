@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SnapshotDiff",
+  "type": "object",
+  "description": "A stored diff between two snapshots for UI diff mode (traceability: what evidence changed, what reasoning changed, what human overrides occurred).",
+  "properties": {
+    "diff_id": { "type": "string", "format": "uuid" },
+    "from_snapshot_id": { "type": "string", "format": "uuid" },
+    "to_snapshot_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "diff": {
+      "type": "object",
+      "description": "Opaque, versioned diff object (implementation-defined), suitable for rendering 'what changed' views."
+    }
+  },
+  "required": ["diff_id", "from_snapshot_id", "to_snapshot_id", "created_at", "diff"]
+}
+

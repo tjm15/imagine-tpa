@@ -10,7 +10,7 @@
     "actor_type": { "type": "string", "enum": ["user", "agent", "system"] },
     "actor_id": { "type": ["string", "null"] },
     "run_id": { "type": ["string", "null"], "format": "uuid" },
-    "plan_project_id": { "type": ["string", "null"] },
+    "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
     "culp_stage_id": { "type": ["string", "null"] },
     "scenario_id": { "type": ["string", "null"], "format": "uuid" },
     "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
@@ -18,4 +18,3 @@
   },
   "required": ["event_id", "timestamp", "event_type", "actor_type"]
 }
-

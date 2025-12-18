@@ -6,6 +6,21 @@ The UI is not a dashboard of charts; it is a **Digital Case Officer** workspace 
 
 For planner-first workflow intent and “jobs-to-be-done”, see `ux/PLANNER_WORKFLOWS_SPEC.md`.
 
+## 0) Two top-level workspaces (the “two modes” requirement)
+The product has two primary user workspaces, each with its own navigation and default objects:
+
+1. **Local Plan / Spatial Strategy mode**
+   - Default home: **Strategic Home** (CULP timeline and gates).
+   - Primary objects: plan project, scenarios, sites, policies, consultation corpora.
+   - Primary comparison surface: **Scenario × Political Framing tabs** in Judgement Mode.
+
+2. **Development Management (DM) mode**
+   - Default home: **Casework Home** (inbox + statutory timelines).
+   - Primary objects: applications, revisions, consultees, conditions, decisions.
+   - Comparison surface: negotiation/revision deltas + (optionally) recommendation options under explicit framings.
+
+Both modes reuse the same core UI system: Living Document editor, Evidence Shelf, Map canvas, Trace Canvas, and Draft launcher — but with different default context anchors.
+
 ## 0) UI invariants (non‑negotiable)
 1. **Dashboard is canonical UI**: all work happens in the workspace described in `ux/DASHBOARD_IA.md`.
 2. **Grammar-first for judgement**: any judgement output shown to users must be produced via the 8 moves (`grammar/GRAMMAR.md`) and logged (`schemas/MoveEvent.schema.json`).
@@ -13,6 +28,8 @@ For planner-first workflow intent and “jobs-to-be-done”, see `ux/PLANNER_WOR
 4. **Provenance everywhere**: any AI suggestion, chart, map output, or sentence-level claim must be traceable to `EvidenceRef` and/or a `ToolRun` (`db/PROVENANCE_STANDARD.md`).
 5. **User is the selector**: Scenario × Political Framing tab selection is always an explicit, auditable event (`schemas/AuditEvent.schema.json`).
 6. **Explainability modes**: the UI must support `Summary`, `Inspect`, and `Forensic` views of the same underlying run (see the published “Interface & Audit Layer”).
+7. **Visuospatial reasoning is first-class**: maps, plans, policy maps, photos, and photomontages are core evidence surfaces, not optional add-ons (see `ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
+8. **Snapshots support legal questions**: key stages and sign-offs must be linkable to a frozen snapshot (“what was known when?”) (`schemas/Snapshot.schema.json`).
 
 ## 0.1 Traceability must be graphical (Trace Canvas)
 Traceability is experienced primarily through a **flowchart-like Trace Canvas**, not by reading JSON.
@@ -27,7 +44,27 @@ Purpose: keep the system aligned to the GOV.UK 30‑month local plan process (`c
 Required UI elements:
 * **Timeline / dependency chart** showing stages, blocking artefacts, and status (draft/published/blocked).
 * **Stage gate panel** showing required artefacts for the selected stage and what’s missing.
+  * Required artefacts are defined in `culp/PROCESS_MODEL.yaml` and catalogued in `culp/ARTEFACT_REGISTRY.yaml`.
+  * Per-project artefact status is tracked via `CulpArtefactRecord` (`schemas/CulpArtefactRecord.schema.json`).
 * **Run history / audit ribbon**: quick link to the active snapshot/run set used for any published artefact.
+  * Snapshots are optional early on, but become mandatory for published/sign‑off states: `schemas/Snapshot.schema.json`.
+
+### 1.1.1 Audit ribbon (cross-cutting trust surface)
+The published architecture’s “Interface & Audit Layer” must be felt in the UI as a persistent, low-friction surface.
+
+Required ribbon elements:
+* active `run_id` and (when used) active `snapshot_id`
+* trace count + unresolved governance flags
+* one-click export controls (evidence bundle + trace graph)
+* explainability mode toggle (`summary` / `inspect` / `forensic`)
+
+### 1.2 Casework Home (DM inbox)
+Purpose: manage real workloads and deadlines without losing the reasoning thread.
+
+Required UI elements:
+* **Inbox board** with case status columns (new/validating/consultation/assessment/determination/issued).
+* **Deadline visibility** (days remaining, breached flags) and simple filters (ward, agent, type).
+* **One-click open** into the Application Workspace (same 70/30 split layout).
 
 ### 1.2 Workspace (70/30 split)
 Purpose: be a “Smart Word” environment with AI assistance that never breaks traceability.
@@ -45,6 +82,7 @@ Modes (must be switchable without losing state):
 
 ### 2.1 Document model (implementable contract)
 The “Living Document” is an **authored artefact**, distinct from ingested evidence documents.
+Canonical storage shape: `schemas/AuthoredArtefact.schema.json`.
 
 Minimum requirements:
 * block/heading/paragraph/list/table support
@@ -99,6 +137,7 @@ Comparison is tab switching plus a small set of purpose-built comparison views:
   * similarity heatmap (scenario distance in policy/spatial space)
 
 ## 4) Map Mode (spatial reasoning surface)
+See also: `ux/VISUOSPATIAL_WORKBENCH_SPEC.md` (Map/Plan/Photomontage canvases).
 
 ### 4.1 Core interactions
 * draw marker/lasso → create a query context (geometry) for tools and agents

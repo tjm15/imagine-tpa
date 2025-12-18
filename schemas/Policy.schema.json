@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Policy",
+  "type": "object",
+  "description": "A canonical policy container for an authority (Local Plan policy, SPD policy, design code policy, etc.). Policies are not treated as determinations; they are citeable sources that can be atomised into clauses/chunks for retrieval.",
+  "properties": {
+    "policy_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": "string" },
+    "policy_ref": {
+      "type": ["string", "null"],
+      "description": "Optional human-facing reference (e.g., 'H1', 'D2', 'DM3')."
+    },
+    "title": { "type": "string" },
+    "source_document_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to the ingested source document this policy was extracted from."
+    },
+    "adoption_status": {
+      "type": ["string", "null"],
+      "enum": ["draft", "submission", "adopted", "superseded", null]
+    },
+    "text": { "type": "string" },
+    "metadata": { "type": "object" }
+  },
+  "required": ["policy_id", "authority_id", "title", "text"]
+}
+

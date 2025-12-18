@@ -1,0 +1,44 @@
+name: tpa-azure
+
+services:
+  # Azure profile containers are expected to connect to real Azure services:
+  # - Azure Database for PostgreSQL (PostGIS + pgvector)
+  # - Azure Blob Storage
+  # - Azure AI Search
+  # - Azure Document Intelligence
+  # - Azure OpenAI (LLM/VLM/Embeddings)
+  #
+  # This compose file is for local dev parity testing (the same app images)
+  # against Azure resources, while preserving the “no hybrid runtime” rule.
+
+  tpa-api:
+    build:
+      context: ../
+      dockerfile: apps/api/Dockerfile
+    environment:
+      TPA_PROFILE: azure
+      TPA_SPEC_ROOT: /app/spec
+
+      # --- Required Azure wiring (fill via .env) ---
+      AZURE_POSTGRES_DSN: ${AZURE_POSTGRES_DSN}
+      AZURE_BLOB_CONNECTION_STRING: ${AZURE_BLOB_CONNECTION_STRING}
+      AZURE_AI_SEARCH_ENDPOINT: ${AZURE_AI_SEARCH_ENDPOINT}
+      AZURE_AI_SEARCH_API_KEY: ${AZURE_AI_SEARCH_API_KEY}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      AZURE_OPENAI_CHAT_MODEL: ${AZURE_OPENAI_CHAT_MODEL:-gpt-5.2-preview}
+      AZURE_OPENAI_EMBEDDING_MODEL: ${AZURE_OPENAI_EMBEDDING_MODEL:-text-embedding-3-large}
+      AZURE_DOC_INTELLIGENCE_ENDPOINT: ${AZURE_DOC_INTELLIGENCE_ENDPOINT}
+      AZURE_DOC_INTELLIGENCE_API_KEY: ${AZURE_DOC_INTELLIGENCE_API_KEY}
+    ports:
+      - "${TPA_API_PORT:-8000}:8000"
+
+  tpa-ui:
+    build:
+      context: ../
+      dockerfile: apps/ui/Dockerfile
+    depends_on:
+      - tpa-api
+    ports:
+      - "${TPA_UI_PORT:-3000}:80"
+

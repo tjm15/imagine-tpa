@@ -6,6 +6,7 @@ This layer is required to support capabilities such as:
 * DM intake + case updates (applications, consultees, revisions)
 * Monitoring connectors (completions, appeals, S106/CIL)
 * Plan data ingestion (ODP-aligned plan documents and datasets)
+* Demo/sandbox case seeding from public aggregators (e.g. UK PlanIt)
 
 ## 1) Principles
 * **Normalise, don’t mirror**: external schemas are mapped into canonical tables and KG nodes/edges.
@@ -31,3 +32,12 @@ Connectors are declared in `integration/CONNECTORS_REGISTRY.yaml` and configured
 * `monitoring_completions` (delivery feeds)
 * `monitoring_appeals` (appeal outcomes/overturns)
 * `monitoring_s106` (developer contributions)
+* `dpr` (publishing to a Digital Planning Register)
+
+Optional (demo / sandbox):
+* `planit` (UK PlanIt API application feed; see `integration/PLANIT_CONNECTOR_SPEC.md`)
+
+## 5) External schema interoperability (ODP ecosystem)
+PlanX/BOPS/DPR integrations should validate and exchange records using the OSL digital planning data schemas:
+* Spec: `integration/DIGITAL_PLANNING_SCHEMAS_INTEROP_SPEC.md`
+* Version pinning registry: `integration/OSL_SCHEMA_SOURCES.yaml`

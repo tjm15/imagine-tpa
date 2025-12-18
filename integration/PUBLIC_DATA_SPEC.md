@@ -50,6 +50,9 @@ Web discovery is used when:
 
 ### 3.1 Two-pass approach (deterministic then AI-assisted)
 1. **Deterministic crawler**: fetch page(s), extract links, detect file types, identify ArcGIS/WMS/WFS endpoints using heuristics.
+   * Use simple HTTP fetch when possible.
+   * If the page is JS-rendered or requires interaction to reveal links, use a governed headless browser capture (Playwright-backed) via the optional `WebAutomationProvider` (`platform/PROVIDER_INTERFACES.md`).
+   * Store both the raw HTML and a screenshot as artefacts to keep discovery contestable.
 2. **AI-assisted resolver** (optional): LLM/VLM interprets messy pages to propose candidate links/endpoints.
 
 Both passes must log:
@@ -62,4 +65,3 @@ Both passes must log:
 * per-domain rate limits and backoff
 * denylist/allowlist of domains per deployment
 * licence metadata captured per source and displayed on evidence cards
-

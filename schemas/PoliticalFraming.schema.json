@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PoliticalFraming",
+  "type": "object",
+  "description": "A reusable political framing preset used to condition judgement outputs (selected by the user). Runs produce a Framing instance referencing political_framing_id.",
+  "properties": {
+    "political_framing_id": { "type": "string" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "default_goals": { "type": "array", "items": { "type": "string" } },
+    "default_constraints": { "type": "array", "items": { "type": "string" } },
+    "non_goals": { "type": "array", "items": { "type": "string" } }
+  },
+  "required": ["political_framing_id", "title", "description"]
+}
+

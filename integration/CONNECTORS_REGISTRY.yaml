@@ -8,6 +8,7 @@ connectors:
     required_config:
       - base_url
       - auth
+    notes: "Spec: integration/BOPS_CONNECTOR_SPEC.md (OSL schema interop: integration/DIGITAL_PLANNING_SCHEMAS_INTEROP_SPEC.md)."
 
   - id: planx
     name: PlanX Connector
@@ -17,6 +18,7 @@ connectors:
     required_config:
       - base_url
       - auth
+    notes: "Spec: integration/PLANX_CONNECTOR_SPEC.md (OSL schema interop: integration/DIGITAL_PLANNING_SCHEMAS_INTEROP_SPEC.md)."
 
   - id: odp
     name: Open Digital Planning (ODP) Connector
@@ -26,6 +28,18 @@ connectors:
     required_config:
       - base_url
       - auth
+    notes: "ODP includes multiple products; BOPS/PlanX/DPR record interchange should follow OSL schemas where applicable."
+
+  - id: dpr
+    name: Digital Planning Register (DPR) Connector
+    domain: development_management
+    direction: outbound
+    description: "Publish public-facing register data (applications/decisions) with redaction controls and schema validation."
+    required_config:
+      - base_url
+      - auth
+      - publish_allowlist
+    notes: "Spec: integration/DPR_CONNECTOR_SPEC.md (OSL schema interop: integration/DIGITAL_PLANNING_SCHEMAS_INTEROP_SPEC.md)."
 
   - id: monitoring_completions
     name: Completions Connector
@@ -81,3 +95,21 @@ connectors:
       - authority_id
       - domain_allowlist
       - request_budget
+    notes: "Spec: integration/COUNCIL_DOCUMENT_DISCOVERY_SPEC.md (uses governed scraping; Playwright via optional WebAutomationProvider when needed)."
+
+  - id: planit
+    name: UK PlanIt Connector
+    domain: development_management
+    direction: inbound
+    description: "Fetch real planning applications from the UK PlanIt API for demo/sandbox casework."
+    required_config:
+      - base_url
+      - authority_allowlist
+      - request_budget
+      - page_size
+    optional_config:
+      - authority_area_map
+      - initial_recent_days
+      - changed_window_days
+      - select_fields
+    notes: "See integration/PLANIT_CONNECTOR_SPEC.md (mapping file: integration/PLANIT_AUTHORITY_MAP.yaml); respect PlanIt rate limits and store provenance."

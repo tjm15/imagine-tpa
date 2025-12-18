@@ -12,6 +12,7 @@ A synthetic but realistic Local Plan fixture ("Borsetshire Plan").
 * `fixtures/spatial/constraints_floodzones.geojson` (Constraint layer for Slice C)
 * `fixtures/instruments/flood_stub.json` (Instrument output stub for Slice D when offline)
 * `fixtures/dm/application_A.json` (Application state vector for DM slices)
+* `fixtures/dm/planit_stub_applics.json` (Optional: captured PlanIt API page for offline DM seeding)
 * `fixtures/monitoring/monitoring_timeseries_stub.json` (Monitoring timeseries for trend/trigger slices)
 * `fixtures/monitoring/adoption_baseline_stub.json` (Adoption baseline snapshot for monitoring)
 

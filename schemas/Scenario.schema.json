@@ -5,7 +5,7 @@
   "description": "A scenario option the user can compare and select between in the Spatial Strategy workspace.",
   "properties": {
     "scenario_id": { "type": "string", "format": "uuid" },
-    "plan_project_id": { "type": "string" },
+    "plan_project_id": { "type": "string", "format": "uuid" },
     "culp_stage_id": { "type": "string" },
     "title": { "type": "string" },
     "summary": { "type": "string" },
@@ -25,6 +25,5 @@
       "items": { "type": "string", "format": "uuid" }
     }
   },
-  "required": ["scenario_id", "title", "status", "created_by", "created_at"]
+  "required": ["scenario_id", "plan_project_id", "culp_stage_id", "title", "status", "created_by", "created_at"]
 }
-

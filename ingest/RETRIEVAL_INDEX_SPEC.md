@@ -5,6 +5,8 @@
   * Minimum metadata: `authority_id`, `document_id`, `doc_type`, `published_date`, `page`, `section_path`
   * Policy-aware metadata where available: `policy_id`, `policy_clause_id`, `policy_topic_tags[]`
   * Every record must be resolvable to an `EvidenceRef`.
+  * Notes:
+    - “Policy atoms” are an indexing concept: short, embedding-dense fragments derived from policy documents and stored as chunk/atom records with stable citation selectors.
 * **Visuals Index**: Description + Embedding + image/plan metadata.
   * Minimum metadata: `authority_id`, `asset_id`, `source_document_id`, `page`, `asset_type`
   * Every record must be resolvable to an `EvidenceRef` (e.g., `asset::...::...`).
@@ -27,6 +29,18 @@ Most retrieval is not “free text search”; it is a **retrieval frame** assemb
 * `document_type` / adoption status / effective date filters
 
 The frame must be logged as part of the retrieval `ToolRun.inputs_logged` to support replay and contestability.
+
+## Relevance narratives (UI-facing, bounded)
+Retrieval is an evidence instrument; the UI must be able to show *why* something surfaced without pretending the rank is a determination.
+
+Recommended pattern:
+* retrieval returns candidates,
+* agents attach short, structured rationales (“relevance badges”) such as:
+  - semantic match
+  - spatial trigger
+  - cross-reference chain
+  - inferred test/exception (explicitly caveated)
+* these rationales are logged as interpretations/tool outputs and surfaced in the Live Policy Surface (see `ux/DASHBOARD_IA.md`).
 
 ## Providers
 * **Azure**: Azure AI Search.

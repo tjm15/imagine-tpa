@@ -35,9 +35,12 @@ Slices should collectively cover the three capability pipelines defined in `capa
 **Touches**: `SegmentationProvider` (raster), GIS tools (PostGIS/GDAL), `BlobStoreProvider`, `CanonicalDBProvider`.
 
 **Pass criteria**
-* A `ProjectionArtifact` (overlay) is produced and storable as an artefact.
-* A `PlanRealityInterpretation` is produced including `uncertainty_score` and limitations (`schemas/PlanRealityInterpretation.schema.json`).
+* A `Transform` between frames is created (with uncertainty) and stored (`schemas/Transform.schema.json`).
+* At least one `SegmentationMask` or `VisualFeature` is produced to support registration/interpretation (`schemas/SegmentationMask.schema.json`, `schemas/VisualFeature.schema.json`).
+* A `ProjectionArtifact` (overlay) is produced and storable as an artefact (`schemas/ProjectionArtifact.schema.json`).
+* A `PlanRealityInterpretation` is produced including `transform_id`, `overlay_evidence_ref`, `uncertainty_score` and limitations (`schemas/PlanRealityInterpretation.schema.json`).
 * UI shows a warning when `uncertainty_score > 0.5` (dashboard Judgement/Reality modes).
+* (Stretch) A photomontage-style `ProjectionArtifact(artifact_type=photomontage)` can be stored and surfaced as citeable evidence.
 
 ## Slice C — Spatial enrichment (Site fingerprint)
 **Goal**: Precompute spatial relationships (intersections/distances) and expose them as a site fingerprint for reasoning.
@@ -74,11 +77,26 @@ Slices should collectively cover the three capability pipelines defined in `capa
 **Touches**: UI + API layers; renderer outputs.
 
 **Pass criteria**
+* Strategic Home stage gate panel shows required artefacts for a selected CULP stage (`culp/PROCESS_MODEL.yaml`) and their status from the artefact ledger (`schemas/CulpArtefactRecord.schema.json`).
 * The Living Document can display and accept insertion of `EvidenceCard`s (drag/drop or “insert”) with citations.
 * Judgement Mode shows **Scenario × Political Framing** tabs (`ScenarioFramingTab`) and their rendered sheets.
 * Selecting a tab produces an explicit `AuditEvent` (no silent agent selection).
+* Audit ribbon shows active `run_id` (and, when used, active `snapshot_id`) with one-click export of trace/evidence bundles.
 * Traceability is available as a **flowchart** (Trace Canvas) derived from `MoveEvent` + `ToolRun` + `AuditEvent` (see `ux/TRACE_CANVAS_SPEC.md`).
 * Evidence cards link through to provenance (human-readable) without exposing internal IDs.
+
+## Slice I — Visuospatial workbench (Maps + plans + photomontages)
+**Goal**: Prove visuospatial reasoning is first-class: planners can create citeable map and visual artefacts, and those artefacts participate in judgement and drafting with traceability.
+
+**Spec**: `ux/VISUOSPATIAL_WORKBENCH_SPEC.md` and `ingest/VISUAL_SPEC.md`
+
+**Touches**: Map renderer, visual ingestion, `VLMProvider`, `SegmentationProvider`, (optional) `WebAutomationProvider`, `BlobStoreProvider`, `CanonicalDBProvider`.
+
+**Pass criteria**
+* Map Canvas can export a map snapshot as a citeable artefact and EvidenceCard (`ProjectionArtifact` + `EvidenceCard(card_type=map)`).
+* Plan Canvas can show extracted `VisualFeature`s and/or `SegmentationMask`s for a `VisualAsset`.
+* Reality/Photomontage Canvas can display an ingested photomontage or a site photo and generate a structured, caveated VLM interpretation for a selected region (logged as `ToolRun`).
+* Any exported visual artefact is insertable into the Living Document and traceable in Trace Canvas.
 
 ## Slice G — DM casework loop (intake → balance → report)
 **Goal**: Prove the DM capability chain can run end-to-end for a single application fixture.

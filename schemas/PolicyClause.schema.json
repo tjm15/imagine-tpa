@@ -1,0 +1,26 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PolicyClause",
+  "type": "object",
+  "description": "A canonical clause/criterion within a Policy, suitable for clause-aware retrieval and citation binding in the reasoning grammar.",
+  "properties": {
+    "policy_clause_id": { "type": "string", "format": "uuid" },
+    "policy_id": { "type": "string", "format": "uuid" },
+    "clause_ref": {
+      "type": ["string", "null"],
+      "description": "Optional intra-policy reference (e.g., '(a)', 'Criterion 3', 'Part B')."
+    },
+    "section_path": {
+      "type": ["string", "null"],
+      "description": "Optional heading hierarchy path (e.g., 'Chapter 4 > Policy H1 > Criterion (c)')."
+    },
+    "text": { "type": "string" },
+    "evidence_ref": {
+      "type": ["string", "null"],
+      "description": "Optional stable EvidenceRef pointing to the source fragment that backs this clause text."
+    },
+    "metadata": { "type": "object" }
+  },
+  "required": ["policy_clause_id", "policy_id", "text"]
+}
+

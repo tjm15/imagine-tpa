@@ -22,6 +22,9 @@ This is a navigation model for capability modules (see `capabilities/CAPABILITIE
 *   **Smart Feed**:
     *   Dynamic cards that change based on what paragraph is active in the document.
     *   *Example*: If cursor is in "Highways", show "Local Plan Policy T1" and "Transport Assessment Key Data".
+*   **Live Policy Surface**:
+    *   A ranked “policy gradient” showing which policy atoms/clauses appear relevant to the current cursor/selection/site/scenario.
+    *   Uses **explainable relevance badges** (semantic match, spatial trigger, cross-reference, inferred test) and supports “why is this here?”.
 *   **Evidence Shelf**:
     *   Draggable facts/citations. "Drag this 5YHLS figure into your report".
     *   Evidence items are rendered as provenance-backed `EvidenceCard`s (`schemas/EvidenceCard.schema.json`).
@@ -67,11 +70,12 @@ This is a navigation model for capability modules (see `capabilities/CAPABILITIE
       * The system is heavily AI assisted: agents propose scenarios, compute deltas, run tools/tests, and draft the narrative — but the user’s selection of a tab is always an explicit, auditable event (no “silent” AI selection).
     *   **Reality Mode**:
         *   *Metaphor*: Augmented Reality View.
-        *   *Feature*: Projects plan vectors (wireframes) onto site photos/street view ("Slice B").
+        *   *Feature*: Projects plan vectors/overlays onto site photos/street view and supports photomontage-style visual evidence ("Slice B" + `ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
 
 ### 4. Navigation (Minimalist Header)
 *   **Project Breadcrumbs**: `Projects > TPA/2024/001 > Officer Report`.
 *   **Stage Indicator**: Simple status pill ("Drafting", "Review", "Published").
+*   **Audit Ribbon**: compact strip showing active run/snapshot, unresolved flags, and export controls (see `ux/UI_SYSTEM_SPEC.md`).
 *   **No complex "Tree Views"**: File navigation is handled via a simple "Open File" modal or dropdown, not a persistent IDE sidebar.
 
 ## Interaction Rules
@@ -80,6 +84,8 @@ This is a navigation model for capability modules (see `capabilities/CAPABILITIE
 *   **Snapshot**: Map views are always one click away from being an image in the Document.
 *   **Nudges**: The system communicates via "Comment Bubbles" in the margin (like Word Comments) or "Gold Underlines" (Reasoning Gaps).
 *   **Drag & Drop**: Evidence -> Document.
+*   **Why is this here?**: any card/figure/policy chip can be interrogated; the system returns a concise rationale backed by evidence refs and tool runs (and logs the interaction).
+*   **Pin / Dismiss**: sidebar cards can be pinned or dismissed; the system recalibrates without losing provenance (pin/dismiss is an `AuditEvent`).
 
 ## Mobile/Tablet Friendly
 *   The simplified layout allows usage on iPads for site visits (referencing the map/doc split).

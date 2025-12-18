@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualFeature",
+  "type": "object",
+  "description": "A structured feature extracted from a VisualAsset (e.g., north arrow, scale bar, legend, boundary line, viewpoint marker).",
+  "properties": {
+    "visual_feature_id": { "type": "string", "format": "uuid" },
+    "visual_asset_id": { "type": "string", "format": "uuid" },
+    "feature_type": {
+      "type": "string",
+      "enum": [
+        "north_arrow",
+        "scale_bar",
+        "legend",
+        "boundary",
+        "dimension",
+        "viewpoint_marker",
+        "text_label",
+        "annotation",
+        "symbol",
+        "other"
+      ]
+    },
+    "geometry_image_space": {
+      "type": ["object", "null"],
+      "description": "Image-space geometry for the feature (bbox/polygon/line), expressed as JSON.",
+      "properties": {
+        "type": { "type": "string", "enum": ["bbox", "polygon", "polyline", "point"] },
+        "coords": { "type": "array" }
+      }
+    },
+    "evidence_ref": {
+      "type": ["string", "null"],
+      "description": "Optional EvidenceRef to a stable fragment selector representing the feature region."
+    },
+    "confidence": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "metadata": { "type": "object" }
+  },
+  "required": ["visual_feature_id", "visual_asset_id", "feature_type"]
+}
+

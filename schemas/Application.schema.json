@@ -7,15 +7,19 @@
     "application_id": { "type": "string", "format": "uuid" },
     "authority_id": { "type": "string" },
     "reference": { "type": "string" },
+    "source_refs": {
+      "type": "array",
+      "description": "External source references for this application (e.g. PlanIt, BOPS).",
+      "items": { "$ref": "ExternalRecordRef.schema.json" }
+    },
     "status": {
       "type": "string",
       "enum": ["new", "validating", "consultation", "assessment", "determination", "issued", "closed"]
     },
-    "site_id": { "type": ["string", "null"] },
+    "site_id": { "type": ["string", "null"], "format": "uuid" },
     "site_geometry_wkt": { "type": ["string", "null"] },
     "proposal_metadata": { "type": "object" },
     "received_at": { "type": "string", "format": "date-time" }
   },
   "required": ["application_id", "authority_id", "reference", "status", "received_at"]
 }
-

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Frame",
+  "type": "object",
+  "description": "A coordinate frame used for registration (world/image/camera). Frames allow explicit transforms and uncertainty to be tracked for overlays and photomontages.",
+  "properties": {
+    "frame_id": { "type": "string", "format": "uuid" },
+    "frame_type": { "type": "string", "enum": ["world", "image", "camera"] },
+    "epsg": { "type": ["integer", "null"], "description": "EPSG code for world frames where applicable." },
+    "description": { "type": ["string", "null"] },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["frame_id", "frame_type", "created_at"]
+}
+

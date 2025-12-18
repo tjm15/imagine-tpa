@@ -2,14 +2,205 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "MoveEvent",
   "type": "object",
+  "description": "A single step in the frozen 8-move grammar procedure log. MoveEvents are the primary replayable artefact and must record what was looked at, what was produced, what assumptions were introduced, and what uncertainty remains.",
   "properties": {
     "move_id": { "type": "string", "format": "uuid" },
     "run_id": { "type": "string", "format": "uuid" },
-    "move_type": { "type": "string", "enum": ["framing", "issue_surfacing", "evidence_curation", "evidence_interpretation", "considerations_formation", "weighing_and_balance", "negotiation_and_alteration", "positioning_and_narration"] },
+    "move_type": {
+      "type": "string",
+      "enum": [
+        "framing",
+        "issue_surfacing",
+        "evidence_curation",
+        "evidence_interpretation",
+        "considerations_formation",
+        "weighing_and_balance",
+        "negotiation_and_alteration",
+        "positioning_and_narration"
+      ]
+    },
+    "sequence": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic ordering within a run. Backtracking creates new MoveEvents with higher sequence."
+    },
+    "status": { "type": "string", "enum": ["success", "partial", "error"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "started_at": { "type": ["string", "null"], "format": "date-time" },
+    "ended_at": { "type": ["string", "null"], "format": "date-time" },
+    "backtracked_from_move_id": { "type": ["string", "null"], "format": "uuid" },
+    "backtrack_reason": { "type": ["string", "null"] },
     "inputs": { "type": "object" },
+    "evidence_refs_considered": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" },
+      "description": "EvidenceRefs this move explicitly considered (what it looked at)."
+    },
+    "tool_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "description": "ToolRun ids invoked by this move (retrieval, spatial ops, instruments, model calls)."
+    },
+    "assumptions_introduced": {
+      "type": "array",
+      "items": { "$ref": "Assumption.schema.json" },
+      "description": "New Assumptions introduced in this move (explicit ledger entries)."
+    },
+    "uncertainty_remaining": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Small, honest list of unresolved uncertainties after completing this move."
+    },
     "outputs": { "type": "object" },
-    "tool_runs": { "type": "array", "items": { "type": "string", "format": "uuid" } },
-    "timestamp": { "type": "string", "format": "date-time" }
+    "timestamp": {
+      "type": ["string", "null"],
+      "format": "date-time",
+      "description": "Deprecated alias for created_at (kept for compatibility)."
+    }
   },
-  "required": ["move_id", "run_id", "move_type", "timestamp"]
+  "required": ["move_id", "run_id", "move_type", "sequence", "status", "created_at", "outputs"],
+  "allOf": [
+    {
+      "if": { "properties": { "move_type": { "const": "framing" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "framing": { "$ref": "Framing.schema.json" },
+              "assumptions": {
+                "type": "array",
+                "items": { "$ref": "Assumption.schema.json" }
+              }
+            },
+            "required": ["framing"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "issue_surfacing" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "issues": {
+                "type": "array",
+                "items": { "$ref": "Issue.schema.json" }
+              },
+              "issue_map": { "$ref": "IssueMap.schema.json" }
+            },
+            "required": ["issues", "issue_map"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "evidence_curation" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "curated_evidence_set": { "$ref": "CuratedEvidenceSet.schema.json" }
+            },
+            "required": ["curated_evidence_set"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "evidence_interpretation" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "interpretations": {
+                "type": "array",
+                "items": { "$ref": "Interpretation.schema.json" }
+              },
+              "plan_reality_interpretations": {
+                "type": "array",
+                "items": { "$ref": "PlanRealityInterpretation.schema.json" }
+              },
+              "reasoning_traces": {
+                "type": "array",
+                "items": { "$ref": "ReasoningTrace.schema.json" }
+              }
+            },
+            "required": ["interpretations"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "considerations_formation" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "consideration_ledger_entries": {
+                "type": "array",
+                "items": { "$ref": "ConsiderationLedgerEntry.schema.json" }
+              }
+            },
+            "required": ["consideration_ledger_entries"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "weighing_and_balance" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "weighing_record": { "$ref": "WeighingRecord.schema.json" },
+              "reasoning_traces": {
+                "type": "array",
+                "items": { "$ref": "ReasoningTrace.schema.json" }
+              }
+            },
+            "required": ["weighing_record"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "negotiation_and_alteration" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "negotiation_moves": {
+                "type": "array",
+                "items": { "$ref": "NegotiationMove.schema.json" }
+              }
+            },
+            "required": ["negotiation_moves"]
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "move_type": { "const": "positioning_and_narration" } } },
+      "then": {
+        "properties": {
+          "outputs": {
+            "type": "object",
+            "properties": {
+              "trajectory": { "$ref": "Trajectory.schema.json" },
+              "scenario_judgement_sheet": { "$ref": "ScenarioJudgementSheet.schema.json" }
+            },
+            "required": ["trajectory", "scenario_judgement_sheet"]
+          }
+        }
+      }
+    }
+  ]
 }

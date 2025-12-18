@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PlanProject",
+  "type": "object",
+  "description": "A Local Plan / Spatial Strategy project aligned to a CULP process model. This is the primary workspace anchor in Spatial Strategy mode.",
+  "properties": {
+    "plan_project_id": { "type": "string", "format": "uuid" },
+    "authority_id": {
+      "type": "string",
+      "description": "Canonical authority identifier (e.g., authority pack id)."
+    },
+    "process_model_id": {
+      "type": "string",
+      "description": "Process model identifier (see culp/PROCESS_MODEL.yaml:process_id)."
+    },
+    "title": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "paused", "submitted", "adopted", "archived"]
+    },
+    "current_stage_id": {
+      "type": ["string", "null"],
+      "description": "Current stage id from the process model (CULP)."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" },
+    "metadata": { "type": "object" }
+  },
+  "required": ["plan_project_id", "authority_id", "process_model_id", "title", "status", "created_at"]
+}
+

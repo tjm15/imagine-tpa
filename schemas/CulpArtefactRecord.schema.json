@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CulpArtefactRecord",
+  "type": "object",
+  "description": "A per-plan-project record tracking the status and backing object(s) for a required CULP artefact (stage gating). Artefact keys are defined in culp/ARTEFACT_REGISTRY.yaml.",
+  "properties": {
+    "culp_artefact_id": { "type": "string", "format": "uuid" },
+    "plan_project_id": { "type": "string", "format": "uuid" },
+    "culp_stage_id": { "type": "string" },
+    "artefact_key": { "type": "string", "description": "Key from culp/ARTEFACT_REGISTRY.yaml (and culp/PROCESS_MODEL.yaml required_artefacts lists)." },
+    "status": {
+      "type": "string",
+      "enum": ["missing", "draft", "in_review", "published", "superseded", "archived"]
+    },
+    "authored_artefact_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "If this artefact is an authored document, points to the Living Document record."
+    },
+    "artifact_path": {
+      "type": ["string", "null"],
+      "description": "If this artefact is a file (geometry, bundle, map image/tiles), points to blob storage path."
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" },
+      "description": "EvidenceRefs supporting this artefact (e.g., key evidence index entries, map snapshot refs)."
+    },
+    "produced_by_run_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional link to a judgement run that produced this artefact (e.g., scenario tab run used in a justification pack)."
+    },
+    "tool_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" },
+      "description": "Tool runs that produced or refreshed this artefact (e.g., map export, data refresh, scraping run)."
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" },
+    "notes": { "type": ["string", "null"] }
+  },
+  "required": ["culp_artefact_id", "plan_project_id", "culp_stage_id", "artefact_key", "status", "created_at"]
+}
+

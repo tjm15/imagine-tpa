@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualAsset",
+  "type": "object",
+  "description": "A visual evidence asset (plan, policy map, photo, streetview capture, photomontage, diagram). Visual assets are citeable evidence and may participate in registration (Transforms) and overlay generation (ProjectionArtifacts).",
+  "properties": {
+    "visual_asset_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": ["string", "null"] },
+    "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
+    "application_id": { "type": ["string", "null"], "format": "uuid" },
+    "site_id": { "type": ["string", "null"], "format": "uuid" },
+    "source_document_id": { "type": ["string", "null"], "format": "uuid" },
+    "page_number": { "type": ["integer", "null"], "minimum": 1 },
+    "asset_type": {
+      "type": "string",
+      "enum": [
+        "plan",
+        "policy_map",
+        "photo",
+        "streetview",
+        "photomontage",
+        "render",
+        "elevation",
+        "section",
+        "diagram",
+        "chart",
+        "map_snapshot",
+        "other"
+      ]
+    },
+    "artifact_path": { "type": "string", "description": "Blob/path reference to the stored asset bytes (image/PDF page render/etc.)." },
+    "evidence_ref": {
+      "$ref": "EvidenceRef.schema.json",
+      "description": "EvidenceRef pointing to this asset (or a stable fragment within its source)."
+    },
+    "width_px": { "type": ["integer", "null"], "minimum": 1 },
+    "height_px": { "type": ["integer", "null"], "minimum": 1 },
+    "metadata": { "type": "object" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["visual_asset_id", "asset_type", "artifact_path", "created_at"]
+}
+

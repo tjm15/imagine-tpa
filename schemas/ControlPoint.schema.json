@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ControlPoint",
+  "type": "object",
+  "description": "A control point pairing used to derive or validate a Transform between frames (e.g., image pixel ↔ world coordinate).",
+  "properties": {
+    "control_point_id": { "type": "string", "format": "uuid" },
+    "transform_id": { "type": "string", "format": "uuid" },
+    "src": { "type": "object", "description": "Coordinate in the source frame (image/camera)." },
+    "dst": { "type": "object", "description": "Coordinate in the destination frame (world/image)." },
+    "residual": { "type": ["number", "null"], "description": "Optional residual/error for this point (units depend on frames)." },
+    "weight": { "type": ["number", "null"], "minimum": 0.0 },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["control_point_id", "transform_id", "src", "dst", "created_at"]
+}
+

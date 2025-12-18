@@ -7,6 +7,9 @@
     "run_id": { "type": "string", "format": "uuid" },
     "profile": { "type": "string", "description": "Deployment profile selected for this run (no hybrid runtime)." },
     "culp_stage_id": { "type": "string" },
+    "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
+    "scenario_id": { "type": ["string", "null"], "format": "uuid" },
+    "application_id": { "type": ["string", "null"], "format": "uuid" },
     "authority_id": { "type": "string" },
     "created_at": { "type": "string", "format": "date-time" },
     "anchors": { "type": "object" },
@@ -14,4 +17,3 @@
   },
   "required": ["run_id", "profile", "culp_stage_id", "created_at"]
 }
-

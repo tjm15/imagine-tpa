@@ -75,6 +75,9 @@ paths:
               properties:
                 authority_id: { type: string }
                 since: { type: string, format: date-time }
+                params:
+                  type: object
+                  description: "Connector-specific parameters (e.g., for PlanIt: auth/area_id, changed_start/changed_end, recent, page_size)."
   /ingest/job/{job_id}:
     get:
       summary: Get ingestion job status

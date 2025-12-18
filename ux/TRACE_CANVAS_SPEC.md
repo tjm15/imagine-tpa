@@ -74,7 +74,7 @@ Planners constantly ask “what changed since last draft / last meeting / last s
 The Trace Canvas must support comparing:
 * two runs (`run_id_A` vs `run_id_B`), or
 * two tabs (Scenario×Framing), or
-* two snapshots (optional).
+* two snapshots (optional early, recommended for sign-off) (`schemas/Snapshot.schema.json`, `schemas/SnapshotDiff.schema.json`).
 
 Diff view requirements:
 * highlight added/removed/changed nodes (evidence changed, tool outputs changed, assumptions changed)

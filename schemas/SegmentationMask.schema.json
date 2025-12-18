@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SegmentationMask",
+  "type": "object",
+  "description": "A promptable segmentation mask produced for a VisualAsset (e.g., boundary trace, annotation region) with confidence and provenance.",
+  "properties": {
+    "mask_id": { "type": "string", "format": "uuid" },
+    "visual_asset_id": { "type": "string", "format": "uuid" },
+    "label": { "type": "string" },
+    "prompt": { "type": ["string", "null"] },
+    "mask_artifact_path": { "type": "string", "description": "Blob/path reference to the stored mask (PNG, RLE, etc.)." },
+    "confidence": { "type": ["number", "null"], "minimum": 0.0, "maximum": 1.0 },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["mask_id", "visual_asset_id", "label", "mask_artifact_path", "created_at"]
+}
+

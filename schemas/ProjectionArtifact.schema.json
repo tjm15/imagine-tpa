@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ProjectionArtifact",
+  "type": "object",
+  "description": "A derived visual artefact created by applying a Transform (e.g., plan overlay warped to map, XYZ tile set, photomontage composite).",
+  "properties": {
+    "projection_artifact_id": { "type": "string", "format": "uuid" },
+    "transform_id": { "type": "string", "format": "uuid" },
+    "artifact_type": { "type": "string", "enum": ["image_overlay", "xyz_tiles", "geotiff", "photomontage", "svg_overlay", "other"] },
+    "artifact_path": { "type": "string", "description": "Blob/path reference to the stored artefact (image/tiles/geotiff)." },
+    "evidence_ref": {
+      "type": ["string", "null"],
+      "description": "Optional EvidenceRef for this artefact (if registered into evidence_refs)."
+    },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "metadata": { "type": "object" }
+  },
+  "required": ["projection_artifact_id", "transform_id", "artifact_type", "artifact_path", "created_at"]
+}
+

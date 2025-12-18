@@ -7,7 +7,7 @@
     "card_id": { "type": "string", "format": "uuid" },
     "card_type": {
       "type": "string",
-      "enum": ["policy", "document", "map", "overlay", "instrument", "photo", "table", "chart", "note", "other"]
+      "enum": ["policy", "document", "map", "overlay", "plan", "instrument", "photo", "streetview", "photomontage", "table", "chart", "note", "other"]
     },
     "title": { "type": "string" },
     "summary": { "type": "string" },
@@ -20,4 +20,3 @@
   },
   "required": ["card_id", "card_type", "title", "evidence_refs"]
 }
-

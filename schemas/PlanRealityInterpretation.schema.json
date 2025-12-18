@@ -5,8 +5,8 @@
   "description": "An interpretation of plan↔reality registration outputs, including uncertainty and what the overlay indicates in this context.",
   "properties": {
     "plan_reality_interpretation_id": { "type": "string", "format": "uuid" },
-    "visual_asset_id": { "type": "string" },
-    "transform_id": { "type": "string" },
+    "visual_asset_id": { "type": "string", "format": "uuid" },
+    "transform_id": { "type": "string", "format": "uuid" },
     "uncertainty_score": { "type": "number", "minimum": 0.0, "maximum": 1.0 },
     "overlay_evidence_ref": { "$ref": "EvidenceRef.schema.json" },
     "what_overlay_shows": { "type": "string" },
@@ -20,6 +20,5 @@
     },
     "limitations_text": { "type": "string" }
   },
-  "required": ["plan_reality_interpretation_id", "visual_asset_id", "uncertainty_score"]
+  "required": ["plan_reality_interpretation_id", "visual_asset_id", "transform_id", "uncertainty_score", "overlay_evidence_ref", "what_overlay_shows"]
 }
-

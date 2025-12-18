@@ -1,0 +1,354 @@
+version: 1
+process_model_id: culp_30_month_v1
+source_of_truth: "culp/PROCESS_MODEL.yaml"
+description: >
+  Catalogue of CULP artefacts referenced by `culp/PROCESS_MODEL.yaml:stages[].required_artefacts`.
+  This registry makes stage gating implementable by defining what each artefact *is*, how it is stored,
+  and how it is surfaced in the dashboard.
+
+  Rule: every `required_artefacts` key in the process model MUST have a corresponding entry here.
+
+artefacts:
+
+  # --- Getting ready / setup ---
+  - artefact_key: sea_requirement_record
+    title: "SEA requirement record"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Record SEA screening/requirement decision and basis; cite statutory guidance/evidence where applicable."
+
+  - artefact_key: milestones_table
+    title: "Timetable milestones table"
+    workspace: spatial_strategy
+    kind: table
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Stage dates and milestones aligned to the 30‑month process; used to drive Strategic Home timeline."
+
+  - artefact_key: updates_log
+    title: "Timetable updates log"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Record changes to timetable/milestones and reasons; supports audit and governance."
+
+  - artefact_key: notice_html
+    title: "Notice of plan-making (HTML)"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: html
+    publish_target: public
+    notes: "Public notice page; must be publishable and accessible (WCAG)."
+
+  - artefact_key: boundary_map
+    title: "Boundary map"
+    workspace: spatial_strategy
+    kind: map_overlay
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "A map artefact suitable for inclusion in notice packs; generated from geometry or uploaded."
+
+  - artefact_key: geometry_download
+    title: "Boundary geometry download"
+    workspace: spatial_strategy
+    kind: geometry_file
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Downloadable boundary geometry (GeoJSON/GPKG)."
+
+  - artefact_key: scoping_consultation_materials
+    title: "Scoping consultation materials"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Pack to support scoping consultation; may include maps and evidence schedules."
+
+  - artefact_key: consultee_list
+    title: "Consultee list"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "List of statutory/other consultees; may include contact metadata (handle privacy)."
+
+  - artefact_key: responses_log
+    title: "Consultation responses log"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Log of submissions received; acts as the source set for consultation theme extraction."
+
+  - artefact_key: place_portrait_sheet
+    title: "Place portrait sheet"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Baseline narrative with citeable maps/figures; primary output of Loop A (draft place portrait)."
+
+  - artefact_key: evidence_base_index
+    title: "Evidence base index"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Index of evidence documents/datasets with provenance; publishable schedule."
+
+  - artefact_key: self_assessment_summary
+    title: "Gateway self-assessment summary"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Self-assessment narrative for Gateway readiness; should link to evidence gaps and risks."
+
+  - artefact_key: readiness_checker_output
+    title: "Readiness checker output"
+    workspace: spatial_strategy
+    kind: instrument_output
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Structured readiness output; can be generated as a tool/instrument with limitations."
+
+  - artefact_key: scoping_summary_report
+    title: "Scoping summary report"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Summary of scoping consultation; must preserve traceability to submissions."
+
+  # --- Plan preparation ---
+  - artefact_key: vision_statement
+    title: "Vision statement"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "High-level vision (plain); downstream outcomes and policies must align."
+
+  - artefact_key: outcomes_list_max_10
+    title: "Outcomes list (max 10)"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Structured outcomes (≤10), each linkable to indicators and spatial implications."
+
+  - artefact_key: constraints_register
+    title: "Constraints register"
+    workspace: spatial_strategy
+    kind: map_overlay
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Register of constraints and designations (maps + schedule). Must be citeable and updateable."
+
+  - artefact_key: reasonable_alternatives_log
+    title: "Reasonable alternatives log"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Why alternatives were considered; must surface disagreement and uncertainty, not just a chosen option."
+
+  - artefact_key: site_assessments_bulk
+    title: "Bulk site assessments"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Site assessment dataset at scale; derived assessments must remain traceable."
+
+  - artefact_key: allocation_options_pack
+    title: "Allocation options pack"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Pack presenting allocation options with maps/figures and narrative."
+
+  - artefact_key: consultation_materials_pack
+    title: "Consultation materials pack"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Materials for consultation on proposed content/evidence."
+
+  - artefact_key: consultation_summary_report
+    title: "Consultation summary report"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Summary of consultation responses with representative quotes and traceability."
+
+  - artefact_key: gateway_2_self_assessment
+    title: "Gateway 2 self-assessment"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Gateway 2 readiness narrative; should link to evidence base completeness and alternatives coverage."
+
+  - artefact_key: updated_timetable
+    title: "Updated timetable"
+    workspace: spatial_strategy
+    kind: table
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Updated milestones as required by Gateway 2/3; must be publishable."
+
+  # --- Proposed plan and submission ---
+  - artefact_key: proposed_local_plan_draft
+    title: "Proposed local plan draft"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Draft plan text (chapters/policies) produced in the Living Document; must be exportable."
+
+  - artefact_key: policies_map_draft
+    title: "Policies map (draft)"
+    workspace: spatial_strategy
+    kind: map_overlay
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Draft policies map artefact; must be traceable to source geometries and limitations."
+
+  - artefact_key: sds_conformity_consultation_if_applicable
+    title: "SDS conformity consultation materials (if applicable)"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Only required where SDS applies; must be gated by plan context."
+
+  - artefact_key: statement_of_consultation
+    title: "Statement of consultation"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Formal statement of consultation; must reference responses log and summaries."
+
+  - artefact_key: gateway_3_self_assessment
+    title: "Gateway 3 self-assessment"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "Pre-submission readiness; should link to inspector-style risks and evidence gaps."
+
+  - artefact_key: submission_ready_pack
+    title: "Submission ready pack"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Pack of required submission materials; may be an artefact bundle (zip) with index."
+
+  - artefact_key: submission_bundle
+    title: "Submission bundle"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Bundle of submission materials for examination."
+
+  - artefact_key: consultation_statement
+    title: "Consultation statement"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Consultation statement for submission; complements statement_of_consultation."
+
+  - artefact_key: duty_to_cooperate_or_sds_materials
+    title: "Duty to cooperate / SDS materials"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Supporting materials for DtC or SDS; often a document bundle."
+
+  # --- Examination ---
+  - artefact_key: inspectors_questions_log
+    title: "Inspector’s questions log"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Log of inspector questions; used to track responses and evidence gaps."
+
+  - artefact_key: hearing_statements_bundle
+    title: "Hearing statements bundle"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Bundle of hearing statements for examination."
+
+  - artefact_key: main_modifications_if_any
+    title: "Main modifications (if any)"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Main modifications schedule; must reference inspector requirements and consultation responses."
+
+  # --- Adoption ---
+  - artefact_key: adopted_local_plan
+    title: "Adopted local plan"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Final adopted plan artefact (PDF/HTML export)."
+
+  - artefact_key: policies_map_final
+    title: "Policies map (final)"
+    workspace: spatial_strategy
+    kind: map_overlay
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Final policies map artefact; must be publishable and versioned."
+
+  - artefact_key: adoption_statement
+    title: "Adoption statement"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Adoption statement accompanying the adopted plan and policies map."
+
+  # --- Monitoring & review ---
+  - artefact_key: monitoring_framework
+    title: "Monitoring framework"
+    workspace: monitoring_delivery
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Framework tying outcomes/policies to indicators and triggers."
+
+  - artefact_key: amr_or_equivalent
+    title: "AMR (or equivalent)"
+    workspace: monitoring_delivery
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: public
+    notes: "Annual Monitoring Report narrative generated from monitoring evidence (with citations)."
+
+  - artefact_key: review_triggers_log
+    title: "Review triggers log"
+    workspace: monitoring_delivery
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Log of triggers and rationale for plan review actions; supports governance."
+

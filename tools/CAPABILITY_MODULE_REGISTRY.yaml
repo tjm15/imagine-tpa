@@ -50,7 +50,7 @@ modules:
       - authority_id
       - plan_project_id
       - culp_stage_id
-      - framing_ids
+      - political_framing_ids
       - scenario_params
       - spatial_constraints_ref
     outputs:

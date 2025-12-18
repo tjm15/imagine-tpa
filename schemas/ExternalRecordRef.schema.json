@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ExternalRecordRef",
+  "type": "object",
+  "description": "A reference to an external source record linked to a canonical object (e.g. PlanIt application, BOPS case id).",
+  "properties": {
+    "source_system": { "type": "string", "description": "E.g. planit, bops, planx, odp." },
+    "external_type": { "type": "string", "description": "E.g. planapplic, planarea, case, document." },
+    "external_id": { "type": "string", "description": "Stable external identifier (or composite) used for sync/dedup." },
+    "schema_source": {
+      "type": ["string", "null"],
+      "description": "Optional schema family identifier for the external payload (e.g. osl_digital_planning_data_schemas)."
+    },
+    "schema_id": {
+      "type": ["string", "null"],
+      "description": "Optional schema id within the schema family (e.g. application, preApplication)."
+    },
+    "schema_version": {
+      "type": ["string", "null"],
+      "description": "Optional schema version string (e.g. a pinned tag/ref or docs selector such as @next)."
+    },
+    "schema_ref": {
+      "type": ["string", "null"],
+      "description": "Optional fully qualified reference to the pinned schema source (e.g. git commit URL or local vendored path)."
+    },
+    "source_url": { "type": ["string", "null"], "description": "URL to the external record or API resource (if available)." },
+    "origin_url": { "type": ["string", "null"], "description": "URL to the original authority portal record (if distinct)." },
+    "retrieved_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["source_system", "external_type", "external_id"]
+}

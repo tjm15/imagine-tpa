@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Snapshot",
+  "type": "object",
+  "description": "A frozen, versioned snapshot of workspace state used for auditability, diffing, and answering 'what information was before the decision-maker?'. Snapshots enable replay without requiring deterministic model outputs.",
+  "properties": {
+    "snapshot_id": { "type": "string", "format": "uuid" },
+    "plan_project_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Snapshot anchor for Spatial Strategy mode (PlanProject)."
+    },
+    "application_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Snapshot anchor for Development Management mode (Application)."
+    },
+    "run_id": {
+      "type": ["string", "null"],
+      "format": "uuid",
+      "description": "Optional run id that produced or informed this snapshot."
+    },
+    "label": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": {
+      "type": ["string", "null"],
+      "description": "Optional actor identifier (user/agent/system)."
+    },
+    "state": {
+      "type": "object",
+      "description": "Opaque, versioned state projection for the snapshot (e.g., selected tabs, authored artefact ids, key evidence refs, governance flags)."
+    }
+  },
+  "required": ["snapshot_id", "label", "created_at", "state"],
+  "allOf": [
+    {
+      "description": "At least one workspace anchor must be provided (plan_project_id or application_id).",
+      "anyOf": [
+        { "required": ["plan_project_id"] },
+        { "required": ["application_id"] }
+      ]
+    }
+  ]
+}
+

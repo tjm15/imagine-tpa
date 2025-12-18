@@ -26,12 +26,12 @@
       "type": "object",
       "description": "Optional anchors for plan-making or casework context.",
       "properties": {
-        "plan_project_id": { "type": ["string", "null"] },
+        "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
         "culp_stage_id": { "type": ["string", "null"] },
         "scenario_id": { "type": ["string", "null"], "format": "uuid" },
         "framing_id": { "type": ["string", "null"], "format": "uuid" },
         "application_id": { "type": ["string", "null"], "format": "uuid" },
-        "site_id": { "type": ["string", "null"] }
+        "site_id": { "type": ["string", "null"], "format": "uuid" }
       }
     },
     "user_prompt": { "type": ["string", "null"] },
@@ -39,4 +39,3 @@
   },
   "required": ["draft_request_id", "requested_at", "requested_by", "artefact_type", "time_budget_seconds"]
 }
-

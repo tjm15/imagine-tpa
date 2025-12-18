@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthoredArtefact",
+  "type": "object",
+  "description": "An authored deliverable edited in the Living Document (WYSIWYG). Distinct from ingested evidence documents; supports plan-making and casework outputs with citations and auditability.",
+  "properties": {
+    "artefact_id": { "type": "string", "format": "uuid" },
+    "workspace": {
+      "type": "string",
+      "enum": ["spatial_strategy", "development_management", "monitoring_delivery"]
+    },
+    "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
+    "application_id": { "type": ["string", "null"], "format": "uuid" },
+    "culp_stage_id": { "type": ["string", "null"] },
+    "artefact_type": {
+      "type": "string",
+      "description": "Stage deliverable or document type (e.g., place_portrait_sheet, vision_statement, proposed_local_plan_draft, officer_report_section). For CULP stage gating, use keys from culp/ARTEFACT_REGISTRY.yaml where applicable."
+    },
+    "title": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "in_review", "published", "superseded", "archived"]
+    },
+    "content_format": {
+      "type": "string",
+      "enum": ["prosemirror_json", "html", "markdown", "binary_ref"],
+      "description": "How the content is stored. Use prosemirror_json for WYSIWYG editing; binary_ref for non-editable uploads."
+    },
+    "content": {
+      "type": ["object", "string", "null"],
+      "description": "Editor state JSON (preferred) or stored content. For binary_ref, this is typically null."
+    },
+    "exported_artifact_path": {
+      "type": ["string", "null"],
+      "description": "Optional reference to a rendered/exported artefact (HTML/PDF) in blob storage."
+    },
+    "supersedes_artefact_id": { "type": ["string", "null"], "format": "uuid" },
+    "created_by": { "type": "string", "enum": ["user", "agent", "system"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["artefact_id", "workspace", "artefact_type", "title", "status", "content_format", "created_by", "created_at"]
+}

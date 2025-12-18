@@ -134,31 +134,75 @@ Callers MUST provide (and providers MUST echo into `ToolRun.outputs_logged`):
 * `prompt_id` and `prompt_version`
 * sampling params (where supported)
 
-### 3.11 Predictable degradation (all providers)
+### 3.8 Predictable degradation (all providers)
 If a required provider/tool is unavailable (quota, model down, missing dependency), the system may fall back to safe heuristics, but must:
 * mark the run as `ToolRun.status = partial` (or `error` where no safe fallback exists)
 * include `outputs_logged.fallback_mode = true` and a short `outputs_logged.fallback_explanation`
 * surface limitations in downstream `Interpretation.limitations_text` / evidence cards and governance warnings
 
-### 3.8 `SegmentationProvider` (raster/image segmentation)
+### 3.9 `SegmentationProvider` (raster/image segmentation)
 **Purpose**: promptable segmentation for **raster** inputs (plans, photos), producing masks and confidence.
 
 This interface is NOT for vector geoprocessing (buffers/intersections). Those are handled by spatial tools (PostGIS/GeoPandas/GDAL) and logged as `ToolRun`s.
 
+This interface may be used on:
+* site plans and drawings (Slice B),
+* site photos/streetview captures,
+* scanned policy maps (as **raster evidence**).
+
+If you need **digitised vector geometry** from a raster plan/map (e.g., extract boundaries/lines as GeoJSON), use a dedicated digitisation/vectorisation tool and log it as a `ToolRun` (see optional `VectorizationProvider` below).
+
 **Required methods**
 * `segment(image, prompts, options?) -> {masks[], confidence?}`
 
-### 3.9 `WorkflowProvider`
+### 3.10 `WorkflowProvider`
 **Purpose**: run orchestration substrate (agent graph execution, background jobs).
 
 **Required methods**
 * `run_workflow(workflow_name, inputs, options?) -> {run_handle}`
 * `get_status(run_handle) -> status`
 
-### 3.10 `ObservabilityProvider`
+### 3.11 `ObservabilityProvider`
 **Purpose**: traces, metrics, structured logs.
 
 **Required methods**
 * `log_event(name, props)`
 * `log_metric(name, value, props?)`
 * `start_span(name, props?) -> span_handle` / `end_span(span_handle, status?)`
+
+## 4) Optional provider interfaces (v2 / specialised)
+Optional interfaces can be implemented per profile without changing the core “no hybrid runtime” rule.
+If used, they still MUST emit `ToolRun` logs with full inputs/outputs and limitations.
+
+### 4.1 `WebAutomationProvider` (governed web capture)
+**Purpose**: capture and normalise web pages for public data acquisition and council document discovery, including JS-heavy pages (Playwright-backed) when needed.
+
+This provider exists to make web acquisition **inspectable**:
+* record what URL was accessed
+* record what was clicked/typed (if any)
+* store raw HTML + screenshots as artefacts
+* surface limitations (rate limits, blocked content, robots/terms constraints)
+
+**Required methods**
+* `fetch(url, options?) -> {status, final_url, headers, content_type, body_bytes, artifact_path}`
+* `render(url, options?) -> {status, final_url, html_artifact_path, screenshot_artifact_path?, network_artifact_path?}`
+
+**Provenance**
+Every call MUST emit a `ToolRun` including:
+* request URL + params
+* request budget/rate-limit settings used
+* returned artefact paths/hashes
+
+### 4.2 `VectorizationProvider` (raster → vector digitisation)
+**Purpose**: convert raster plans/maps into vector geometries (polylines/polygons) with confidence and explicit limitations.
+
+This is an evidence instrument for tasks like:
+* digitising a boundary from a scanned policies map,
+* extracting a site redline boundary from a PDF plan image,
+* converting an annotated plan into editable GIS features.
+
+**Required methods**
+* `vectorize(image, prompts, options?) -> {features_geojson, confidence?, limitations_text?}`
+
+**Provenance**
+Vectorisation outputs MUST be stored as artefacts (e.g., GeoJSON) and referenced via `EvidenceRef` and `ToolRun`.

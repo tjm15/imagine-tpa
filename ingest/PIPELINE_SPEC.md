@@ -23,6 +23,10 @@ The ingestion service must normalize authority pack manifests into a single inte
 * Legacy: `documents: [string]`
 * v2: `documents: [{title,url,type,status,published_date,file_path,...}]`
 
+This normalization is also the implementation point for the published “**Document Parity Model**”:
+* all plan-like documents (Local Plans, SPDs, design codes, evidence base papers) are treated uniformly as `Document` inputs,
+* hierarchy and weight are not hard-coded; they are inferred/curated during runs and captured as interpretations/metadata with provenance.
+
 ### Authority document chunking (retrieval-first)
 Authority policy documents (Local Plans, SPDs, AAPs, design guides) must be chunked to support *planner-shaped retrieval*:
 * Prefer **clause- and heading-aware chunks**, not generic fixed token windows.
@@ -35,17 +39,37 @@ Authority policy documents (Local Plans, SPDs, AAPs, design guides) must be chun
 * Attach authority metadata to every chunk:
   * `authority_id`, `plan_name`, `adoption_status`, `published_date`, `document_type`
 
+#### Inference-driven ontology (no fixed taxonomy)
+The system must not depend on a frozen topic taxonomy. Instead, ingestion may add **probabilistic metadata** (always with provenance):
+* inferred topic tags / policy themes
+* inferred triggers/tests (“tall buildings”, “heritage setting”, “sequential test”)
+* inferred ambiguities/overlaps (“likely conflicts with …”)
+
+These are retrieval aids and curation hints, not determinations.
+
 ### Embedding cascade (multi-scale retrieval)
 To support both precise citation and higher-level retrieval, ingestion should store embeddings at multiple scales:
 * atom/chunk-level
 * clause-level (where `PolicyClause` exists)
 * document-level (for coarse filtering)
 
+### Cross-document graph fabric (policy is not a blob)
+In addition to canonical tables, ingestion should build a lightweight graph fabric:
+* citation links (chunk → clause, clause → clause)
+* semantic adjacency links (similarity clusters)
+* spatial relevance links (clause/chunk → zones or spatial features where applicable)
+
+These become traversal primitives for agents (context assembly) and must be logged/provenanced as tool runs.
+
 ### GIS layer handling
 Authority GIS layers are ingested as **spatial datasets/features**:
 * Store layer metadata (name/type/url) as canonical dataset records.
 * Download/refresh feature data where possible and load to `spatial_features` with provenance.
 * Where endpoints are broken/secured (see `missing_data.md`), record explicit gaps as `Assumption(type=data-gap)` during runs rather than silently omitting.
+
+Published “Spatial Analysis Engine” alignment implies:
+* maintain a **layer registry** (lineage, quality, refresh cadence) as canonical metadata,
+* optionally generate **embedding signatures** for layer metadata (to support semantic spatial retrieval).
 
 ## Public data acquisition (scenario inputs)
 Spatial Strategy requires dynamic inputs (constraints, baselines, metrics) that may be obtained from public sources and governed web discovery.
@@ -57,6 +81,12 @@ Development management workspaces depend on an ingestion path for applications:
 * Ingest and parse submission documents into `documents/pages/chunks/visual_assets` with provenance.
 * Link documents to the application in canonical tables and via KG edges (e.g., `RELIES_ON`).
 * Run **intake extraction** (structured metrics) as a tool-run (`ToolRun`) rather than ad-hoc parsing.
+
+### Live/demo case feeds (connectors)
+For demo/sandbox use (and for councils without BOPS integration), the system may seed cases from public aggregators such as UK PlanIt:
+* Connector: `planit` (`integration/PLANIT_CONNECTOR_SPEC.md`)
+* Output: canonical `applications` created from PlanIt records, with provenance and links back to the authority portal.
+* Constraint: treat PlanIt as evidence, not as the system-of-record; workflows must not assume PlanIt provides full document packs.
 
 ## Monitoring ingestion (live evidence)
 Monitoring and delivery capabilities depend on ingesting live events and time series:
@@ -82,6 +112,13 @@ An explicit post-processing step running on a GIS worker (e.g., PostGIS or Geopa
 3.  **Containment**:
     *   Is `Site` within `AdministrativeBoundary`?
     *   Create `CONTAINS` edge.
+
+4.  **Opportunity Field Generation** (optional early, required later)
+    * Derive continuous surfaces and/or cached metrics used for strategy reasoning:
+      - accessibility/catchments (isochrones)
+      - centre-of-gravity / town centre influence
+      - environmental tolerance proxies (where data supports)
+    * Store outputs as artefacts + citeable evidence refs; never present as determinations.
 
 ### Output
 *   Batch of KG edges written to `kg_edge` with `tool_run_id` provenance (no Cypher runtime required).

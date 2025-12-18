@@ -1,0 +1,73 @@
+version: 1
+description: >
+  Political framing presets used to condition the system's suggestions and narration.
+  A user selects one of these presets; Move 1 produces a run-specific `Framing` object
+  referencing `political_framing_id` (see schemas/Framing.schema.json).
+
+political_framings:
+  - political_framing_id: high_growth
+    title: "High Growth / Housing Delivery"
+    description: >
+      Prioritise meeting needs quickly, maximise housing delivery, and accept higher change
+      where necessary, while still addressing key statutory/environmental constraints.
+    default_goals:
+      - "Maximise housing delivery and speed of delivery."
+      - "Prioritise accessibility and infrastructure unlocks that support growth."
+    default_constraints:
+      - "Avoid unlawful / undeliverable allocations."
+      - "Respect absolute constraints (e.g., Habitats Regulations) where applicable."
+    non_goals:
+      - "Optimising for minimum visible change."
+
+  - political_framing_id: climate_nature
+    title: "Climate & Nature First"
+    description: >
+      Prioritise carbon reduction, biodiversity net gain, flood resilience, and nature recovery;
+      treat growth as conditional on robust mitigation and adaptation.
+    default_goals:
+      - "Minimise emissions and lock in resilience."
+      - "Strengthen biodiversity and green/blue infrastructure networks."
+    default_constraints:
+      - "Avoid strategies that rely on weak or unproven mitigation."
+    non_goals:
+      - "Maximising short-term unit counts at any cost."
+
+  - political_framing_id: regeneration_brownfield
+    title: "Regeneration / Brownfield First"
+    description: >
+      Concentrate growth in existing urban areas and previously developed land, supporting town
+      centre renewal and infrastructure re-use, before considering peripheral expansion.
+    default_goals:
+      - "Prioritise brownfield and underused urban land."
+      - "Support town centre vitality and reuse of infrastructure."
+    default_constraints:
+      - "Avoid dispersal that undermines regeneration objectives."
+    non_goals:
+      - "Greenfield expansion as the default."
+
+  - political_framing_id: landscape_heritage
+    title: "Landscape / Heritage Protection"
+    description: >
+      Prioritise the protection of landscape character, heritage assets, and setting; accept lower
+      growth if the alternative implies substantial harm.
+    default_goals:
+      - "Avoid substantial harm to heritage significance and landscape character."
+      - "Direct growth to locations with lower sensitivity."
+    default_constraints:
+      - "Require strong evidence and mitigation for any harm."
+    non_goals:
+      - "Treating heritage/landscape impacts as minor by default."
+
+  - political_framing_id: infrastructure_first
+    title: "Infrastructure-Led Growth"
+    description: >
+      Prioritise deliverability and infrastructure capacity (transport, schools, utilities),
+      focusing allocations where infrastructure can realistically be funded and delivered.
+    default_goals:
+      - "Align growth with funded infrastructure delivery."
+      - "Reduce risk of undeliverable allocations."
+    default_constraints:
+      - "Avoid options that assume speculative infrastructure without a credible pathway."
+    non_goals:
+      - "Allocating sites that are unlikely to deliver within the plan period."
+

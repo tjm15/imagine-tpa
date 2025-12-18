@@ -8,7 +8,8 @@
 * Test: Scanning the DB, ensure 0 rows in `kg_edge` have null `evidence_ref` AND null `tool_run_id`.
 
 ## Schema Backward Compatibility
-* Test: Changes to `MoveEvent` schema must be non-breaking (add fields only).
+* Rule: Once Phase 0 “contract freeze” is complete (`IMPLEMENTATION_PLAN.md`), changes to `schemas/MoveEvent.schema.json` must be non-breaking (add fields only).
+* Test: After freeze, validate that older fixture MoveEvents still validate against the current schema.
 
 ## Slice Coverage
 * Test: Every slice in `tests/SLICES_SPEC.md` has at least one executable integration test entrypoint.
