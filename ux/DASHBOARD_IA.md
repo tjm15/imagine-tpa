@@ -21,6 +21,27 @@ See also:
 
 Both workspaces reuse the same Workbench Shell (below), but their “left rail” and defaults are different.
 
+Naming note:
+* Workspace names shown in the header are product copy; the architectural requirement is that both workspaces exist and remain distinct.
+* Current UI labels: **Plan Studio** (plan-making/CULP) ↔ **Casework** (DM).
+
+## Mode + view naming (B1: keep the views, change the language)
+The four views are a stable workbench mental model (“same file, different lens”), but the labels should be planner-native and mode-aware.
+
+Recommended label mapping (copy-only; does not change the underlying architecture):
+* **Plan-making workspace**
+  - Document view → **Deliverable**
+  - Map/Plan view → **Map & plans**
+  - Judgement view → **Scenarios**
+  - Reality view → **Visuals**
+* **DM workspace**
+  - Document view → **Officer Report**
+  - Map/Plan view → **Site & Plans**
+  - Judgement view → **Balance**
+  - Reality view → **Photos**
+
+These names can be refined (including the mode switch labels) without changing the workbench kernel.
+
 ## Capability Navigation (Reasoning Chain)
 The dashboard exposes capability modules through a planner-friendly chain:
 `Evidence → Context → Patterns → Options → Tests → Judgement → Explanation`.
@@ -31,13 +52,18 @@ This is **UI navigation**, not the judgement engine. Judgement is still produced
 
 ### 1) Header (minimal, process-aware)
 Always visible:
-* **Mode switch**: `Local Plan` ↔ `DM Casework`
+* **Mode switch**: `Plan Studio` ↔ `Casework`
 * **Breadcrumbs**: `Projects > {authority} > {stage/case} > {deliverable}`
 * **Stage / deadline indicator**:
   - CULP: current stage and gate status (“Blocked”, “In progress”, “Ready to publish”)
   - DM: statutory clock (“X days remaining”, “Overdue”)
 * **Audit ribbon** (trust surface): active run/snapshot, governance flags, export bundle (see `ux/UI_SYSTEM_SPEC.md`)
 * **Primary actions**: `Draft` · `Insert evidence` · `Review` (governance) · `Export`
+
+“Frontier AI” feel (without losing defensibility) is achieved via **preflight**:
+* opening a stage/tab/case triggers time-bounded background preparation work
+* outputs are proposals (draft packs, evidence cards, tool requests), not silent edits
+* spec: `ux/PREFLIGHT_SPEC.md`
 
 ### 2) Layout (70/30, plus a left rail)
 Planners need a stable “Word-like” centre with context in the margin.

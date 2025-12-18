@@ -26,6 +26,9 @@ Slices should collectively cover the three capability pipelines defined in `capa
 * `documents/pages/chunks` are created (see `db/DDL_CONTRACT.md`) with a stable fragment selector per chunk.
 * Retrieval returns results that include an `EvidenceRef` (or a pointer resolvable to one).
 * A sample `EvidenceCard` can be built from a retrieved chunk (`schemas/EvidenceCard.schema.json`).
+* (Policy-aware, required for Loops A/B) `policies/policy_clauses` are created for the plan cycle, and clause retrieval returns `EvidenceRef` of the form `policy_clause::{id}::text`.
+* Policy clause parsing must preserve ambiguity: each returned clause should carry a modality characterisation object (speech act) with `normative_force`, `strength_hint`, and `ambiguity_flags` (stored in `policy_clauses.metadata.speech_act`).
+* The policy parse is an evidence instrument: the LLM call is logged as a `ToolRun` (non-deterministic output; replayability via persistence, not identical regeneration).
 
 ## Slice B — Plan ↔ Reality (Registration + overlays + uncertainty)
 **Goal**: Register a raster plan/image to world coordinates and generate an overlay artefact with explicit uncertainty.

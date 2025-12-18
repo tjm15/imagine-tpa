@@ -7,6 +7,10 @@
 ## Provenance Enforecement
 * Test: Scanning the DB, ensure 0 rows in `kg_edge` have null `evidence_ref` AND null `tool_run_id`.
 
+## Planning Lifecycle Common Sense
+* Test: For each `authority_id`, there is at most one active emerging plan cycle (`status in {'draft','emerging','submitted','examination'}` AND `is_active=true`).
+* Test: For each `authority_id`, there is at most one active adopted plan cycle (`status='adopted'` AND `is_active=true`).
+
 ## Schema Backward Compatibility
 * Rule: Once Phase 0 “contract freeze” is complete (`IMPLEMENTATION_PLAN.md`), changes to `schemas/MoveEvent.schema.json` must be non-breaking (add fields only).
 * Test: After freeze, validate that older fixture MoveEvents still validate against the current schema.

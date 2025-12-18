@@ -50,6 +50,105 @@ type SelectedAuthoritiesPack = {
   selected_authorities?: SelectedAuthority[];
 };
 
+type PlanCycle = {
+  plan_cycle_id: string;
+  authority_id: string;
+  plan_name: string;
+  status: string;
+  weight_hint?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  is_active?: boolean;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type PlanCyclesResponse = {
+  plan_cycles: PlanCycle[];
+};
+
+type PlanProject = {
+  plan_project_id: string;
+  authority_id: string;
+  process_model_id: string;
+  title: string;
+  status: string;
+  current_stage_id?: string | null;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: Record<string, unknown>;
+};
+
+type PlanProjectsResponse = {
+  plan_projects: PlanProject[];
+};
+
+type Scenario = {
+  scenario_id: string;
+  plan_project_id: string;
+  culp_stage_id: string;
+  title: string;
+  summary: string;
+  state_vector: Record<string, unknown>;
+  parent_scenario_id?: string | null;
+  status: string;
+  created_by: string;
+  created_at?: string;
+  updated_at?: string;
+};
+
+type ScenariosResponse = {
+  scenarios: Scenario[];
+};
+
+type ScenarioSetListItem = {
+  scenario_set_id: string;
+  plan_project_id: string;
+  culp_stage_id: string;
+  tab_count: number;
+  selected_tab_id?: string | null;
+  selected_at?: string | null;
+};
+
+type ScenarioSetListResponse = {
+  scenario_sets: ScenarioSetListItem[];
+};
+
+type ScenarioSetDetail = {
+  scenario_set: {
+    scenario_set_id: string;
+    plan_project_id: string;
+    culp_stage_id: string;
+    political_framing_ids: string[];
+    scenario_ids: string[];
+    tab_ids: string[];
+    selected_tab_id?: string | null;
+    selection_rationale?: string | null;
+    selected_at?: string | null;
+  };
+  tabs: Array<{
+    tab_id: string;
+    scenario_set_id: string;
+    scenario_id: string;
+    political_framing_id: string;
+    framing_id?: string | null;
+    run_id?: string | null;
+    status: string;
+    trajectory_id?: string | null;
+    judgement_sheet_ref?: string | null;
+    last_updated_at?: string;
+  }>;
+};
+
+type ActiveScenarioTab = {
+  tab_id: string;
+  run_id: string | null;
+  scenario_id: string;
+  political_framing_id: string;
+  trajectory_id: string | null;
+  status: string;
+};
+
 type DmCase = {
   id: string;
   authority_id: string;
@@ -93,7 +192,7 @@ type DraftBlockSuggestion = {
   suggestion_id: string;
   block_type: "heading" | "paragraph" | "bullets" | "table" | "figure" | "callout" | "other";
   content: string;
-  evidence_refs: Array<Record<string, unknown>>;
+  evidence_refs: string[];
   assumption_ids?: string[];
   limitations_text?: string | null;
   requires_judgement_run: boolean;
@@ -106,6 +205,93 @@ type DraftPack = {
   status: "complete" | "partial" | "failed";
   suggestions: DraftBlockSuggestion[];
   tool_run_ids?: string[];
+  created_at: string;
+};
+
+type EvidenceCard = {
+  card_id: string;
+  card_type: string;
+  title: string;
+  summary?: string;
+  evidence_refs: string[];
+  limitations_text?: string;
+  artifact_ref?: string;
+};
+
+type ScenarioJudgementSheet = {
+  title: string;
+  sections: {
+    framing_summary: string;
+    scenario_summary?: string;
+    key_issues: string[];
+    evidence_cards: EvidenceCard[];
+    planning_balance: string;
+    conditional_position: string;
+    uncertainty_summary?: string[];
+  };
+};
+
+type Trajectory = {
+  trajectory_id: string;
+  scenario_id?: string | null;
+  framing_id: string;
+  position_statement: string;
+  explicit_assumptions?: string[];
+  key_evidence_refs?: string[];
+  judgement_sheet_data: ScenarioJudgementSheet;
+};
+
+type ScenarioTabRunResponse = {
+  tab_id: string;
+  run_id: string;
+  status: string;
+  trajectory_id: string;
+  sheet: ScenarioJudgementSheet;
+  move_event_ids: string[];
+};
+
+type ScenarioTabSheetResponse = {
+  tab_id: string;
+  status: string;
+  run_id?: string | null;
+  trajectory: Trajectory | null;
+  sheet: ScenarioJudgementSheet | null;
+};
+
+type TraceGraphNode = {
+  node_id: string;
+  node_type:
+    | "run"
+    | "move"
+    | "tool_run"
+    | "evidence"
+    | "interpretation"
+    | "assumption"
+    | "ledger"
+    | "weighing"
+    | "negotiation"
+    | "output"
+    | "audit_event";
+  label: string;
+  ref?: Record<string, unknown>;
+  layout?: { x?: number; y?: number; group?: string | null };
+  severity?: "info" | "warning" | "error" | null;
+};
+
+type TraceGraphEdge = {
+  edge_id: string;
+  src_id: string;
+  dst_id: string;
+  edge_type: "TRIGGERS" | "USES" | "PRODUCES" | "CITES" | "ASSUMES" | "SUPPORTS" | "CONTRADICTS" | "SUPERSEDES";
+  label?: string | null;
+};
+
+type TraceGraph = {
+  trace_graph_id: string;
+  run_id: string;
+  mode: "summary" | "inspect" | "forensic";
+  nodes: TraceGraphNode[];
+  edges: TraceGraphEdge[];
   created_at: string;
 };
 
@@ -192,10 +378,76 @@ function ArtefactStatusPill({ status }: { status: ArtefactStatus }) {
 function TraceOverlay({
   open,
   onClose,
+  runId,
 }: {
   open: boolean;
   onClose: () => void;
+  runId: string | null;
 }) {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [graph, setGraph] = useState<TraceGraph | null>(null);
+  const [activeMoveNodeId, setActiveMoveNodeId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setLoading(false);
+    setError(null);
+    setGraph(null);
+    setActiveMoveNodeId(null);
+  }, [open, runId]);
+
+  useEffect(() => {
+    if (!open) return;
+    if (!runId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        const g = await getJson<TraceGraph>(`/api/trace/runs/${runId}?mode=summary`);
+        if (cancelled) return;
+        setGraph(g);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : String(e));
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [open, runId]);
+
+  const nodesById = useMemo(() => {
+    const m = new Map<string, TraceGraphNode>();
+    for (const n of graph?.nodes || []) m.set(n.node_id, n);
+    return m;
+  }, [graph]);
+
+  const outEdgesBySrc = useMemo(() => {
+    const m = new Map<string, TraceGraphEdge[]>();
+    for (const e of graph?.edges || []) {
+      const list = m.get(e.src_id) || [];
+      list.push(e);
+      m.set(e.src_id, list);
+    }
+    return m;
+  }, [graph]);
+
+  const moveNodes = useMemo(() => {
+    const moves = (graph?.nodes || []).filter((n) => n.node_type === "move");
+    moves.sort((a, b) => a.label.localeCompare(b.label));
+    return moves;
+  }, [graph]);
+
+  const renderNodeSeverity = (severity: TraceGraphNode["severity"]) => {
+    if (!severity) return null;
+    const label = severity === "error" ? "Error" : severity === "warning" ? "Warning" : "Info";
+    return <span className="pill pill--small">{label}</span>;
+  };
+
   if (!open) return null;
   return (
     <div className="overlay" role="dialog" aria-modal="true">
@@ -209,6 +461,114 @@ function TraceOverlay({
             Close
           </button>
         </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="kicker">Active run</div>
+          <div className="muted" style={{ marginTop: 8 }}>
+            {runId ? (
+              <>
+                Run id: <strong>{runId}</strong>
+              </>
+            ) : (
+              "No run selected yet. Run a Scenario × Political Framing tab to generate a trace."
+            )}
+          </div>
+        </div>
+
+        {runId ? (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="kicker">Trace graph</div>
+            {loading ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                Loading trace…
+              </div>
+            ) : null}
+            {error ? (
+              <div className="callout callout--warn" style={{ marginTop: 10 }}>
+                {error}
+              </div>
+            ) : null}
+            {graph ? (
+              <>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  Nodes: <strong>{graph.nodes.length}</strong> · Edges: <strong>{graph.edges.length}</strong>
+                </div>
+
+                <div className="list" style={{ marginTop: 12 }}>
+                  {moveNodes.map((m) => {
+                    const edges = outEdgesBySrc.get(m.node_id) || [];
+                    const toolEdges = edges.filter((e) => e.edge_type === "USES");
+                    const citeEdges = edges.filter((e) => e.edge_type === "CITES");
+                    const selected = m.node_id === activeMoveNodeId;
+                    return (
+                      <div key={m.node_id} className="card" style={{ padding: 10 }}>
+                        <div className="actions" style={{ justifyContent: "space-between" }}>
+                          <button
+                            className="btn btn--ghost btn--small"
+                            type="button"
+                            onClick={() => setActiveMoveNodeId(selected ? null : m.node_id)}
+                            title={m.label}
+                          >
+                            {m.label}
+                          </button>
+                          <div className="actions">
+                            {renderNodeSeverity(m.severity)}
+                            <span className="pill pill--small">Tools: {toolEdges.length}</span>
+                            <span className="pill pill--small">Evidence: {citeEdges.length}</span>
+                          </div>
+                        </div>
+
+                        {selected ? (
+                          <>
+                            {toolEdges.length ? (
+                              <div style={{ marginTop: 10 }}>
+                                <div className="kicker">Tool runs</div>
+                                <div className="chips">
+                                  {toolEdges.slice(0, 10).map((e) => {
+                                    const n = nodesById.get(e.dst_id);
+                                    return (
+                                      <span key={e.edge_id} className="chip">
+                                        {n?.label || e.dst_id}
+                                      </span>
+                                    );
+                                  })}
+                                  {toolEdges.length > 10 ? <span className="chip">+{toolEdges.length - 10}</span> : null}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            {citeEdges.length ? (
+                              <div style={{ marginTop: 10 }}>
+                                <div className="kicker">Evidence</div>
+                                <div className="chips">
+                                  {citeEdges.slice(0, 8).map((e) => {
+                                    const n = nodesById.get(e.dst_id);
+                                    const ref = (n?.ref as any)?.evidence_ref;
+                                    return (
+                                      <span key={e.edge_id} className="chip" title={e.label || ""}>
+                                        {typeof ref === "string" ? ref : n?.label || e.dst_id}
+                                      </span>
+                                    );
+                                  })}
+                                  {citeEdges.length > 8 ? <span className="chip">+{citeEdges.length - 8}</span> : null}
+                                </div>
+                              </div>
+                            ) : null}
+                          </>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+            ) : (
+              <div className="muted" style={{ marginTop: 8 }}>
+                Run a judgement to generate MoveEvents/ToolRuns, then reopen Trace.
+              </div>
+            )}
+          </div>
+        ) : null}
+
         <div className="card" style={{ marginTop: 12 }}>
           <div className="kicker">8-move spine (preview)</div>
           <ol className="muted" style={{ marginTop: 8 }}>
@@ -231,12 +591,16 @@ function DraftOverlay({
   open,
   onClose,
   mode,
+  authorityId,
+  planCycleId,
   defaultContext,
   onInsert,
 }: {
   open: boolean;
   onClose: () => void;
   mode: Mode;
+  authorityId: string | null;
+  planCycleId: string | null;
   defaultContext: DraftRequest["context"];
   onInsert: (suggestion: DraftBlockSuggestion) => void;
 }) {
@@ -285,7 +649,12 @@ function DraftOverlay({
       time_budget_seconds: Math.max(1, timeBudget),
       context: defaultContext,
       user_prompt: prompt.trim() ? prompt.trim() : null,
-      constraints: {},
+      constraints: authorityId
+        ? {
+            authority_id: authorityId,
+            plan_cycle_id: planCycleId,
+          }
+        : {},
     };
 
     try {
@@ -488,6 +857,219 @@ function DraftOverlay({
   );
 }
 
+function PlanCycleOverlay({
+  open,
+  onClose,
+  authorityId,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  authorityId: string | null;
+  onCreated: (cycle: PlanCycle) => void;
+}) {
+  const [planName, setPlanName] = useState<string>("Authority pack snapshot");
+  const [status, setStatus] = useState<string>("unknown");
+  const [weightHint, setWeightHint] = useState<string>("unknown");
+  const [supersedeExisting, setSupersedeExisting] = useState<boolean>(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setPlanName("Authority pack snapshot");
+    setStatus("unknown");
+    setWeightHint("unknown");
+    setSupersedeExisting(false);
+    setLoading(false);
+    setError(null);
+  }, [open]);
+
+  const submit = async () => {
+    if (!authorityId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await postJson<PlanCycle>("/api/plan-cycles", {
+        authority_id: authorityId,
+        plan_name: planName.trim() ? planName.trim() : "Plan cycle",
+        status,
+        weight_hint: weightHint.trim() ? weightHint.trim() : null,
+        supersede_existing: supersedeExisting,
+      });
+      onCreated(res);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="overlay" role="dialog" aria-modal="true">
+      <div className="overlay__card">
+        <div className="overlay__head">
+          <div>
+            <div className="overlay__title">New plan cycle</div>
+            <div className="muted">Make authority versioning explicit (adopted/emerging/draft).</div>
+          </div>
+          <button className="btn btn--ghost" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="field">
+            <div className="field__label">Name</div>
+            <input className="input" value={planName} onChange={(e) => setPlanName(e.target.value)} />
+          </div>
+
+          <div className="grid2" style={{ marginTop: 12 }}>
+            <div className="field">
+              <div className="field__label">Status</div>
+              <select className="select" value={status} onChange={(e) => setStatus(e.target.value)}>
+                <option value="adopted">Adopted</option>
+                <option value="emerging">Emerging</option>
+                <option value="draft">Draft</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+            <div className="field">
+              <div className="field__label">Weight</div>
+              <select className="select" value={weightHint} onChange={(e) => setWeightHint(e.target.value)}>
+                <option value="full">Full</option>
+                <option value="reduced">Reduced</option>
+                <option value="emerging">Emerging</option>
+                <option value="unknown">Unknown</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="field" style={{ marginTop: 12 }}>
+            <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={supersedeExisting}
+                onChange={(e) => setSupersedeExisting(e.target.checked)}
+              />
+              <span>Supersede any conflicting active cycle (deactivate previous)</span>
+            </label>
+            <div className="muted" style={{ marginTop: 6 }}>
+              Prevents two active “draft/emerging” cycles (or two active adopted cycles) for the same authority.
+            </div>
+          </div>
+
+          {error ? (
+            <div className="callout callout--warn" style={{ marginTop: 12 }}>
+              {error}
+            </div>
+          ) : null}
+
+          <div className="actions" style={{ marginTop: 12 }}>
+            <button className="btn" type="button" disabled={!authorityId || loading} onClick={submit}>
+              {loading ? "Creating…" : "Create cycle"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PlanProjectOverlay({
+  open,
+  onClose,
+  authorityId,
+  processModelId,
+  currentStageId,
+  planCycleId,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  authorityId: string | null;
+  processModelId: string | null;
+  currentStageId: string | null;
+  planCycleId: string | null;
+  onCreated: (project: PlanProject) => void;
+}) {
+  const [title, setTitle] = useState<string>("New plan project");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setTitle("New plan project");
+    setLoading(false);
+    setError(null);
+  }, [open]);
+
+  const submit = async () => {
+    if (!authorityId || !processModelId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const res = await postJson<PlanProject>("/api/plan-projects", {
+        authority_id: authorityId,
+        process_model_id: processModelId,
+        title: title.trim() ? title.trim() : "Plan project",
+        status: "draft",
+        current_stage_id: currentStageId,
+        metadata: { plan_cycle_id: planCycleId },
+      });
+      onCreated(res);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (!open) return null;
+  return (
+    <div className="overlay" role="dialog" aria-modal="true">
+      <div className="overlay__card">
+        <div className="overlay__head">
+          <div>
+            <div className="overlay__title">New plan project</div>
+            <div className="muted">A workspace that will hold deliverables, scenarios, and runs.</div>
+          </div>
+          <button className="btn btn--ghost" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="field">
+            <div className="field__label">Title</div>
+            <input className="input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          </div>
+
+          <div className="muted" style={{ marginTop: 10 }}>
+            Process model: <strong>{processModelId || "—"}</strong> · Stage:{" "}
+            <strong>{currentStageId || "—"}</strong>
+          </div>
+
+          {error ? (
+            <div className="callout callout--warn" style={{ marginTop: 12 }}>
+              {error}
+            </div>
+          ) : null}
+
+          <div className="actions" style={{ marginTop: 12 }}>
+            <button className="btn" type="button" disabled={!authorityId || !processModelId || loading} onClick={submit}>
+              {loading ? "Creating…" : "Create project"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function StrategicHome({
   processModel,
   selectedStage,
@@ -627,25 +1209,439 @@ function DocumentEditor({
   );
 }
 
-function JudgementView({
-  mode,
+function ScenarioWorkspace({
+  planProjectId,
+  culpStageId,
   framings,
+  onActiveTabChange,
 }: {
-  mode: Mode;
+  planProjectId: string | null;
+  culpStageId: string | null;
   framings: PoliticalFraming[];
+  onActiveTabChange?: (tab: ActiveScenarioTab | null) => void;
 }) {
-  const scenarios =
-    mode === "plan"
-      ? [
-          { id: "dispersed_growth", title: "Dispersed Growth" },
-          { id: "transit_corridors", title: "Transit Corridors" },
-          { id: "urban_intensification", title: "Urban Intensification" },
-        ]
-      : [
-          { id: "approve", title: "Approve (conditions)" },
-          { id: "approve_s106", title: "Approve (S106 package)" },
-          { id: "refuse", title: "Refuse" },
-        ];
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [scenarios, setScenarios] = useState<Scenario[]>([]);
+  const [scenarioSet, setScenarioSet] = useState<ScenarioSetDetail | null>(null);
+  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  const [tabSheet, setTabSheet] = useState<ScenarioTabSheetResponse | null>(null);
+
+  const [selectedScenarioIds, setSelectedScenarioIds] = useState<string[]>([]);
+  const [selectedFramingIds, setSelectedFramingIds] = useState<string[]>(() =>
+    framings.map((f) => f.political_framing_id),
+  );
+
+  useEffect(() => {
+    setSelectedFramingIds(framings.map((f) => f.political_framing_id));
+  }, [framings]);
+
+  const load = async () => {
+    if (!planProjectId || !culpStageId) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [scRes, ssRes] = await Promise.all([
+        getJson<ScenariosResponse>(`/api/scenarios?plan_project_id=${planProjectId}&culp_stage_id=${culpStageId}`),
+        getJson<ScenarioSetListResponse>(`/api/scenario-sets?plan_project_id=${planProjectId}&culp_stage_id=${culpStageId}&limit=1`),
+      ]);
+      setScenarios(scRes.scenarios || []);
+      const latest = (ssRes.scenario_sets || [])[0];
+      if (latest?.scenario_set_id) {
+        const detail = await getJson<ScenarioSetDetail>(`/api/scenario-sets/${latest.scenario_set_id}`);
+        setScenarioSet(detail);
+        const nextTabId = detail.scenario_set.selected_tab_id || detail.tabs[0]?.tab_id || null;
+        setActiveTabId(nextTabId);
+        if (nextTabId) {
+          try {
+            const sheet = await getJson<ScenarioTabSheetResponse>(`/api/scenario-framing-tabs/${nextTabId}/sheet`);
+            setTabSheet(sheet);
+          } catch {
+            setTabSheet(null);
+          }
+        } else {
+          setTabSheet(null);
+        }
+      } else {
+        setScenarioSet(null);
+        setActiveTabId(null);
+        setTabSheet(null);
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [planProjectId, culpStageId]);
+
+  useEffect(() => {
+    if (!onActiveTabChange) return;
+    if (!scenarioSet || !activeTabId) {
+      onActiveTabChange(null);
+      return;
+    }
+    const tab = scenarioSet.tabs.find((t) => t.tab_id === activeTabId);
+    if (!tab) {
+      onActiveTabChange(null);
+      return;
+    }
+    onActiveTabChange({
+      tab_id: tab.tab_id,
+      run_id: tab.run_id || null,
+      scenario_id: tab.scenario_id,
+      political_framing_id: tab.political_framing_id,
+      trajectory_id: tab.trajectory_id || null,
+      status: tab.status,
+    });
+  }, [activeTabId, onActiveTabChange, scenarioSet]);
+
+  const seedDefaults = async () => {
+    if (!planProjectId || !culpStageId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      const defaults = [
+        { title: "Dispersed Growth", summary: "Distribute growth across settlements; manage change at multiple nodes." },
+        { title: "Transit Corridors", summary: "Focus growth along high-capacity transit corridors and hubs." },
+        { title: "Urban Intensification", summary: "Prioritise densification and regeneration in existing urban areas." },
+      ];
+      for (const d of defaults) {
+        await postJson<Scenario>("/api/scenarios", {
+          plan_project_id: planProjectId,
+          culp_stage_id: culpStageId,
+          title: d.title,
+          summary: d.summary,
+          state_vector: { template: d.title },
+          status: "draft",
+          created_by: "user",
+        });
+      }
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const createSet = async () => {
+    if (!planProjectId || !culpStageId) return;
+    if (selectedScenarioIds.length === 0) {
+      setError("Select at least one scenario.");
+      return;
+    }
+    if (selectedFramingIds.length === 0) {
+      setError("Select at least one political framing.");
+      return;
+    }
+    try {
+      setLoading(true);
+      setError(null);
+      const detail = await postJson<ScenarioSetDetail>("/api/scenario-sets", {
+        plan_project_id: planProjectId,
+        culp_stage_id: culpStageId,
+        scenario_ids: selectedScenarioIds,
+        political_framing_ids: selectedFramingIds,
+      });
+      setScenarioSet(detail);
+      setActiveTabId(detail.tabs[0]?.tab_id || null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const selectTab = async (tabId: string) => {
+    if (!scenarioSet) return;
+    setActiveTabId(tabId);
+    try {
+      await postJson(`/api/scenario-sets/${scenarioSet.scenario_set.scenario_set_id}/select-tab`, {
+        tab_id: tabId,
+        selection_rationale: null,
+      });
+    } catch {
+      // non-blocking for UI; audit logging can fail without breaking navigation
+    }
+    try {
+      const sheet = await getJson<ScenarioTabSheetResponse>(`/api/scenario-framing-tabs/${tabId}/sheet`);
+      setTabSheet(sheet);
+    } catch {
+      setTabSheet(null);
+    }
+  };
+
+  const runActiveTab = async () => {
+    if (!activeTabId) return;
+    try {
+      setLoading(true);
+      setError(null);
+      await postJson<ScenarioTabRunResponse>(`/api/scenario-framing-tabs/${activeTabId}/run`, {
+        time_budget_seconds: 120,
+      });
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const scenarioTitleById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const s of scenarios) m.set(s.scenario_id, s.title);
+    return m;
+  }, [scenarios]);
+
+  const framingTitleById = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const f of framings) m.set(f.political_framing_id, f.title || f.political_framing_id);
+    return m;
+  }, [framings]);
+
+  if (!planProjectId || !culpStageId) {
+    return (
+      <div className="card">
+        <div className="kicker">Scenario workspace</div>
+        <div className="muted" style={{ marginTop: 8 }}>
+          Create/select a plan project and a CULP stage to build Scenario × Political Framing tabs.
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="judgement">
+      <div className="actions">
+        <button className="btn btn--ghost" type="button" disabled={loading} onClick={load}>
+          Refresh
+        </button>
+      </div>
+
+      {error ? (
+        <div className="callout callout--warn" style={{ marginTop: 12 }}>
+          {error}
+        </div>
+      ) : null}
+
+      {!scenarioSet ? (
+        <div className="card" style={{ marginTop: 12 }}>
+          <div className="kicker">Build scenario set</div>
+          <div className="muted" style={{ marginTop: 8 }}>
+            Tabs represent Scenario × Political Framing combinations for comparison.
+          </div>
+
+          <div className="grid2" style={{ marginTop: 12 }}>
+            <div className="card">
+              <div className="kicker">Scenarios</div>
+              {scenarios.length === 0 ? (
+                <>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    No scenarios yet.
+                  </div>
+                  <div className="actions" style={{ marginTop: 10 }}>
+                    <button className="btn" type="button" disabled={loading} onClick={seedDefaults}>
+                      Seed 3 defaults
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="list" style={{ marginTop: 8 }}>
+                  {scenarios.map((s) => {
+                    const checked = selectedScenarioIds.includes(s.scenario_id);
+                    return (
+                      <label key={s.scenario_id} className="chip" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => {
+                            const next = e.target.checked
+                              ? [...selectedScenarioIds, s.scenario_id]
+                              : selectedScenarioIds.filter((id) => id !== s.scenario_id);
+                            setSelectedScenarioIds(next);
+                          }}
+                        />
+                        <span>{s.title}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="kicker">Political framings</div>
+              <div className="list" style={{ marginTop: 8 }}>
+                {framings.map((f) => {
+                  const checked = selectedFramingIds.includes(f.political_framing_id);
+                  return (
+                    <label key={f.political_framing_id} className="chip" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...selectedFramingIds, f.political_framing_id]
+                            : selectedFramingIds.filter((id) => id !== f.political_framing_id);
+                          setSelectedFramingIds(next);
+                        }}
+                      />
+                      <span>{f.title || f.political_framing_id}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          <div className="actions" style={{ marginTop: 12 }}>
+            <button className="btn" type="button" disabled={loading} onClick={createSet}>
+              Create scenario set
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="tabs">
+            {scenarioSet.tabs.map((t) => {
+              const scenarioTitle = scenarioTitleById.get(t.scenario_id) || t.scenario_id;
+              const framingTitle = framingTitleById.get(t.political_framing_id) || t.political_framing_id;
+              return (
+                <button
+                  key={t.tab_id}
+                  className="tab"
+                  aria-pressed={t.tab_id === activeTabId}
+                  type="button"
+                  onClick={() => selectTab(t.tab_id)}
+                  title={`Status: ${t.status}`}
+                >
+                  {scenarioTitle} × {framingTitle}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="kicker">Selected tab</div>
+            <div className="big">{activeTabId ? "Run the 8-move judgement." : "Select a tab."}</div>
+            {activeTabId ? (
+              <div className="muted" style={{ marginTop: 8 }}>
+                Status:{" "}
+                <strong>{scenarioSet.tabs.find((t) => t.tab_id === activeTabId)?.status || "—"}</strong>{" "}
+                {scenarioSet.tabs.find((t) => t.tab_id === activeTabId)?.run_id ? (
+                  <>
+                    · Run:{" "}
+                    <strong>{scenarioSet.tabs.find((t) => t.tab_id === activeTabId)?.run_id}</strong>
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="btn" type="button" disabled={!activeTabId || loading} onClick={runActiveTab}>
+                {loading ? "Running…" : "Run judgement"}
+              </button>
+              <button className="btn btn--ghost" type="button" disabled={loading} onClick={load}>
+                Refresh
+              </button>
+            </div>
+          </div>
+
+          {tabSheet?.sheet ? (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="kicker">Scenario judgement sheet</div>
+              <div className="big">{tabSheet.sheet.title}</div>
+
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="kicker">Conditional position</div>
+                <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {tabSheet.sheet.sections.conditional_position}
+                </div>
+              </div>
+
+              <div className="card" style={{ marginTop: 12 }}>
+                <div className="kicker">Planning balance</div>
+                <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                  {tabSheet.sheet.sections.planning_balance}
+                </div>
+              </div>
+
+              <div className="grid2" style={{ marginTop: 12 }}>
+                <div className="card">
+                  <div className="kicker">Key issues</div>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {tabSheet.sheet.sections.key_issues.map((i) => (
+                        <li key={i}>{i}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <div className="card">
+                  <div className="kicker">Evidence cards</div>
+                  <div className="list" style={{ marginTop: 8 }}>
+                    {tabSheet.sheet.sections.evidence_cards.map((c) => (
+                      <div key={c.card_id} className="card" style={{ padding: 10 }}>
+                        <div className="kicker">{c.card_type}</div>
+                        <div className="big" style={{ fontSize: 14, marginTop: 6 }}>
+                          {c.title}
+                        </div>
+                        {c.summary ? (
+                          <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                            {c.summary}
+                          </div>
+                        ) : null}
+                        <div className="chips">
+                          {c.evidence_refs.slice(0, 2).map((r) => (
+                            <span key={r} className="chip">
+                              {r}
+                            </span>
+                          ))}
+                          {c.evidence_refs.length > 2 ? <span className="chip">+{c.evidence_refs.length - 2}</span> : null}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {tabSheet.sheet.sections.uncertainty_summary?.length ? (
+                <div className="card" style={{ marginTop: 12 }}>
+                  <div className="kicker">Uncertainty</div>
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    <ul style={{ margin: 0, paddingLeft: 18 }}>
+                      {tabSheet.sheet.sections.uncertainty_summary.map((u) => (
+                        <li key={u}>{u}</li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : activeTabId ? (
+            <div className="card" style={{ marginTop: 12 }}>
+              <div className="kicker">Scenario judgement sheet</div>
+              <div className="muted" style={{ marginTop: 8 }}>
+                No sheet yet for this tab. Run a judgement to generate one.
+              </div>
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
+}
+
+function DmBalanceView({ framings }: { framings: PoliticalFraming[] }) {
+  const scenarios = [
+    { id: "approve", title: "Approve (conditions)" },
+    { id: "approve_s106", title: "Approve (S106 package)" },
+    { id: "refuse", title: "Refuse" },
+  ];
 
   const tabs = scenarios.flatMap((s) =>
     framings.map((f) => ({
@@ -675,12 +1671,12 @@ function JudgementView({
         ))}
       </div>
       <div className="card" style={{ marginTop: 12 }}>
-        <div className="kicker">Scenario × Political framing (scaffold)</div>
+        <div className="kicker">Balance (scaffold)</div>
         <div className="big">
           Under framing <strong>{active?.framing.title || "—"}</strong>, a reasonable position is:
         </div>
         <div className="muted" style={{ marginTop: 8 }}>
-          <strong>{active?.scenario.title || "—"}</strong> (sheet rendering + evidence drill-down comes next).
+          <strong>{active?.scenario.title || "—"}</strong>
         </div>
       </div>
     </div>
@@ -736,6 +1732,7 @@ export default function App() {
   const [view, setView] = useState<View>("document");
   const [showDraft, setShowDraft] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
+  const [activeScenarioTab, setActiveScenarioTab] = useState<ActiveScenarioTab | null>(null);
 
   const [processModel, setProcessModel] = useState<CulpProcessModel | null>(null);
   const [registry, setRegistry] = useState<ArtefactRegistry | null>(null);
@@ -744,6 +1741,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedAuthorityId, setSelectedAuthorityId] = useState<string | null>(null);
+  const [planCycles, setPlanCycles] = useState<PlanCycle[]>([]);
+  const [selectedPlanCycleId, setSelectedPlanCycleId] = useState<string | null>(null);
+  const [showNewPlanCycle, setShowNewPlanCycle] = useState(false);
+  const [lastIngestSummary, setLastIngestSummary] = useState<string | null>(null);
+
+  const [planProjects, setPlanProjects] = useState<PlanProject[]>([]);
+  const [selectedPlanProjectId, setSelectedPlanProjectId] = useState<string | null>(null);
+  const [showNewPlanProject, setShowNewPlanProject] = useState(false);
+
   const [selectedStageId, setSelectedStageId] = useState<string | null>(null);
   const [openArtefactKey, setOpenArtefactKey] = useState<string | null>(null);
   const [docBody, setDocBody] = useState<string>(
@@ -816,8 +1822,57 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!selectedAuthorityId) {
+      setPlanCycles([]);
+      setSelectedPlanCycleId(null);
+      setPlanProjects([]);
+      setSelectedPlanProjectId(null);
+      setLastIngestSummary(null);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const [cyclesRes, projectsRes] = await Promise.all([
+          getJson<PlanCyclesResponse>(`/api/plan-cycles?authority_id=${selectedAuthorityId}`),
+          getJson<PlanProjectsResponse>(`/api/plan-projects?authority_id=${selectedAuthorityId}`),
+        ]);
+        if (cancelled) return;
+
+        const cycles = cyclesRes.plan_cycles || [];
+        setPlanCycles(cycles);
+        setSelectedPlanCycleId((prev) => {
+          if (prev && cycles.some((c) => c.plan_cycle_id === prev)) return prev;
+          return cycles[0]?.plan_cycle_id || null;
+        });
+
+        const projects = projectsRes.plan_projects || [];
+        setPlanProjects(projects);
+        setSelectedPlanProjectId((prev) => {
+          if (prev && projects.some((p) => p.plan_project_id === prev)) return prev;
+          return projects[0]?.plan_project_id || null;
+        });
+        setLastIngestSummary(null);
+      } catch (e) {
+        if (cancelled) return;
+        setLastIngestSummary(e instanceof Error ? e.message : String(e));
+        setPlanCycles([]);
+        setSelectedPlanCycleId(null);
+        setPlanProjects([]);
+        setSelectedPlanProjectId(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedAuthorityId]);
+
   const authorities = authoritiesPack?.selected_authorities || [];
   const selectedAuthority = authorities.find((a) => a.authority_id === selectedAuthorityId) || null;
+  const selectedPlanCycle = planCycles.find((c) => c.plan_cycle_id === selectedPlanCycleId) || null;
+  const selectedPlanProject = planProjects.find((p) => p.plan_project_id === selectedPlanProjectId) || null;
 
   const artefactsByKey = useMemo(() => {
     const map = new Map<string, ArtefactRegistryEntry>();
@@ -838,11 +1893,61 @@ export default function App() {
       : mode === "plan" && selectedStage
         ? `Stage: ${selectedStage.title || selectedStage.id}`
         : "No active file";
+
+  const ingestAuthorityPack = async () => {
+    if (!selectedAuthorityId || !selectedPlanCycleId) {
+      setLastIngestSummary("Select a plan cycle first.");
+      return;
+    }
+    try {
+      setLastIngestSummary("Starting ingest…");
+      const start = await postJson<any>(`/api/ingest/authority-packs/${selectedAuthorityId}/start`, {
+        plan_cycle_id: selectedPlanCycleId,
+      });
+      const ingestBatchId = start?.ingest_batch_id;
+      if (!ingestBatchId) {
+        setLastIngestSummary("Ingest started but no ingest_batch_id was returned.");
+        return;
+      }
+
+      setLastIngestSummary(`Ingest running · batch ${String(ingestBatchId).slice(0, 8)}…`);
+
+      const pollStartedAt = Date.now();
+      const pollDeadlineMs = pollStartedAt + 10 * 60 * 1000; // 10 minutes
+      while (Date.now() < pollDeadlineMs) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const batchRes = await getJson<any>(`/api/ingest/batches/${ingestBatchId}`);
+        const batch = batchRes?.ingest_batch;
+        const status = batch?.status;
+        const outputs = batch?.outputs || {};
+        const counts = outputs?.counts || {};
+        const progress = outputs?.progress || {};
+        const currentDoc = progress?.current_document;
+
+        if (status === "running") {
+          setLastIngestSummary(
+            `Ingest running · docs ${counts?.documents_seen ?? "?"} · chunks ${counts?.chunks ?? "?"}${currentDoc ? ` · ${currentDoc}` : ""}`,
+          );
+          continue;
+        }
+
+        setLastIngestSummary(
+          `Ingest ${status || "done"} · docs ${counts?.documents_created ?? "?"} · chunks ${counts?.chunks ?? "?"} · embeddings ${counts?.chunk_embeddings_inserted ?? "?"}`,
+        );
+        return;
+      }
+
+      setLastIngestSummary(`Ingest still running · batch ${String(ingestBatchId).slice(0, 8)}… (check /ingest/batches)`);
+    } catch (e) {
+      setLastIngestSummary(e instanceof Error ? e.message : String(e));
+    }
+  };
   const crumbs =
     mode === "plan"
       ? [
-          "Projects",
+          "Plan Studio",
           selectedAuthority?.name || selectedAuthorityId || "—",
+          selectedPlanProject?.title || "No project",
           selectedStage?.title || selectedStageId || "Strategic Home",
           openArtefactKey ? artefactsByKey.get(openArtefactKey)?.title || openArtefactKey : "—",
         ]
@@ -924,8 +2029,8 @@ export default function App() {
             setOpenCaseId(null);
           }}
           options={[
-            { value: "plan", label: "Local Plan" },
-            { value: "dm", label: "DM Casework" },
+            { value: "plan", label: "Plan Studio" },
+            { value: "dm", label: "Casework" },
           ]}
         />
 
@@ -959,6 +2064,103 @@ export default function App() {
           {mode === "plan" ? (
             <>
               <div className="rail__section">
+                <div className="label">Plan Cycle</div>
+                <div className="actions" style={{ justifyContent: "space-between" }}>
+                  <select
+                    className="select select--compact"
+                    value={selectedPlanCycleId || ""}
+                    onChange={(e) => setSelectedPlanCycleId(e.target.value || null)}
+                    disabled={planCycles.length === 0}
+                    title={selectedPlanCycle?.plan_name || ""}
+                  >
+                    {planCycles.length === 0 ? <option value="">No plan cycles</option> : null}
+                    {planCycles.map((cycle) => (
+                      <option key={cycle.plan_cycle_id} value={cycle.plan_cycle_id}>
+                        {cycle.plan_name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    disabled={!selectedAuthorityId}
+                    onClick={() => setShowNewPlanCycle(true)}
+                  >
+                    New
+                  </button>
+                </div>
+
+                {selectedPlanCycle ? (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Status: <strong>{selectedPlanCycle.status}</strong>
+                    {selectedPlanCycle.weight_hint ? (
+                      <>
+                        {" "}
+                        · Weight: <strong>{selectedPlanCycle.weight_hint}</strong>
+                      </>
+                    ) : null}
+                  </div>
+                ) : (
+                  <div className="muted" style={{ marginTop: 8 }}>
+                    Create a plan cycle to make authority versioning explicit (adopted/emerging/draft).
+                  </div>
+                )}
+
+                <div className="actions" style={{ marginTop: 10 }}>
+                  <button
+                    className="btn"
+                    type="button"
+                    disabled={!selectedAuthorityId || !selectedPlanCycleId}
+                    onClick={() => void ingestAuthorityPack()}
+                  >
+                    Ingest authority pack
+                  </button>
+                </div>
+                {lastIngestSummary ? (
+                  <div className="muted" style={{ marginTop: 8, whiteSpace: "pre-wrap" }}>
+                    {lastIngestSummary}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="rail__section">
+                <div className="label">Plan Project</div>
+                <div className="actions" style={{ justifyContent: "space-between" }}>
+                  <select
+                    className="select select--compact"
+                    value={selectedPlanProjectId || ""}
+                    onChange={(e) => setSelectedPlanProjectId(e.target.value || null)}
+                    disabled={planProjects.length === 0}
+                    title={selectedPlanProject?.title || ""}
+                  >
+                    {planProjects.length === 0 ? <option value="">No projects</option> : null}
+                    {planProjects.map((project) => (
+                      <option key={project.plan_project_id} value={project.plan_project_id}>
+                        {project.title}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    className="btn btn--ghost"
+                    type="button"
+                    disabled={!selectedAuthorityId || !processModel}
+                    onClick={() => setShowNewPlanProject(true)}
+                  >
+                    New
+                  </button>
+                </div>
+                <div className="muted" style={{ marginTop: 8 }}>
+                  {selectedPlanProject ? (
+                    <>
+                      Status: <strong>{selectedPlanProject.status}</strong>
+                    </>
+                  ) : (
+                    "Create/select a plan project to hold deliverables, scenarios, and runs."
+                  )}
+                </div>
+              </div>
+
+              <div className="rail__section">
                 <div className="label">Programme (CULP)</div>
                 <div className="list">
                   {stages.map((stage) => (
@@ -979,37 +2181,36 @@ export default function App() {
                 </div>
               </div>
 
-                <div className="rail__section">
-                  <div className="label">Deliverables (stage gate)</div>
-                  <div className="list">
-                    {requiredArtefacts.length === 0 ? (
-                      <div className="muted">No required artefacts listed.</div>
-                    ) : (
-                      requiredArtefacts.map((key) => (
-                        <button
-                          key={key}
-                          className="artefact"
-                          aria-pressed={key === openArtefactKey}
-                          type="button"
-                          onClick={() => {
-                            setOpenArtefactKey(key);
-                            setView("document");
-                          }}
-                          title={artefactsByKey.get(key)?.notes || ""}
-                        >
-                          <div className="artefact__title">{artefactsByKey.get(key)?.title || key}</div>
-                          <div className="artefact__meta">
-                            Status:{" "}
-                            <strong>
-                              {demoArtefactStatuses[`${selectedAuthorityId || "unknown"}::${key}`] ||
-                                "not_started"}
-                            </strong>
-                          </div>
-                        </button>
-                      ))
-                    )}
-                  </div>
+              <div className="rail__section">
+                <div className="label">Deliverables (stage gate)</div>
+                <div className="list">
+                  {requiredArtefacts.length === 0 ? (
+                    <div className="muted">No required artefacts listed.</div>
+                  ) : (
+                    requiredArtefacts.map((key) => (
+                      <button
+                        key={key}
+                        className="artefact"
+                        aria-pressed={key === openArtefactKey}
+                        type="button"
+                        onClick={() => {
+                          setOpenArtefactKey(key);
+                          setView("document");
+                        }}
+                        title={artefactsByKey.get(key)?.notes || ""}
+                      >
+                        <div className="artefact__title">{artefactsByKey.get(key)?.title || key}</div>
+                        <div className="artefact__meta">
+                          Status:{" "}
+                          <strong>
+                            {demoArtefactStatuses[`${selectedAuthorityId || "unknown"}::${key}`] || "not_started"}
+                          </strong>
+                        </div>
+                      </button>
+                    ))
+                  )}
                 </div>
+              </div>
             </>
           ) : (
             <>
@@ -1122,7 +2323,16 @@ export default function App() {
                 onChangeBody={setDocBody}
               />
             ) : view === "judgement" ? (
-              <JudgementView mode={mode} framings={framings} />
+              mode === "plan" ? (
+                <ScenarioWorkspace
+                  planProjectId={selectedPlanProjectId}
+                  culpStageId={selectedStageId}
+                  framings={framings}
+                  onActiveTabChange={setActiveScenarioTab}
+                />
+              ) : (
+                <DmBalanceView framings={framings} />
+              )
             ) : (
               <div className="card">
                 <div className="kicker">View scaffold</div>
@@ -1177,17 +2387,41 @@ export default function App() {
         open={showDraft}
         onClose={() => setShowDraft(false)}
         mode={mode}
+        authorityId={selectedAuthorityId}
+        planCycleId={selectedPlanCycleId}
         defaultContext={{
           culp_stage_id: mode === "plan" ? selectedStageId : null,
-          plan_project_id: null,
-          scenario_id: null,
-          framing_id: null,
+          plan_project_id: mode === "plan" ? selectedPlanProjectId : null,
+          scenario_id: mode === "plan" ? activeScenarioTab?.scenario_id || null : null,
+          framing_id: mode === "plan" ? activeScenarioTab?.political_framing_id || null : null,
           application_id: null,
           site_id: null,
         }}
         onInsert={(s) => setDocBody((b) => `${b}${s.content}`)}
       />
-      <TraceOverlay open={showTrace} onClose={() => setShowTrace(false)} />
+      <TraceOverlay open={showTrace} onClose={() => setShowTrace(false)} runId={activeScenarioTab?.run_id || null} />
+
+      <PlanCycleOverlay
+        open={showNewPlanCycle}
+        onClose={() => setShowNewPlanCycle(false)}
+        authorityId={selectedAuthorityId}
+        onCreated={(cycle) => {
+          setPlanCycles((prev) => [cycle, ...prev]);
+          setSelectedPlanCycleId(cycle.plan_cycle_id);
+        }}
+      />
+      <PlanProjectOverlay
+        open={showNewPlanProject}
+        onClose={() => setShowNewPlanProject(false)}
+        authorityId={selectedAuthorityId}
+        processModelId={processModel?.process_id || null}
+        currentStageId={selectedStageId}
+        planCycleId={selectedPlanCycleId}
+        onCreated={(project) => {
+          setPlanProjects((prev) => [project, ...prev]);
+          setSelectedPlanProjectId(project.plan_project_id);
+        }}
+      />
     </div>
   );
 }

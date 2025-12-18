@@ -35,6 +35,7 @@ Published components:
 Repo alignment:
 * Connectors + public data acquisition (`integration/CONNECTORS_SPEC.md`, `integration/PUBLIC_DATA_SPEC.md`)
 * 8‑move orchestrator (`agents/GRAMMAR_ORCHESTRATION_SPEC.md`) running over typed tools and producing move logs
+* Context Assembly (multimodal packs from retrieval + KG) (`agents/CONTEXT_ASSEMBLY_SPEC.md`)
 * Provider abstraction enforcing profile purity (`platform/PROVIDER_INTERFACES.md`)
 
 Note on “model routing”:

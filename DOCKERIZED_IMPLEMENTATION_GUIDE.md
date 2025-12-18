@@ -102,6 +102,7 @@ If you see `tpa-minio-init` fail, it usually means MinIO wasn’t ready yet or c
 ### Step 2.3 — Verify
 * API health: `http://localhost:${TPA_API_PORT:-8000}/healthz`
 * UI: `http://localhost:${TPA_UI_PORT:-3000}`
+* Spec pack validation (file-level): `python scripts/validate_spec_pack.py --root .`
 
 The scaffold UI should show CULP stages and required artefacts (stage gate panel semantics).
 
@@ -113,7 +114,9 @@ This compose file includes opt-in profiles for heavier capabilities:
 * `llm` — LLM server (vLLM; GPU recommended)
 * `vlm` — VLM server (vLLM; GPU recommended)
 * `embeddings` — embeddings server (TEI or equivalent; CPU or GPU depending on image)
-* `models` — convenience umbrella profile that enables `llm` + `vlm` + `embeddings` (not recommended on a single GPU)
+* `reranker` — cross-encoder reranker service (TEI or equivalent; CPU or GPU depending on image)
+* `models` — convenience umbrella profile that enables `llm` + `vlm` + `embeddings` + `reranker` (not recommended on a single GPU)
+* `models-auto` — model supervisor (auto-start/stop for single-GPU OSS; avoids running LLM+VLM simultaneously)
 * `full` — convenience profile that enables `web` + `vision` (models are on-demand; start `llm`/`vlm`/`embeddings` separately)
 
 Examples:
@@ -132,18 +135,58 @@ docker compose -f docker/compose.oss.yml --profile vlm up -d tpa-vlm
 
 # Start only embeddings (recommended for ingestion/indexing sessions)
 docker compose -f docker/compose.oss.yml --profile embeddings up -d tpa-embeddings
+
+# Start only the reranker (recommended for retrieval quality when not using a hosted search service)
+docker compose -f docker/compose.oss.yml --profile reranker up -d tpa-reranker
+
+# Auto-start/stop models (single GPU; recommended for OSS workstations)
+# 1) Set `TPA_MODEL_SUPERVISOR_URL` in your `.env`:
+#    TPA_MODEL_SUPERVISOR_URL=http://tpa-model-supervisor:8091
+# 2) One-time: create model containers so the supervisor can start/stop them.
+docker compose -f docker/compose.oss.yml --profile models create tpa-llm tpa-vlm tpa-embeddings tpa-reranker
+# 3) Start the supervisor.
+docker compose -f docker/compose.oss.yml --profile models-auto up -d --build tpa-model-supervisor
 ```
 
 ---
 
-## 3) Make the DB contract real (migrations)
+## 3) Make the DB contract real (bootstrap + migrations)
 
-Right now, `db/DDL_CONTRACT.md` describes tables, but doesn’t ship SQL migrations.
+`db/DDL_CONTRACT.md` is the source-of-truth table list.
 
-### Step 3.1 — Add migrations
+This repo now ships a **greenfield bootstrap schema** for OSS dev:
+* `docker/db/init/02_schema.sql` (canonical tables + procedure tables + KG tables + provenance tables)
+
+Important Postgres behaviour:
+* files in `docker/db/init/` only run on first database initialisation.
+* if you already have a `tpa_db_data` volume, you must reset it to apply the bootstrap schema.
+
+Reset DB volume (recommended; keeps MinIO/models volumes):
+```bash
+docker compose -f docker/compose.oss.yml down
+docker volume rm tpa-oss_tpa_db_data
+docker compose -f docker/compose.oss.yml up -d --build
+```
+
+Convenience wrappers (same outcome, less typing):
+```bash
+./scripts/db_reset_oss.sh
+./scripts/db_psql_oss.sh -c '\\dt'
+```
+
+Full reset (more destructive; wipes MinIO + model caches too):
+```bash
+docker compose -f docker/compose.oss.yml down -v
+docker compose -f docker/compose.oss.yml up -d --build
+```
+
+### Step 3.1 — Add real migrations (next)
+The bootstrap schema is enough to unblock the workbench kernel and early slices, but you still want
+explicit migrations for upgrades and reproducibility.
+
 Recommended:
-* `db/migrations/0001_init.sql` (canonical tables + procedure tables + KG tables + provenance tables)
-* `db/migrations/0002_indexes.sql` (GIN/ivfflat/hnsw, spatial indexes)
+* `db/migrations/0001_init.sql` (same tables as the bootstrap schema)
+* `db/migrations/0002_indexes.sql` (spatial indexes, GIN, vector indexes)
 
 ### Step 3.2 — Run migrations as a container job
 Add a one-shot compose service (example pattern):
@@ -169,14 +212,29 @@ Implement a startup check:
 ### Step 4.2 — Provide OpenAI-compatible model endpoints (OSS)
 Most OSS implementations converge on OpenAI-compatible HTTP endpoints so your `LLMProvider`/`VLMProvider` are thin adapters.
 
-Bring up model services:
+Bring up model services (simple, but on a single GPU you typically cannot run LLM+VLM simultaneously):
 ```bash
 docker compose -f docker/compose.oss.yml --profile models up -d
 ```
 
+Single-GPU recommended: enable the Model Supervisor (auto-start/stop).
+
+1) Set `TPA_MODEL_SUPERVISOR_URL=http://tpa-model-supervisor:8091` in `.env`
+2) One-time: create model containers (so they exist to be started/stopped):
+```bash
+docker compose -f docker/compose.oss.yml --profile models create tpa-llm tpa-vlm tpa-embeddings tpa-reranker
+```
+3) Start the supervisor:
+```bash
+docker compose -f docker/compose.oss.yml --profile models-auto up -d --build tpa-model-supervisor
+```
+
+Convenience: the repo ships `scripts/oss_up_auto_models.sh` which performs these steps.
+
 Practical notes:
 * This will download very large models unless you mount pre-downloaded weights.
 * For dev without GPU, run “mock providers” (a small internal service that returns schema-valid JSON) so you can build UI + orchestration first.
+* By default in this repo, `tpa-embeddings` and `tpa-reranker` are allowed to use the GPU too; the model supervisor ensures only one GPU model role runs at a time.
 
 ---
 
@@ -194,6 +252,74 @@ Implement ingestion jobs that:
 6. construct KG edges (`kg/KG_SCHEMA.md`)
 
 Acceptance: **Slice A** (`tests/SLICES_SPEC.md`).
+
+Practical note: ingestion can take a long time (especially if policy clause parsing uses an LLM instrument), so the UI starts ingestion as a background job
+and polls `GET /ingest/batches/{ingest_batch_id}`.
+
+CLI helper (recommended for “precompute” runs):
+* `python scripts/ingest_authority_pack.py --authority-id <AUTHORITY> --plan-cycle-id <UUID>`
+
+OSS note (implemented in compose):
+* `tpa-docparse` runs Docling as the `DocParseProvider` and is used by `tpa-api` via `TPA_DOCPARSE_BASE_URL`.
+
+Bootstrap (implemented now, OSS dev):
+* Mount `authority_packs/` into `tpa-api` (done in `docker/compose.oss.yml` as an optional fixture mount).
+* Ingest one authority pack into canonical tables:
+  - First create (or choose) a `plan_cycle` to keep **authority versioning explicit** (adopted vs emerging vs draft).
+  - Then `POST /ingest/authority-packs/{authority_id}` creates an `ingest_batch` envelope + `documents/pages/chunks` + `evidence_refs`,
+    and also runs an **LLM policy parse** instrument into `policies`/`policy_clauses` (non-deterministic, fully logged as `ToolRun`).
+* Retrieve citeable chunks or policy clauses (hybrid retrieval + optional reranker):
+  - `POST /retrieval/chunks`
+  - `POST /retrieval/policy-clauses`
+
+Example:
+```bash
+# 1) Create a plan cycle (“policy base”) for this authority pack snapshot.
+PLAN_CYCLE_ID=$(
+  curl -sS -X POST http://localhost:${TPA_API_PORT:-8000}/plan-cycles \
+    -H "Content-Type: application/json" \
+    -d '{
+      "authority_id":"brighton_and_hove",
+      "plan_name":"Authority pack snapshot",
+      "status":"unknown",
+      "weight_hint":"unknown"
+    }' | jq -r .plan_cycle_id
+)
+
+# 2) Ingest the authority pack under that cycle (creates an ingest_batch envelope).
+curl -sS -X POST http://localhost:${TPA_API_PORT:-8000}/ingest/authority-packs/brighton_and_hove \
+  -H "Content-Type: application/json" \
+  -d "{\"plan_cycle_id\":\"${PLAN_CYCLE_ID}\"}" | jq .
+
+# 3) Search chunks (hybrid FTS + pgvector + optional reranker).
+curl -sS -X POST \
+  "http://localhost:${TPA_API_PORT:-8000}/retrieval/chunks" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"query\":\"design\",
+    \"authority_id\":\"brighton_and_hove\",
+    \"plan_cycle_id\":\"${PLAN_CYCLE_ID}\",
+    \"limit\":8,
+    \"rerank\":true
+  }" | jq .
+
+# 4) Search policy clauses (clause-aware hybrid retrieval).
+curl -sS -X POST \
+  "http://localhost:${TPA_API_PORT:-8000}/retrieval/policy-clauses" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"query\":\"design\",
+    \"authority_id\":\"brighton_and_hove\",
+    \"plan_cycle_id\":\"${PLAN_CYCLE_ID}\",
+    \"limit\":8,
+    \"rerank\":true
+  }" | jq .
+
+# 5) Inspect ingest history (batch envelope + tool runs).
+curl -sS \
+  "http://localhost:${TPA_API_PORT:-8000}/ingest/batches?authority_id=brighton_and_hove&plan_cycle_id=${PLAN_CYCLE_ID}" \
+  | jq .
+```
 
 ### Step 5.2 — Spatial substrate + fingerprints
 Implement spatial ingestion + enrichment:
@@ -305,7 +431,7 @@ Goal:
 * Only then turn on GPU model services.
 
 ### Tier 2 — Real capability (heavy)
-* Turn on models (vLLM + VLM + embeddings).
+* Turn on models (vLLM + VLM + embeddings); on a single GPU prefer `models-auto` (model supervisor) over `models`.
 * Add segmentation/vectorisation services.
 * Add real authority ingestion + PlanIt seeding for DM.
 

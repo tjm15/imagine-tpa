@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PolicyHeadingDetectionResult",
+  "type": "object",
+  "description": "LLM instrument output for detecting policy headings in a planning document from candidate heading-like chunks (used to segment the document into policy sections for clause parsing).",
+  "properties": {
+    "policy_headings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+          "policy_code": { "type": "string" },
+          "policy_title": { "type": ["string", "null"] },
+          "confidence_hint": {
+            "type": "string",
+            "enum": ["low", "medium", "high", "unknown"]
+          },
+          "uncertainty_note": { "type": ["string", "null"] }
+        },
+        "required": ["evidence_ref", "policy_code", "confidence_hint"]
+      }
+    },
+    "deliberate_omissions": {
+      "type": "array",
+      "items": { "$ref": "DeliberateOmission.schema.json" }
+    }
+  },
+  "required": ["policy_headings"]
+}
+

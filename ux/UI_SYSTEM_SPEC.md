@@ -25,6 +25,14 @@ The product has two primary workspaces, each with process-native navigation and 
 
 Both workspaces reuse the same Workbench Shell; they differ in the left rail and default context anchors.
 
+Naming note:
+* The **mode names** shown in the UI are product copy and can be refined without changing the architecture.
+* The requirement is the existence of two distinct workspaces: plan-making (CULP) and DM casework.
+
+View naming note (B1):
+* The workbench keeps four stable views (Document / Map+Plan / Judgement / Reality).
+* Labels should be workspace-aware (e.g. Plan: “Scenarios”, DM: “Officer Report”) while keeping the same underlying view model.
+
 ## 1) UI invariants (non-negotiable)
 1. **Dashboard is canonical UI**: all work happens in the workbench (`ux/DASHBOARD_IA.md`).
 2. **Grammar-first judgement**: any judgement output is produced via the 8 moves (`grammar/GRAMMAR.md`) and logged (`schemas/MoveEvent.schema.json`).
@@ -40,7 +48,7 @@ The Workbench Shell is one consistent layout shared across both workspaces.
 
 ### 2.1 Header (process-aware)
 Required elements:
-* Mode switch: `Local Plan` ↔ `DM Casework`
+* Mode switch: `Plan Studio` ↔ `Casework`
 * Breadcrumbs: `Projects > {authority} > {stage/case} > {deliverable}`
 * Stage/deadline indicator:
   - CULP: stage gate status
@@ -94,6 +102,12 @@ Contract:
 * Output: `DraftPack` (`schemas/DraftPack.schema.json`) with `DraftBlockSuggestion[]`
 * Suggestions are structured and traceable; accept/reject always creates an `AuditEvent`
 * Any suggestion implying a position must link to (or trigger) a full grammar run before sign-off
+
+### 2.7.1 Preflight (A3: preflight + action-first)
+To achieve a “frontier AI workbench” feel without losing contestability, the UI supports **preflight**:
+background, time-bounded preparation work triggered by navigation (open stage/tab/case).
+
+Spec: `ux/PREFLIGHT_SPEC.md`
 
 ### 2.8 Insert-by-evidence (drag/drop)
 Users can drag an `EvidenceCard` into the document to:
@@ -159,6 +173,21 @@ Rendering spine:
 UI requirement:
 * Figure Workbench supports preview → inspect provenance → accept → insert as EvidenceCard
 
+## 6.1 WYSIWYG editor technology choice (E2)
+The Living Document must be a real rich editor (not a textarea).
+
+Chosen approach:
+* **TipTap / ProseMirror** rich text editor
+* document stored as ProseMirror JSON in `AuthoredArtefact.content`
+* graphics are embedded as block nodes that reference stored artefacts (SVG/PNG/GeoJSON) rather than inlining raw binaries
+
+Graphics support (minimum):
+* images (evidence photos, extracted plan snippets)
+* figures/charts (rendered outputs from `FigureSpec` + FactTables)
+* tables (editable, citeable where possible)
+* map snapshots (static) inserted from Map Canvas
+
+
 ## 7) UI build strategy (vertical slices)
 Ship UI as vertical slices that prove end-to-end value (Spatial Strategy first):
 1. Strategic Home v0 (timeline + stage gating)
@@ -171,4 +200,3 @@ Ship UI as vertical slices that prove end-to-end value (Spatial Strategy first):
 8. Figure Workbench v0 (preview + provenance + insert)
 
 DM and Monitoring build once the Spatial Strategy spine is proven.
-

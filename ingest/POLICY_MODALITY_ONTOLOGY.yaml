@@ -1,0 +1,112 @@
+version: 1
+title: Policy Modality Ontology
+scope: "UK local plan policy text (authority-specific, often intentionally under-specified)"
+principle: >
+  The extractor does not decide; it characterises. Outputs here are *not* "requirements" or
+  determinations. They are planner-legible descriptors of how policy language is framed.
+
+normative_force:
+  description: "What kind of speech act the clause performs (not truth value)."
+  values:
+    - id: hard_constraint
+      label: "Hard constraint"
+      notes: "Rare in Local Plans; typically uses 'must', 'shall', 'will be refused', 'not permitted'."
+      example_cues:
+        - "must"
+        - "shall"
+        - "will be refused"
+        - "not permitted"
+        - "required to"
+    - id: presumptive_support
+      label: "Presumptive support"
+      notes: "Signals support unless other considerations indicate otherwise."
+      example_cues:
+        - "will support"
+        - "support"
+        - "encourage"
+        - "is acceptable"
+    - id: presumptive_resistance
+      label: "Presumptive resistance"
+      notes: "Signals resistance unless justified/mitigated."
+      example_cues:
+        - "should not"
+        - "will not normally"
+        - "restrict"
+        - "resist"
+    - id: aspirational
+      label: "Aspirational"
+      notes: "Sets desired direction without binding tests; common in visioning/design rhetoric."
+      example_cues:
+        - "will seek to"
+        - "seek to"
+        - "aim to"
+        - "aspire to"
+        - "promote"
+        - "encourage"
+    - id: procedural
+      label: "Procedural"
+      notes: "Specifies process/steps/evidence expectations rather than outcomes."
+      example_cues:
+        - "will be required to submit"
+        - "should demonstrate"
+        - "must demonstrate"
+        - "will be supported by"
+        - "to be accompanied by"
+    - id: justificatory
+      label: "Justificatory / narrative"
+      notes: "Explains policy intent, background, or rationale more than directing action."
+      example_cues:
+        - "in order to"
+        - "to ensure"
+        - "this policy"
+        - "the council's ambition"
+    - id: defers_to_judgement
+      label: "Defers to judgement"
+      notes: "Explicitly delegates discretion to case-by-case assessment."
+      example_cues:
+        - "where appropriate"
+        - "as appropriate"
+        - "where feasible"
+        - "where possible"
+        - "generally"
+        - "in most cases"
+    - id: unknown
+      label: "Unknown / mixed"
+      notes: "Default when cues conflict or are insufficient."
+
+strength_hint:
+  description: "How strongly framed the language is (fuzzy; internal hint, not a score)."
+  values:
+    - id: strong
+      cues: ["must", "shall", "will be refused", "not permitted", "required to"]
+    - id: moderate
+      cues: ["will", "should", "expected to", "will normally"]
+    - id: weak
+      cues: ["seek to", "aim to", "encourage", "where possible", "where appropriate", "generally"]
+    - id: symbolic
+      cues: ["aspire to", "ambition", "work with partners", "promote"]
+    - id: unknown
+
+ambiguity_flags:
+  description: "Flags that preserve uncertainty rather than collapsing it."
+  values:
+    - id: ambiguous_scope
+      examples: ["generally", "in most cases", "where appropriate"]
+    - id: undefined_key_term
+      examples: ["appropriate", "significant", "high quality", "suitable", "acceptable"]
+    - id: depends_on_interpretation
+      examples: ["respect local character", "no unacceptable harm", "adequate provision"]
+    - id: delegates_judgement
+      examples: ["to the satisfaction of", "as agreed with", "case-by-case"]
+    - id: conditional_exceptions
+      examples: ["unless", "except where", "provided that"]
+    - id: potential_internal_tension
+      examples: ["conflicts may exist across policies; surfaced downstream via weighing/ledger"]
+
+officer_interpretation_space:
+  description: "How wide the officer judgement space likely is, given the language."
+  values:
+    - id: narrow
+    - id: medium
+    - id: wide
+    - id: unknown

@@ -32,6 +32,7 @@ Authority policy documents (Local Plans, SPDs, AAPs, design guides) must be chun
 * Prefer **clause- and heading-aware chunks**, not generic fixed token windows.
 * Persist `section_path` / heading hierarchy where available (e.g., `Chapter 4 > Policy H1 > Criterion (c)`).
 * For policy-like text, create canonical `PolicyClause` units (or clause-marked chunks) suitable for `CITES` edges.
+* Policy sectioning must not rely on brittle regex alone: use an **LLM parsing instrument** to detect policy headings from candidate heading-like chunks, and log its inputs/outputs as a `ToolRun` (see `schemas/PolicyHeadingDetectionResult.schema.json`).
 * Where useful, perform **semantic atomisation** into short “policy atoms” (embedding-dense fragments) with:
   * cross-reference signals (`CITES`, clause↔clause links),
   * inferred qualifiers/tests (stored as metadata, not treated as determinations),
@@ -52,6 +53,9 @@ To support both precise citation and higher-level retrieval, ingestion should st
 * atom/chunk-level
 * clause-level (where `PolicyClause` exists)
 * document-level (for coarse filtering)
+
+OSS single-GPU note:
+* Prefer **phased ingestion** (CPU chunking → LLM policy parse → embeddings) so model services can be started/stopped without ping-ponging GPU residency per-document.
 
 ### Cross-document graph fabric (policy is not a blob)
 In addition to canonical tables, ingestion should build a lightweight graph fabric:

@@ -30,6 +30,19 @@ Most retrieval is not “free text search”; it is a **retrieval frame** assemb
 
 The frame must be logged as part of the retrieval `ToolRun.inputs_logged` to support replay and contestability.
 
+## Context assembly (multimodal, very-large-context)
+Hybrid retrieval is a **candidate generator**, not the whole answer.
+
+Downstream LLM/VLM agents need **multimodal context engineering**, including:
+* diversity-aware selection (avoid near-duplicate chunks),
+* countervailing evidence surfacing (where plausible),
+* KG expansion (bounded multi-hop),
+* modality-aware packs (policy / spatial / visual / precedent / consultation),
+* explicit token/time budgets per move.
+
+This is defined as a separate layer (“Context Assembly”), not as “better ranking”.
+Spec: `agents/CONTEXT_ASSEMBLY_SPEC.md`.
+
 ## Relevance narratives (UI-facing, bounded)
 Retrieval is an evidence instrument; the UI must be able to show *why* something surfaced without pretending the rank is a determination.
 

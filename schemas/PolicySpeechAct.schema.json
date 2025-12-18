@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PolicySpeechAct",
+  "type": "object",
+  "description": "Planner-legible characterisation of a policy fragment's modality (speech act), preserving ambiguity rather than collapsing it into requirements.",
+  "properties": {
+    "normative_force": {
+      "type": "string",
+      "enum": [
+        "hard_constraint",
+        "presumptive_support",
+        "presumptive_resistance",
+        "aspirational",
+        "procedural",
+        "justificatory",
+        "defers_to_judgement",
+        "unknown"
+      ]
+    },
+    "strength_hint": {
+      "type": "string",
+      "enum": ["strong", "moderate", "weak", "symbolic", "unknown"]
+    },
+    "ambiguity_flags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "key_terms": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "officer_interpretation_space": {
+      "type": "string",
+      "enum": ["narrow", "medium", "wide", "unknown"]
+    },
+    "method": { "type": "string" },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "limitations_text": { "type": "string" }
+  },
+  "required": ["normative_force", "strength_hint", "ambiguity_flags", "key_terms", "officer_interpretation_space", "method", "limitations_text"]
+}
+

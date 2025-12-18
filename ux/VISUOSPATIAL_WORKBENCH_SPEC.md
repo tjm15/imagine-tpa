@@ -13,6 +13,10 @@ This spec defines the visuospatial workbench surfaces and how they integrate wit
 ### 1.1 Map Canvas (Map Mode)
 Purpose: “Map is a verb” — draw, test, snapshot, cite.
 
+Implementation baseline (OSS):
+* Map client: **MapLibre GL JS** (2D)
+* Base map: **OpenStreetMap** tiles by default (configurable; consider a local tile server for heavy use)
+
 Required interactions:
 * draw marker/lasso → create a geometry query context (buffers, intersects, within-distance)
 * toggle layers:

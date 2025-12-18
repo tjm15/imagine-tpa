@@ -19,8 +19,11 @@
       "type": ["string", "null"],
       "description": "Optional stable EvidenceRef pointing to the source fragment that backs this clause text."
     },
+    "speech_act": {
+      "description": "Optional modality characterisation (speech act) derived as an evidence instrument; not a determination.",
+      "anyOf": [{ "$ref": "PolicySpeechAct.schema.json" }, { "type": "null" }]
+    },
     "metadata": { "type": "object" }
   },
   "required": ["policy_clause_id", "policy_id", "text"]
 }
-

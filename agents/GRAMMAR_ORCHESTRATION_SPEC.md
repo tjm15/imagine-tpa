@@ -3,7 +3,7 @@
 This spec describes the **Agentic / LLM Conductor** for the frozen 8‑move grammar (`grammar/GRAMMAR.md`).
 It is the orchestration substrate that:
 * coordinates specialist agents,
-* builds retrieval frames,
+* builds retrieval frames and context packs,
 * calls tools/instruments,
 * emits structured move outputs,
 * and produces a replayable procedure log.
@@ -57,6 +57,10 @@ Agents do NOT hallucinate data. They CALL tools:
 * `get_visual_evidence(...)`
 
 Tool calls must be logged as `ToolRun` and referenced from `MoveEvent.tool_runs`.
+
+Context Assembly note:
+* Retrieval is necessary but insufficient for visuospatial judgement and tool planning.
+* Context Assembly builds **multimodal, budgeted context packs** from hybrid retrieval + KG expansion (spec: `agents/CONTEXT_ASSEMBLY_SPEC.md`).
 
 ## 7) Predictable degradation
 If a tool/model is unavailable, the orchestrator may:
