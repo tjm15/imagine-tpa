@@ -1,91 +1,103 @@
-# Dashboard Information Architecture (DCO Edition)
+# Dashboard Information Architecture (Planner Workbench / Digital Case Officer)
 
-## Core Principle
-The dashboard is a **Digital Case Officer**. It functions like a familiar document editor ("Smart Word") where the primary focus is always the deliverable.
+## Core Principle: planners work the file through a process
+The dashboard is not “multiple apps” (maps app, judgement app, trace app). It is one **planning file workspace** that:
+* keeps the **deliverable** (plan chapter / site assessment / officer report / decision notice) central at all times, and
+* adapts navigation to the **process** the planner is actually in (CULP plan-making vs DM casework).
+
+The “surfaces” are **views of the same file**, not separate destinations.
+
+See also:
+* `ux/PLANNER_WORKFLOWS_SPEC.md` (planner-native jobs-to-be-done)
+* `ux/UI_SYSTEM_SPEC.md` (implementable UI contracts)
+
+## Two primary workspaces (the “two modes” requirement)
+1. **Local Plan / Spatial Strategy workspace (CULP-native)**
+   * Home: **Strategic Home** (30-month programme board + stage gates)
+   * Primary objects: `PlanProject`, CULP artefacts, scenarios, sites, policies, consultation corpora
+2. **Development Management workspace (casework-native)**
+   * Home: **Casework Home** (inbox + statutory deadlines + negotiation/revision tracking)
+   * Primary objects: `Application`, revisions, consultation responses, conditions, decisions
+
+Both workspaces reuse the same Workbench Shell (below), but their “left rail” and defaults are different.
 
 ## Capability Navigation (Reasoning Chain)
-The dashboard exposes system functionality through a **Reasoning Chain** UI:
+The dashboard exposes capability modules through a planner-friendly chain:
 `Evidence → Context → Patterns → Options → Tests → Judgement → Explanation`.
 
-This is a navigation model for capability modules (see `capabilities/CAPABILITIES_CATALOGUE.yaml`). It does **not** replace the frozen 8‑move grammar in `grammar/GRAMMAR.md`; judgement outputs are still produced and logged via the grammar and surfaced in Judgement Mode.
+This is **UI navigation**, not the judgement engine. Judgement is still produced via the frozen 8-move grammar (`grammar/GRAMMAR.md`) and logged as `MoveEvent`s (`schemas/MoveEvent.schema.json`).
 
-## Global Layout (The 70/30 Split)
+## Workbench Shell (planner-native mental model)
 
-### 1. The Workspace (70% - Left)
-*   **The Living Document**:
-    *   This is the singular focus. It displays the active artefact (e.g., *Officer Report*, *Local Plan Chapter 4*).
-    *   **WYSIWYG**: It looks exactly like the PDF that will be published.
-    *   **Capabilities**: Rich text editing, inline images, tables.
-    *   **Ghost Text**: AI suggestions appear as grey "ghost" text inline.
+### 1) Header (minimal, process-aware)
+Always visible:
+* **Mode switch**: `Local Plan` ↔ `DM Casework`
+* **Breadcrumbs**: `Projects > {authority} > {stage/case} > {deliverable}`
+* **Stage / deadline indicator**:
+  - CULP: current stage and gate status (“Blocked”, “In progress”, “Ready to publish”)
+  - DM: statutory clock (“X days remaining”, “Overdue”)
+* **Audit ribbon** (trust surface): active run/snapshot, governance flags, export bundle (see `ux/UI_SYSTEM_SPEC.md`)
+* **Primary actions**: `Draft` · `Insert evidence` · `Review` (governance) · `Export`
 
-### 2. The Context Sidebar (30% - Right)
-*   **Smart Feed**:
-    *   Dynamic cards that change based on what paragraph is active in the document.
-    *   *Example*: If cursor is in "Highways", show "Local Plan Policy T1" and "Transport Assessment Key Data".
-*   **Live Policy Surface**:
-    *   A ranked “policy gradient” showing which policy atoms/clauses appear relevant to the current cursor/selection/site/scenario.
-    *   Uses **explainable relevance badges** (semantic match, spatial trigger, cross-reference, inferred test) and supports “why is this here?”.
-*   **Evidence Shelf**:
-    *   Draggable facts/citations. "Drag this 5YHLS figure into your report".
-    *   Evidence items are rendered as provenance-backed `EvidenceCard`s (`schemas/EvidenceCard.schema.json`).
-*   **Map Reference**:
-    *   A mini-map card appearing at the top of the sidebar. Expandable if needed, but not the primary distinct view.
+### 2) Layout (70/30, plus a left rail)
+Planners need a stable “Word-like” centre with context in the margin.
 
-### 2. Strategic Home (CULP)
-*   **The Dependency Chart (Main View)**:
-    *   **Visual**: A horizontal Gantt/Dependency graph spanning the 30-month CULP timeline.
-    *   **Nodes**: Represent Evidence (e.g., "Flood Risk Assessment") or Gateways (e.g., "Reg 18 Consultation").
-    *   **Edges**: Show blocking relationships (e.g., "Housing Numbers" blocks "Green Belt Review").
-    *   **Status Colors**: Green (Complete), Amber (In Progress), Red (Blocked/Late), Grey (Future).
-*   **Monitoring Dashboard (AMR Tab)**:
-    *   **Visual**: Key Performance Indicators (KPIs) for the existing plan.
-    *   **Metrics**: Housing Delivery (5YHLS), S106/CIL Contributions collected, Affordable Housing %.
-    *   **Data Source**: Live link to the *Ledger*.
-*   **Action Plan (Sidebar)**:
-    *   **"Next Steps"**: An ordered list of immediate tasks based on the critical path (e.g., "Commission Transport Study", "Finalize Site Options").
-    *   **Interaction**: Clicking a task opens the relevant Document in the **Digital Case Officer** view.
+* **Left rail (process rail)**: “what file am I working and what’s next?”
+  - CULP: programme board / stage list / critical path / required artefacts
+  - DM: inbox / case list / consultation timeline / negotiation log
+* **Main workspace (70%)**: the active deliverable in one of the views below
+* **Context margin (30%)**: evidence + policy + “why” interactions (see below)
 
-### 3. Casework Home (DM)
-*   **The Inbox (Main View)**:
-    *   **Style**: Outlook / Email Client interface.
-    *   **Columns**: "New", "Validating", "Consultation", "Determination", "Issued".
-    *   **Cards**: Each application is a card showing: Ref No, Site Address, Days Remaining (Statutory Deadline).
-    *   **Alerts**: "Red Dot" badges for applications requiring urgent attention (e.g., "Expiring in 2 days").
-*   **Application Workspace**:
-    *   Clicking a card opens the **Digital Case Officer** view for that specific application.
+### 3) Views (same file, different lenses)
+The views are toggles on the active file, not separate apps:
+* **Document view (default)**: the Living Document (WYSIWYG deliverable)
+* **Map/Plan view**: Map Canvas + Plan Canvas (draw-to-ask, overlay-to-cite)
+* **Judgement view**: tabbed sheets for Scenario × Political Framing combinations
+* **Reality view**: photomontage / site photo reasoning (where available)
 
-### 3. View Switcher (The "Mode" Toggle)
-*   **Document Mode**: (Default) The writing environment.
-*   **Map Mode**: replaces the Document pane with the **Map Canvas**.
-    *   *Metaphor*: Google Maps.
-    *   *Tools*: Simple "Marker" and "Lasso".
-    *   *Sidebar*: Shows "Map Layers" (Themes) instead of Smart Feed.
-*   **Judgement Mode**: replaces the Document pane with the **Infographic Sheet**.
-    *   *Metaphor*: Tabbed Dashboard (Non-editable).
-    *   *Feature*: Tabs = **Scenario × Political Framing** combinations (e.g., *Dispersed Growth × High-Growth framing*).
-      * Each tab is backed by:
-        * a `Scenario` + `ScenarioStateVector` (the option), and
-        * a `Framing` (the political lens),
-        * producing one `Trajectory` + `ScenarioJudgementSheet` for that combination.
-      * The system is heavily AI assisted: agents propose scenarios, compute deltas, run tools/tests, and draft the narrative — but the user’s selection of a tab is always an explicit, auditable event (no “silent” AI selection).
-    *   **Reality Mode**:
-        *   *Metaphor*: Augmented Reality View.
-        *   *Feature*: Projects plan vectors/overlays onto site photos/street view and supports photomontage-style visual evidence ("Slice B" + `ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
+Traceability is not a “view” you go away to read; it is a **Proof overlay**:
+* **Trace Canvas overlay**: flowchart derived from `MoveEvent`/`ToolRun`/`AuditEvent` (`ux/TRACE_CANVAS_SPEC.md`)
 
-### 4. Navigation (Minimalist Header)
-*   **Project Breadcrumbs**: `Projects > TPA/2024/001 > Officer Report`.
-*   **Stage Indicator**: Simple status pill ("Drafting", "Review", "Published").
-*   **Audit Ribbon**: compact strip showing active run/snapshot, unresolved flags, and export controls (see `ux/UI_SYSTEM_SPEC.md`).
-*   **No complex "Tree Views"**: File navigation is handled via a simple "Open File" modal or dropdown, not a persistent IDE sidebar.
+## Context margin (what makes it planner-grade)
+The right margin is where “AI assistance” becomes usable without becoming unaccountable:
+* **Smart Feed**: context-aware cards based on cursor/selection/site/scenario
+* **Live Policy Surface**: policy chips with explainable relevance badges (“why is this here?”)
+* **Evidence Shelf**: draggable, citeable `EvidenceCard`s (`schemas/EvidenceCard.schema.json`)
+* **Mini map / visual preview**: “what is here?” snapshot, expandable into canvases
 
-## Interaction Rules
-*   **Point and Click**: Primary interaction model. Buttons for "Insert", "Draft", "Review".
-*   **Draw to Ask**: In Map Mode, drawing a shape triggers an AI query ("What is here?").
-*   **Snapshot**: Map views are always one click away from being an image in the Document.
-*   **Nudges**: The system communicates via "Comment Bubbles" in the margin (like Word Comments) or "Gold Underlines" (Reasoning Gaps).
-*   **Drag & Drop**: Evidence -> Document.
-*   **Why is this here?**: any card/figure/policy chip can be interrogated; the system returns a concise rationale backed by evidence refs and tool runs (and logs the interaction).
-*   **Pin / Dismiss**: sidebar cards can be pinned or dismissed; the system recalibrates without losing provenance (pin/dismiss is an `AuditEvent`).
+## Strategic Home (CULP) — programme board not a dashboard
+Purpose: “what will block us and what must be produced next?”
+* **Dependency / critical path chart** across the GOV.UK 30‑month process (`culp/PROCESS_MODEL.yaml`)
+* **Stage gate panel** showing required artefacts and their status:
+  - required artefacts: `culp/PROCESS_MODEL.yaml` + `culp/ARTEFACT_REGISTRY.yaml`
+  - per-project status: `CulpArtefactRecord` (`schemas/CulpArtefactRecord.schema.json`)
+* **Action list**: next steps derived from blockers (“commission transport evidence”, “complete SEA screening”)
 
-## Mobile/Tablet Friendly
-*   The simplified layout allows usage on iPads for site visits (referencing the map/doc split).
+## Casework Home (DM) — case file workflow, not a CRM
+Purpose: “move cases through validation/consultation/determination with a defensible file”.
+* **Inbox board** (Outlook-style): `New` / `Validating` / `Consultation` / `Assessment` / `Determination` / `Issued`
+* **Deadline visibility**: days remaining, breached flags
+* **Negotiation / revision thread**: what changed, why it matters (deltas are first-class)
+
+## Scenario × Political Framing tabs (planner semantics in both modes)
+Tabs are always **explicitly selected by the user** (audited), never silently chosen by an agent.
+
+* **Plan-making**: tabs represent “strategy option S under framing F”
+  - reasonable alternatives, site/transport/constraints implications, trade-offs
+* **DM**: tabs represent “position package P under framing F”
+  - approve/refuse/conditions/mitigation variants, with explicit assumptions and uncertainties
+
+In both cases, each tab has its own run log and sheet:
+* `ScenarioFramingTab` → `Trajectory` + `ScenarioJudgementSheet`
+
+## Interaction rules (planner-shaped)
+* **Draft-first, then defend**: “Get a draft” is always available, then governance/trace makes it safe.
+* **Draw to ask**: in Map/Plan views, drawing triggers a query context.
+* **Snapshot to cite**: any map/overlay can be exported into the deliverable as citeable evidence.
+* **Why is this here?**: any sentence/figure/policy chip can reveal upstream evidence/tests via Trace Canvas.
+* **Accept/reject is explicit**: AI suggests; the user commits; actions are logged (`AuditEvent`).
+
+## Mobile / site visits
+The same shell must degrade gracefully to tablet use:
+* Map/Reality views become primary during site visits
+* Evidence cards and snapshots remain one-tap insertable into the file

@@ -25,6 +25,7 @@ COPY db /app/spec/db
 COPY integration /app/spec/integration
 COPY capabilities /app/spec/capabilities
 COPY authorities /app/spec/authorities
+COPY framing /app/spec/framing
 
 EXPOSE 8000
 

@@ -54,6 +54,20 @@ def culp_artefact_registry() -> JSONResponse:
     return JSONResponse(content=_read_yaml(registry_path))
 
 
+@app.get("/spec/authorities/selected")
+def selected_authorities() -> JSONResponse:
+    root = _spec_root()
+    selected_path = root / "authorities" / "SELECTED_AUTHORITIES.yaml"
+    return JSONResponse(content=_read_yaml(selected_path))
+
+
+@app.get("/spec/framing/political-framings")
+def political_framings() -> JSONResponse:
+    root = _spec_root()
+    framings_path = root / "framing" / "POLITICAL_FRAMINGS.yaml"
+    return JSONResponse(content=_read_yaml(framings_path))
+
+
 @app.get("/spec/schemas")
 def list_schemas() -> dict[str, list[str]]:
     root = _spec_root()
@@ -73,4 +87,3 @@ def get_schema(schema_name: str) -> JSONResponse:
     if not schema_path.name.endswith(".schema.json"):
         raise HTTPException(status_code=400, detail="Schema name must end with .schema.json")
     return JSONResponse(content=_read_json(schema_path))
-

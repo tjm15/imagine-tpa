@@ -1,181 +1,174 @@
-# UI System Specification (Dashboard / Digital Case Officer)
+# UI System Specification (Planner Workbench / Digital Case Officer)
 
 This document makes the UI implementable without weakening the “grammar-first, provenance-first” architecture.
 
-The UI is not a dashboard of charts; it is a **Digital Case Officer** workspace where the primary focus is always the deliverable (policy/report/plan chapter), with maps and judgement sheets as contextual surfaces.
+The core UI idea is planner-native:
+* planners work a **file** (deliverable) through a **process** (CULP plan-making or DM casework),
+* AI behaves like a careful colleague (suggests/drafts/checks), and
+* defensibility is experienced through **graphical traceability** (Trace Canvas), not JSON logs.
 
-For planner-first workflow intent and “jobs-to-be-done”, see `ux/PLANNER_WORKFLOWS_SPEC.md`.
+For planner-first workflow intent, see `ux/PLANNER_WORKFLOWS_SPEC.md`.
+For the information architecture, see `ux/DASHBOARD_IA.md`.
 
 ## 0) Two top-level workspaces (the “two modes” requirement)
-The product has two primary user workspaces, each with its own navigation and default objects:
+The product has two primary workspaces, each with process-native navigation and default objects:
 
-1. **Local Plan / Spatial Strategy mode**
-   - Default home: **Strategic Home** (CULP timeline and gates).
-   - Primary objects: plan project, scenarios, sites, policies, consultation corpora.
-   - Primary comparison surface: **Scenario × Political Framing tabs** in Judgement Mode.
+1. **Local Plan / Spatial Strategy workspace**
+   - Home: **Strategic Home** (CULP programme board + stage gates).
+   - Primary objects: `PlanProject`, CULP artefacts, scenarios, sites, policies, consultation corpora.
+   - Primary comparison surface: **Scenario × Political Framing** tabs (Judgement view).
 
-2. **Development Management (DM) mode**
-   - Default home: **Casework Home** (inbox + statutory timelines).
-   - Primary objects: applications, revisions, consultees, conditions, decisions.
-   - Comparison surface: negotiation/revision deltas + (optionally) recommendation options under explicit framings.
+2. **Development Management (DM) workspace**
+   - Home: **Casework Home** (inbox + statutory deadlines + negotiation thread).
+   - Primary objects: `Application`, revisions, consultees, conditions, decisions.
+   - Comparison surface: revision deltas + (optionally) position packages under explicit framings.
 
-Both modes reuse the same core UI system: Living Document editor, Evidence Shelf, Map canvas, Trace Canvas, and Draft launcher — but with different default context anchors.
+Both workspaces reuse the same Workbench Shell; they differ in the left rail and default context anchors.
 
-## 0) UI invariants (non‑negotiable)
-1. **Dashboard is canonical UI**: all work happens in the workspace described in `ux/DASHBOARD_IA.md`.
-2. **Grammar-first for judgement**: any judgement output shown to users must be produced via the 8 moves (`grammar/GRAMMAR.md`) and logged (`schemas/MoveEvent.schema.json`).
-3. **Non-deterministic agents are allowed**: the UI must never assume repeatable prose; it must rely on stored artefacts and re-render (`tests/REPLAYABILITY_SPEC.md`).
-4. **Provenance everywhere**: any AI suggestion, chart, map output, or sentence-level claim must be traceable to `EvidenceRef` and/or a `ToolRun` (`db/PROVENANCE_STANDARD.md`).
-5. **User is the selector**: Scenario × Political Framing tab selection is always an explicit, auditable event (`schemas/AuditEvent.schema.json`).
-6. **Explainability modes**: the UI must support `Summary`, `Inspect`, and `Forensic` views of the same underlying run (see the published “Interface & Audit Layer”).
-7. **Visuospatial reasoning is first-class**: maps, plans, policy maps, photos, and photomontages are core evidence surfaces, not optional add-ons (see `ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
-8. **Snapshots support legal questions**: key stages and sign-offs must be linkable to a frozen snapshot (“what was known when?”) (`schemas/Snapshot.schema.json`).
+## 1) UI invariants (non-negotiable)
+1. **Dashboard is canonical UI**: all work happens in the workbench (`ux/DASHBOARD_IA.md`).
+2. **Grammar-first judgement**: any judgement output is produced via the 8 moves (`grammar/GRAMMAR.md`) and logged (`schemas/MoveEvent.schema.json`).
+3. **Non-deterministic agents are allowed**: replayability is via stored artefacts + deterministic rendering, not deterministic prose (`tests/REPLAYABILITY_SPEC.md`).
+4. **Provenance everywhere**: any claim/suggestion/figure must trace to `EvidenceRef` and/or `ToolRun` (`db/PROVENANCE_STANDARD.md`).
+5. **User is the selector**: tab selection, accept/reject, and sign-off are explicit `AuditEvent`s (`schemas/AuditEvent.schema.json`).
+6. **Explainability modes**: `summary` / `inspect` / `forensic` are UI projections over the same run data.
+7. **Visuospatial reasoning is first-class**: maps, plans, photos, and photomontages are core evidence surfaces (`ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
+8. **Snapshots support legal questions**: published/sign-off states link to “what was known when” (`schemas/Snapshot.schema.json`).
 
-## 0.1 Traceability must be graphical (Trace Canvas)
-Traceability is experienced primarily through a **flowchart-like Trace Canvas**, not by reading JSON.
-* Spec: `ux/TRACE_CANVAS_SPEC.md`
-* Data: `schemas/TraceGraph.schema.json` (deterministically derived from `MoveEvent` + `ToolRun` + `AuditEvent`)
+## 2) Workbench Shell (v1)
+The Workbench Shell is one consistent layout shared across both workspaces.
 
-## 1) Primary surfaces (what must exist in v1)
+### 2.1 Header (process-aware)
+Required elements:
+* Mode switch: `Local Plan` ↔ `DM Casework`
+* Breadcrumbs: `Projects > {authority} > {stage/case} > {deliverable}`
+* Stage/deadline indicator:
+  - CULP: stage gate status
+  - DM: statutory clock
+* Audit ribbon (trust surface; see below)
+* Primary actions: `Draft` · `Insert evidence` · `Review` · `Export`
 
-### 1.1 Strategic Home (CULP timeline)
-Purpose: keep the system aligned to the GOV.UK 30‑month local plan process (`culp/PROCESS_MODEL.yaml`).
+### 2.2 Left rail (process-native)
+The left rail answers “what file am I working and what’s next?”.
 
-Required UI elements:
-* **Timeline / dependency chart** showing stages, blocking artefacts, and status (draft/published/blocked).
-* **Stage gate panel** showing required artefacts for the selected stage and what’s missing.
-  * Required artefacts are defined in `culp/PROCESS_MODEL.yaml` and catalogued in `culp/ARTEFACT_REGISTRY.yaml`.
-  * Per-project artefact status is tracked via `CulpArtefactRecord` (`schemas/CulpArtefactRecord.schema.json`).
-* **Run history / audit ribbon**: quick link to the active snapshot/run set used for any published artefact.
-  * Snapshots are optional early on, but become mandatory for published/sign‑off states: `schemas/Snapshot.schema.json`.
+* Local Plan: programme board / stage list / critical path / required artefacts
+* DM: inbox / case list / negotiation & consultation thread / key dates
 
-### 1.1.1 Audit ribbon (cross-cutting trust surface)
-The published architecture’s “Interface & Audit Layer” must be felt in the UI as a persistent, low-friction surface.
+### 2.3 Main pane (views over the active file)
+The active deliverable is shown in one of these views:
+* **Document view (default)**: Living Document (WYSIWYG deliverable)
+* **Map/Plan view**: Map Canvas + Plan Canvas, exporting citeable artefacts
+* **Judgement view**: Scenario × Political Framing tabs + rendered sheets
+* **Reality view**: photomontage/site photo evidence + caveated interpretations
 
+### 2.4 Context margin (30%)
+The right margin makes “AI assistance” usable without becoming unaccountable:
+* Smart Feed (cursor/selection-aware)
+* Live Policy Surface (policy chips + explainable relevance)
+* Evidence Shelf (draggable `EvidenceCard`s)
+* Mini map / visual preview (expand into canvases)
+
+### 2.5 Audit ribbon (cross-cutting trust surface)
 Required ribbon elements:
 * active `run_id` and (when used) active `snapshot_id`
-* trace count + unresolved governance flags
+* governance flags count + quick drill-down
 * one-click export controls (evidence bundle + trace graph)
 * explainability mode toggle (`summary` / `inspect` / `forensic`)
 
-### 1.2 Casework Home (DM inbox)
-Purpose: manage real workloads and deadlines without losing the reasoning thread.
+### 2.6 Trace Canvas (graphical traceability overlay)
+Traceability must be experienced as a flowchart (not JSON):
+* Spec: `ux/TRACE_CANVAS_SPEC.md`
+* Data: `schemas/TraceGraph.schema.json` (derived deterministically from `MoveEvent` + `ToolRun` + `AuditEvent`)
 
-Required UI elements:
-* **Inbox board** with case status columns (new/validating/consultation/assessment/determination/issued).
-* **Deadline visibility** (days remaining, breached flags) and simple filters (ward, agent, type).
-* **One-click open** into the Application Workspace (same 70/30 split layout).
+UI rule:
+* “Why is this here?” on any sentence/figure/policy chip opens Trace Canvas focused on upstream nodes.
 
-### 1.2 Workspace (70/30 split)
-Purpose: be a “Smart Word” environment with AI assistance that never breaks traceability.
-
-Left (70%): the active artefact surface (Document/Map/Judgement/Reality mode toggle).
-Right (30%): context sidebar (Smart Feed + Evidence Shelf + mini-map).
-
-Modes (must be switchable without losing state):
-* **Document Mode**: WYSIWYG editor for authored outputs (policies, reports, plan chapters).
-* **Map Mode**: Map canvas for spatial reasoning and “draw to ask”.
-* **Judgement Mode**: Scenario × Political Framing tabs; each tab shows a rendered `ScenarioJudgementSheet`.
-* **Reality Mode**: plan↔reality overlays and visual diagnostics (Slice B style).
-
-## 2) The WYSIWYG editor (Document Mode)
-
-### 2.1 Document model (implementable contract)
-The “Living Document” is an **authored artefact**, distinct from ingested evidence documents.
-Canonical storage shape: `schemas/AuthoredArtefact.schema.json`.
-
-Minimum requirements:
-* block/heading/paragraph/list/table support
-* inline **citations** that bind text spans to `EvidenceRef[]`
-* embedded **EvidenceCards** (block embeds) that render provenance + limitations
-* a “suggestion layer” that can be accepted/rejected without corrupting the base document
-
-### 2.2 AI assistance UX (no black-box writing)
-AI assistance is delivered as **structured suggestions**, not silent edits:
-* **Ghost text**: inline grey suggestion at cursor/selection.
-* **Comment bubbles**: margin comments with proposed rewording + evidence bindings.
-* **Gold underlines (reasoning gaps)**: a “Review” pass that flags uncited claims, missing evidence, or missing statutory tests (powered by the governance linter + agents).
-
-Every accept/reject action creates an `AuditEvent` (who accepted what suggestion, when, in which artefact).
-
-### 2.4 “Get a draft” (draft-anything launcher)
-Planners need a fast first draft of *anything* — not as a final output, but as an editable starting point.
+### 2.7 “Get a draft” (draft-anything launcher)
+Planners need a fast first draft of anything, then the tooling to make it defensible.
 
 UI requirement:
-* A persistent **Draft** action (button + command palette) available in Document, Map, and Judgement modes.
+* persistent `Draft` action (button + command palette) available in all views
 
-Draft action contract:
-* Input: a `DraftRequest` (`schemas/DraftRequest.schema.json`) including time budget (e.g. 10–30 seconds).
-* Output: a `DraftPack` (`schemas/DraftPack.schema.json`) containing structured `DraftBlockSuggestion[]` suitable for ghost text/comment bubbles.
-* Rule: draft suggestions must be traceable (each suggestion carries `EvidenceRef[]` and/or explicit assumptions); acceptance is always an `AuditEvent`.
-* Rule: if a suggestion implies a recommendation/position, it must be marked `requires_judgement_run = true` and linked to (or trigger) a full grammar run before sign-off.
+Contract:
+* Input: `DraftRequest` (`schemas/DraftRequest.schema.json`) with a time budget
+* Output: `DraftPack` (`schemas/DraftPack.schema.json`) with `DraftBlockSuggestion[]`
+* Suggestions are structured and traceable; accept/reject always creates an `AuditEvent`
+* Any suggestion implying a position must link to (or trigger) a full grammar run before sign-off
 
-### 2.3 Insert-by-evidence (drag/drop)
-Users can drag an `EvidenceCard` from the shelf into the document to:
+### 2.8 Insert-by-evidence (drag/drop)
+Users can drag an `EvidenceCard` into the document to:
 * insert a citation mark, or
-* embed the full card (for appendices / evidence schedules).
+* embed the full card (appendices / evidence schedules)
 
-This is the “planner-shaped” interaction that makes provenance usable.
+This is the planner-native bridge between evidence and writing.
 
-## 3) Judgement Mode (Scenario × Political Framing tabs)
+## 3) Home screens (v1)
 
-### 3.1 Tab semantics
-* A **tab** is a `ScenarioFramingTab` with its own `run_id` and outputs (`Trajectory` + `ScenarioJudgementSheet`).
-* Tabs are generated from a `ScenarioSet` (`schemas/ScenarioSet.schema.json`).
+### 3.1 Strategic Home (CULP programme board)
+Purpose: keep the system aligned to the GOV.UK 30‑month process (`culp/PROCESS_MODEL.yaml`).
 
-### 3.2 Sheet semantics
-* Sheets are produced from structured objects and deterministically rendered (`render/HTML_COMPOSER_SPEC.md`).
-* The UI must support “inspect evidence” interactions:
-  * click an evidence card → show supporting `EvidenceRef` fragments + tool runs + limitations.
+Required elements:
+* timeline/dependency chart (stages, blockers, status)
+* stage gate panel (required artefacts and what’s missing)
+  - required artefacts: `culp/PROCESS_MODEL.yaml` + `culp/ARTEFACT_REGISTRY.yaml`
+  - per-project status: `CulpArtefactRecord` (`schemas/CulpArtefactRecord.schema.json`)
+* quick link from any published artefact → the snapshot/run set used for sign-off
 
-### 3.3 Comparison UX (no cockpit)
-Comparison is tab switching plus a small set of purpose-built comparison views:
-* **Scenario delta** panel (`schemas/ScenarioDelta.schema.json`): what changed and why it matters.
-* **Matrix views** (optional in v1, required in v2):
-  * conflict matrix (policy/constraint conflicts by scenario)
-  * opportunity matrix (benefit signatures by scenario)
-  * similarity heatmap (scenario distance in policy/spatial space)
+### 3.2 Casework Home (DM inbox)
+Purpose: manage real workloads and deadlines without losing the reasoning thread.
 
-## 4) Map Mode (spatial reasoning surface)
-See also: `ux/VISUOSPATIAL_WORKBENCH_SPEC.md` (Map/Plan/Photomontage canvases).
+Required elements:
+* inbox board (new/validating/consultation/assessment/determination/issued)
+* statutory deadline visibility + simple filters
+* one-click open into the Application Workspace (same shell)
 
-### 4.1 Core interactions
-* draw marker/lasso → create a query context (geometry) for tools and agents
-* toggle layers (“themes”), including scenario overlays and constraint layers
-* one-click “snapshot to document” (map view becomes an artefact and an EvidenceCard)
+## 4) Judgement view (Scenario × Political Framing tabs)
 
-### 4.2 Rendering contract
-Maps may be interactive, but any artefact used for judgement must be storable and citeable:
-* map screenshots, overlays, and exported tiles must be stored as artefacts and referenced by `EvidenceRef`.
+### 4.1 Tab semantics
+* tab is a `ScenarioFramingTab` with its own `run_id` and outputs (`Trajectory` + `ScenarioJudgementSheet`)
+* tabs are generated from a `ScenarioSet` (`schemas/ScenarioSet.schema.json`)
 
-## 5) Infographics & figures (charts, tables, extracted images)
+Planner semantics:
+* Plan-making: “strategy option S under framing F”
+* DM: “position package P under framing F”
 
-### 5.1 Deterministic rendering spine
-* Build `FactTable` objects with per-cell provenance (`render/FACT_TABLE_SPEC.md`).
-* Agents propose `FigureSpec` objects referencing FactTable fields (`schemas/FIGURE_SPEC.schema.json`).
-* Renderers produce SVG/PNG/HTML artefacts used in sheets and documents.
+### 4.2 Sheet semantics
+* sheets are deterministically rendered from stored structured objects (`render/HTML_COMPOSER_SPEC.md`)
+* evidence drill-down must expose `EvidenceRef` fragments + tool runs + limitations
 
-### 5.2 Figure Workbench (UI)
-The UI must allow:
-* preview a proposed figure
-* inspect underlying FactTable + provenance
-* accept → saves artefact and exposes it as an EvidenceCard for insertion
+### 4.3 Comparison UX (no cockpit)
+Comparison is tab switching plus purpose-built deltas:
+* `ScenarioDelta` (“what changed, why it matters”) (`schemas/ScenarioDelta.schema.json`)
+* optional matrices (conflict/opportunity/similarity) as later capability cards
 
-### 5.3 Extracted images
-Ingested `visual_assets` (plans, diagrams, figures) must be viewable as evidence:
-* page location, source document, and any VLM interpretations are surfaced with limitations.
+## 5) Map/Plan/Reality views (visuospatial reasoning)
+See also: `ux/VISUOSPATIAL_WORKBENCH_SPEC.md`.
 
-## 6) UI build strategy (vertical slices)
-UI work must ship as **vertical slices** that prove value end-to-end, not as a long “frontend-only” branch.
+Core interactions:
+* draw marker/lasso → create a query context
+* toggle layers (constraints, scenarios, evidence overlays)
+* one-click “snapshot to document” (exports `ProjectionArtifact` + `EvidenceCard`)
+* registration/overlay workflows must show uncertainty and limitations
 
-Recommended UI slice order (Spatial Strategy first):
-1. **Timeline + stage gating** (Strategic Home) reading `culp/PROCESS_MODEL.yaml` artefacts/status.
-2. **Document Mode editor v0** (basic editing + citations + evidence shelf).
-3. **Judgement Mode viewer v0** (Scenario × Framing tabs + rendered sheet + evidence drill-down).
-4. **Map Mode v0** (draw-to-ask + layer toggles + snapshot to EvidenceCard).
-5. **Trace Canvas v0** (flowchart trace + “why chain” highlighting).
-6. **Draft launcher v0** (DraftRequest → DraftPack suggestions + audit accept/reject).
-7. **Ghost text + suggestions** (structured suggestions + audit events).
-8. **Figure Workbench v0** (preview + provenance + insert).
+## 6) Infographics & figures (charts, tables, extracted images)
+Rendering spine:
+* build `FactTable` objects with per-cell provenance (`render/FACT_TABLE_SPEC.md`)
+* agents propose `FigureSpec` referencing FactTable fields (`schemas/FIGURE_SPEC.schema.json`)
+* renderers produce SVG/PNG/HTML artefacts for sheets and documents
 
-DM and Monitoring surfaces follow after Spatial Strategy proves the spine.
+UI requirement:
+* Figure Workbench supports preview → inspect provenance → accept → insert as EvidenceCard
+
+## 7) UI build strategy (vertical slices)
+Ship UI as vertical slices that prove end-to-end value (Spatial Strategy first):
+1. Strategic Home v0 (timeline + stage gating)
+2. Document view v0 (basic editing + citations + evidence shelf)
+3. Judgement view v0 (Scenario × Framing tabs + sheet viewer)
+4. Map/Plan view v0 (draw-to-ask + snapshot-to-evidence)
+5. Trace Canvas v0 (flowchart + “why chain” highlight)
+6. Draft launcher v0 (DraftRequest → DraftPack + accept/reject audit)
+7. Suggestions UX v0 (ghost text + comment bubbles + governance underlines)
+8. Figure Workbench v0 (preview + provenance + insert)
+
+DM and Monitoring build once the Spatial Strategy spine is proven.
+
