@@ -1,46 +1,162 @@
+process_id: culp_30_month_v1
+source_of_truth: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+phases:
+  - id: getting_ready_pre_30m
+    title: "Getting ready (pre-30-month clock)"
+    description: "Work done before Gateway 1; 30-month clock has not started."
+  - id: plan_preparation_m1_23
+    title: "Plan preparation (Months 1–23)"
+  - id: submit_for_examination_m24_29
+    title: "Submit for examination (Months 24–29)"
+  - id: adopt_and_publish_m30_31
+    title: "Adopt + publish (Months 30–31)"s
+  - id: monitor_m31_plus
+    title: "Monitor (Month 31+)"
+
 stages:
-  - id: notice_and_boundary
-    title: "Notice & Boundary"
+
+  # --- Getting ready (pre-30-month clock) ---
+  - id: timetable
+    phase: getting_ready_pre_30m
+    title: "Timetable"
+    required_artefacts:
+      - milestones_table
+      - updates_log
+    gov_uk_ref: "https://www.gov.uk/guidance/getting-ready-to-prepare-a-new-plan"
+
+  - id: notice_of_plan_making
+    phase: getting_ready_pre_30m
+    title: "Give notice of plan-making"
     required_artefacts:
       - notice_html
       - boundary_map
       - geometry_download
     gov_uk_ref: "https://www.gov.uk/guidance/giving-notice-of-your-plan-making"
 
-  - id: timetable
-    title: "Timetable"
+  - id: scoping_consultation
+    phase: getting_ready_pre_30m
+    title: "Scoping consultation"
     required_artefacts:
-      - milestones_table
-      - updates_log
-    gov_uk_ref: "https://www.gov.uk/guidance/giving-notice-of-your-plan-making"
+      - scoping_consultation_materials
+      - consultee_list
+      - responses_log
+    gov_uk_ref: "https://www.gov.uk/guidance/getting-ready-to-prepare-a-new-plan"
+
+  - id: baselining_and_place_portrait
+    phase: getting_ready_pre_30m
+    title: "Baselining & place portrait"
+    required_artefacts:
+      - place_portrait_sheet
+      - evidence_base_index
+    gov_uk_ref: "https://www.gov.uk/guidance/gathering-baselining-information-to-inform-a-local-plan"
 
   - id: gateway_1
-    title: "Gateway 1"
+    phase: getting_ready_pre_30m
+    title: "Gateway 1 (starts the 30-month clock)"
     required_artefacts:
       - self_assessment_summary
       - readiness_checker_output
     gov_uk_ref: "https://www.gov.uk/guidance/gateway-1-what-you-need-to-do"
 
-  - id: baselining_place_portrait
-    title: "Baselining & Place Portrait"
+  - id: publish_scoping_summary
+    phase: plan_preparation_m1_23
+    title: "Publish scoping summary"
     required_artefacts:
-      - place_portrait_sheet
-      - evidence_base_index
+      - scoping_summary_report
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 
-  - id: vision_outcomes
-    title: "Vision & Outcomes"
+  # --- Plan preparation (Months 1–23) ---
+  - id: vision_and_outcomes
+    phase: plan_preparation_m1_23
+    title: "Vision & outcomes"
     required_artefacts:
       - vision_statement
       - outcomes_list_max_10
+    gov_uk_ref: "https://www.gov.uk/guidance/preparing-a-local-plan-vision"
 
-  - id: sites_stage_1_4
-    title: "Sites Stages 1-4"
+  - id: options_and_evidence_development
+    phase: plan_preparation_m1_23
+    title: "Develop options, sites, and evidence"
     required_artefacts:
+      - evidence_base_index
+      - constraints_register
+      - reasonable_alternatives_log
       - site_assessments_bulk
-      - allocation_decisions
-    gov_uk_ref: "https://www.gov.uk/guidance/assessing-sites-for-local-plans-stage-2"
+      - allocation_options_pack
+    gov_uk_ref: "https://www.gov.uk/guidance/selecting-identifying-and-assessing-sites-for-local-plans"
 
-  - id: consultation_summaries
-    title: "Consultation Summaries"
+  - id: consult_on_proposed_content_and_evidence
+    phase: plan_preparation_m1_23
+    title: "Consult on proposed plan content & evidence"
     required_artefacts:
-      - consultation_report
+      - consultation_materials_pack
+      - responses_log
+      - consultation_summary_report
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  - id: gateway_2
+    phase: plan_preparation_m1_23
+    title: "Gateway 2"
+    required_artefacts:
+      - gateway_2_self_assessment
+      - updated_timetable
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  # --- Submit for examination (Months 24–29) ---
+  - id: consult_on_proposed_local_plan
+    phase: submit_for_examination_m24_29
+    title: "Consult on proposed local plan"
+    required_artefacts:
+      - proposed_local_plan_draft
+      - policies_map_draft
+      - consultation_summary_report
+      - statement_of_consultation
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  - id: gateway_3
+    phase: submit_for_examination_m24_29
+    title: "Gateway 3"
+    required_artefacts:
+      - gateway_3_self_assessment
+      - submission_ready_pack
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  - id: submit_for_examination
+    phase: submit_for_examination_m24_29
+    title: "Submit for examination"
+    required_artefacts:
+      - submission_bundle
+      - evidence_base_index
+      - consultation_statement
+      - duty_to_cooperate_or_sds_materials
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  - id: examination
+    phase: submit_for_examination_m24_29
+    title: "Examination"
+    required_artefacts:
+      - inspectors_questions_log
+      - hearing_statements_bundle
+      - main_modifications_if_any
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  # --- Adopt + publish (Months 30–31) ---
+  - id: adoption_and_publication
+    phase: adopt_and_publish_m30_31
+    title: "Adoption + publish policies map"
+    required_artefacts:
+      - adopted_local_plan
+      - policies_map_final
+      - adoption_statement
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
+  # --- Monitor (Month 31+) ---
+  - id: monitoring_and_review
+    phase: monitor_m31_plus
+    title: "Monitoring & review"
+    required_artefacts:
+      - monitoring_framework
+      - amr_or_equivalent
+      - review_triggers_log
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"

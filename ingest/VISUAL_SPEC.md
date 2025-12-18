@@ -1,7 +1,7 @@
 # Visual Understanding Specification
 
 ## Model Choice
-* **Azure**: Azure OpenAI (GPT-4o).
+* **Azure**: Azure OpenAI (GPT-5.2).
 * **OSS**: Qwen3-VL.
 
 ## Tasks

@@ -1,12 +1,12 @@
 profile: oss
 providers:
-  BlobStoreProvider: MinIO
-  CanonicalDBProvider: PostgreSQL
-  RetrievalProvider: PgVectorHybrid
-  DocParseProvider: Docling
-  EmbeddingProvider: Qwen3Embedding
-  LLMProvider: GPT_OSS
-  VLMProvider: Qwen3_VL
-  SegmentationProvider: SAM2
-  WorkflowProvider: LangGraph
-  ObservabilityProvider: OpenTelemetry
+  BlobStoreProvider: MinIO # Docker S3
+  CanonicalDBProvider: PostgreSQL # Local Docker
+  RetrievalProvider: Pgvector # Extension
+  DocParseProvider: Docling # pip install docling
+  EmbeddingProvider: Qwen3-8B-Embedding # Text (NetraEmbed for Images)
+  LLMProvider: GPT-OSS-20b # vLLM/mxfp4 (Upgrade: GPT-OSS:120B)
+  VLMProvider: Qwen3-VL-30b # (Upgrade: Qwen3-VL:32B)
+  SegmentationProvider: Local_Python_Geopandas # System Process
+  WorkflowProvider: LangGraph # python
+  ObservabilityProvider: Phoenix # Local Tracing

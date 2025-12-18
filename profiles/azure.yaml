@@ -4,9 +4,9 @@ providers:
   CanonicalDBProvider: AzurePostgreSQL
   RetrievalProvider: AzureAISearch
   DocParseProvider: AzureDocumentIntelligence
-  EmbeddingProvider: AzureOpenAIEmbeddings
-  LLMProvider: AzureOpenAI
-  VLMProvider: AzureOpenAI
-  SegmentationProvider: AzureContainerApps_SAM2 # Hosted custom container
+  EmbeddingProvider: AzureOpenAIEmbeddings # model: text-embedding-3-large
+  LLMProvider: AzureOpenAI # model: gpt-5.2-preview
+  VLMProvider: AzureOpenAI # model: gpt-5.2-preview
+  SegmentationProvider: AzureAIAgentService_CodeInterpreter # Native Sandbox
   WorkflowProvider: MicrosoftAgentFramework
   ObservabilityProvider: AzureApplicationInsights

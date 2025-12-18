@@ -18,22 +18,24 @@ This document defines the 8-move grammar that dictates the system's logic.
 * **Mechanism**: Retrieval (vector/hybrid/FTS) + Graph Traversal.
 * **Outputs**: `CuratedEvidenceSet` (atoms mapped to issues), `DeliberateOmissions` (what was ignored), `ToolRequests` (to fill gaps).
 
-## 4. Evidence Interpretation
-**Goal**: Make sense of the evidence (Plan ↔ Reality).
-* **Mechanism**: VLM / LLM reasoning + Spatial Tools + "Slice B" (plan registration).
-* **Outputs**: `Interpretation[]` (claims backed by refs), `PlanRealityInterpretation` (overlays, transform confidence).
-* **Constraint**: Must distinguish *what the evidence says* from *what the agent infers*.
+## 4. Evidence Interpretation (The Reasoning Engine)
+**Goal**: Make sense of the evidence employing statutory tests and heuristics.
+* **Mechanism**: VLM / LLM reasoning + Spatial Tools + **Reasoning Pattern Execution**.
+* **Patterns Applied**: 'Operational Tests' (Flood, Ecology, Retail) and 'Case Law Heuristics' (Fallback, Hillside, Finney).
+* **Outputs**: `Interpretation[]`, `ReasoningTrace[]` (step-by-step logic logs), `PlanRealityInterpretation`.
+* **Constraint**: Must distinguish facts from inferences. Must validate lawfulness (e.g., s73 scope) using case law patterns.
 
 ## 5. Considerations Formation (The Ledger)
 **Goal**: Produce the "bricks" of the argument.
 * **Mechanism**: Synthesis of Interpretations against Policy.
 * **Outputs**: `ConsiderationLedgerEntry[]`.
-* **Key**: A consideration links `Interpretation` -> `PolicyClause`. It *must* list mitigation hooks and uncertainty.
+* **Key**: A consideration links `Interpretation` -> `PolicyClause`. Flag explicit **Tensions** between policies.
 
 ## 6. Weighing & Balance
 **Goal**: Assign weight to considerations under the current framing.
-* **Mechanism**: Qualitative balancing (not just adding numbers).
-* **Outputs**: `WeighingRecord` (trade-offs, decisive factors).
+* **Mechanism**: Execution of **Statutory Balance Patterns** (Straight, Tilted, Heritage, Green Belt).
+* **Outputs**: `WeighingRecord` (trade-offs, decisive factors), `ReasoningTrace[]`.
+* **Input**: Must explicitly select the `BalancingMode` based on triggers (e.g., 5YHLS inputs).
 
 ## 7. Negotiation & Alteration
 **Goal**: Propose changes to resolve conflicts or improve the balance.
