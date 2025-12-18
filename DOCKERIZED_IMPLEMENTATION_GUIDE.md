@@ -89,6 +89,12 @@ Edit `.env` (at minimum: Postgres + MinIO secrets).
 docker compose -f docker/compose.oss.yml up -d --build
 ```
 
+If you previously ran this stack and later switched Postgres major versions (or changed the DB image), you may need to reset the DB volume:
+```bash
+docker compose -f docker/compose.oss.yml down -v
+docker compose -f docker/compose.oss.yml up -d --build
+```
+
 If you see `tpa-minio-init` fail, it usually means MinIO wasn’t ready yet or credentials are invalid. Check:
 * `TPA_S3_ENDPOINT` is `http://tpa-minio:9000` (inside-compose endpoint, not `localhost`)
 * `TPA_S3_SECRET_KEY` / `MINIO_ROOT_PASSWORD` is at least 8 characters
