@@ -480,6 +480,101 @@ body {
   color: var(--ink);
 }
 
+.draftGrid {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  gap: 12px;
+  margin-top: 12px;
+  align-items: start;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.field__label {
+  font-size: 12px;
+  color: rgba(42, 58, 96, 0.72);
+}
+
+.input,
+.textarea {
+  width: 100%;
+  padding: 9px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--surface-strong);
+  color: var(--text);
+  font: inherit;
+}
+
+.textarea {
+  min-height: 130px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.draftPackMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.draftSuggestions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.draftSuggestion {
+  border: 1px solid var(--edge);
+  background: rgba(255, 255, 255, 0.78);
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.draftSuggestion__head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.draftSuggestion__meta {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.draftSuggestion__actions {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.draftSuggestion__content {
+  margin-top: 10px;
+  white-space: pre-wrap;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.btn--small {
+  padding: 7px 10px;
+  font-size: 12px;
+}
+
+.pill--attention {
+  border-color: rgba(245, 195, 21, 0.95);
+  background: rgba(245, 195, 21, 0.22);
+}
+
 a {
   color: var(--ink);
   text-decoration: none;
@@ -507,6 +602,10 @@ a:hover {
   .rail {
     position: static;
     min-height: auto;
+  }
+
+  .draftGrid {
+    grid-template-columns: 1fr;
   }
 }
 .grid2 {

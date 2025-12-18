@@ -155,14 +155,20 @@ services:
   # --- Optional model/tool services (bring up with: `--profile models`) ---
   # NOTE: These are intentionally opt-in because they require large model weights and (often) a GPU.
   tpa-llm:
-    profiles: ["models", "full"]
+    # Start on-demand: `--profile llm up -d tpa-llm` (avoid running LLM+VLM simultaneously on a single GPU).
+    profiles: ["llm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
     command: >
+      ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       --host 0.0.0.0
       --port 8000
-      --model openai/gpt-oss-20b
+      ${TPA_LLM_VLLM_ARGS:---max-num-seqs 8}
     environment:
       HF_HOME: /models/cache
+      # Optional: set HF_TOKEN in your `.env` if you need access to gated model repos.
+      HF_TOKEN: ${HF_TOKEN:-}
+    # GPU is required for practical OSS LLM/VLM serving. Ensure NVIDIA Container Toolkit is installed.
+    gpus: all
     ports:
       - "8010:8000"
     volumes:
@@ -170,14 +176,18 @@ services:
     <<: *service_defaults
 
   tpa-vlm:
-    profiles: ["models", "full"]
+    # Start on-demand: `--profile vlm up -d tpa-vlm` (avoid running LLM+VLM simultaneously on a single GPU).
+    profiles: ["vlm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
     command: >
+      ${TPA_VLM_MODEL_ID:-Qwen/Qwen3-VL-30B}
       --host 0.0.0.0
       --port 8000
-      --model Qwen/Qwen3-VL-30B
+      ${TPA_VLM_VLLM_ARGS:-}
     environment:
       HF_HOME: /models/cache
+      HF_TOKEN: ${HF_TOKEN:-}
+    gpus: all
     ports:
       - "8020:8000"
     volumes:
@@ -185,12 +195,16 @@ services:
     <<: *service_defaults
 
   tpa-embeddings:
-    profiles: ["models", "full"]
+    # Start on-demand: `--profile embeddings up -d tpa-embeddings`.
+    profiles: ["embeddings", "models"]
     image: ${TPA_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:turing-latest}
     environment:
-      MODEL_ID: Qwen/Qwen3-Embedding-8B
+      MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
+      HF_HOME: /models/cache
     ports:
       - "8030:8080"
+    volumes:
+      - tpa_models:/models
     <<: *service_defaults
 
   # --- Governed web capture / scraping (Playwright) ---

@@ -110,16 +110,28 @@ This compose file includes opt-in profiles for heavier capabilities:
 * `ui-dev` — Vite dev server (hot reload)
 * `web` — Playwright-backed web automation service
 * `vision` — segmentation + raster→vector tool services (CPU heuristic scaffold; swap to SAM2/ML later)
-* `models` — LLM/VLM/embeddings servers (GPU recommended)
-* `full` — convenience profile that enables `web` + `vision` + `models`
+* `llm` — LLM server (vLLM; GPU recommended)
+* `vlm` — VLM server (vLLM; GPU recommended)
+* `embeddings` — embeddings server (TEI or equivalent; CPU or GPU depending on image)
+* `models` — convenience umbrella profile that enables `llm` + `vlm` + `embeddings` (not recommended on a single GPU)
+* `full` — convenience profile that enables `web` + `vision` (models are on-demand; start `llm`/`vlm`/`embeddings` separately)
 
 Examples:
 ```bash
-# Full capability stack (expect large downloads / GPU requirements)
+# Full tool stack (Playwright + vision tools; no models)
 docker compose -f docker/compose.oss.yml --profile full up -d --build
 
 # UI dev server instead of the production-like Nginx UI container
 docker compose -f docker/compose.oss.yml --profile ui-dev up -d --build
+
+# Start only the LLM (recommended for interactive drafting)
+docker compose -f docker/compose.oss.yml --profile llm up -d tpa-llm
+
+# Start only the VLM (recommended for plan/photo analysis sessions)
+docker compose -f docker/compose.oss.yml --profile vlm up -d tpa-vlm
+
+# Start only embeddings (recommended for ingestion/indexing sessions)
+docker compose -f docker/compose.oss.yml --profile embeddings up -d tpa-embeddings
 ```
 
 ---

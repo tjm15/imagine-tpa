@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Mode = "plan" | "dm";
 type View = "document" | "map" | "judgement" | "reality";
@@ -60,10 +60,77 @@ type DmCase = {
   days_remaining: number;
 };
 
+type DraftArtefactType =
+  | "policy_clause"
+  | "plan_chapter"
+  | "place_portrait"
+  | "consultation_summary"
+  | "site_assessment"
+  | "officer_report_section"
+  | "other";
+
+type DraftRequest = {
+  draft_request_id: string;
+  requested_at: string;
+  requested_by: "user" | "agent" | "system";
+  artefact_type: DraftArtefactType;
+  audience?: string | null;
+  style_guide?: string | null;
+  time_budget_seconds: number;
+  context?: {
+    plan_project_id?: string | null;
+    culp_stage_id?: string | null;
+    scenario_id?: string | null;
+    framing_id?: string | null;
+    application_id?: string | null;
+    site_id?: string | null;
+  };
+  user_prompt?: string | null;
+  constraints?: Record<string, unknown>;
+};
+
+type DraftBlockSuggestion = {
+  suggestion_id: string;
+  block_type: "heading" | "paragraph" | "bullets" | "table" | "figure" | "callout" | "other";
+  content: string;
+  evidence_refs: Array<Record<string, unknown>>;
+  assumption_ids?: string[];
+  limitations_text?: string | null;
+  requires_judgement_run: boolean;
+  insertion_hint?: Record<string, unknown>;
+};
+
+type DraftPack = {
+  draft_pack_id: string;
+  draft_request_id: string;
+  status: "complete" | "partial" | "failed";
+  suggestions: DraftBlockSuggestion[];
+  tool_run_ids?: string[];
+  created_at: string;
+};
+
 async function getJson<T>(path: string): Promise<T> {
   const res = await fetch(path, { headers: { Accept: "application/json" } });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
   return (await res.json()) as T;
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(path, {
+    method: "POST",
+    headers: { Accept: "application/json", "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}${detail ? `: ${detail}` : ""}`);
+  }
+  return (await res.json()) as T;
+}
+
+function newUuid(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
+  return `tpa_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
 }
 
 function loadDemoArtefactStatuses(): Record<string, ArtefactStatus> {
@@ -154,6 +221,267 @@ function TraceOverlay({
             <li>Negotiation &amp; alteration</li>
             <li>Positioning &amp; narration</li>
           </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DraftOverlay({
+  open,
+  onClose,
+  mode,
+  defaultContext,
+  onInsert,
+}: {
+  open: boolean;
+  onClose: () => void;
+  mode: Mode;
+  defaultContext: DraftRequest["context"];
+  onInsert: (suggestion: DraftBlockSuggestion) => void;
+}) {
+  const promptRef = useRef<HTMLTextAreaElement | null>(null);
+  const [artefactType, setArtefactType] = useState<DraftArtefactType>(
+    mode === "dm" ? "officer_report_section" : "plan_chapter",
+  );
+  const [audience, setAudience] = useState<string>("planner");
+  const [styleGuide, setStyleGuide] = useState<string>("Plain English; officer tone; cite evidence cards where possible.");
+  const [timeBudget, setTimeBudget] = useState<number>(10);
+  const [prompt, setPrompt] = useState<string>("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [pack, setPack] = useState<DraftPack | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    setArtefactType(mode === "dm" ? "officer_report_section" : "plan_chapter");
+    setError(null);
+    setPack(null);
+    setLoading(false);
+    setPrompt("");
+    setAudience("planner");
+    setStyleGuide("Plain English; officer tone; cite evidence cards where possible.");
+    setTimeBudget(10);
+    requestAnimationFrame(() => promptRef.current?.focus());
+  }, [open, mode]);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  const submit = async () => {
+    const req: DraftRequest = {
+      draft_request_id: newUuid(),
+      requested_at: new Date().toISOString(),
+      requested_by: "user",
+      artefact_type: artefactType,
+      audience: audience.trim() ? audience.trim() : null,
+      style_guide: styleGuide.trim() ? styleGuide.trim() : null,
+      time_budget_seconds: Math.max(1, timeBudget),
+      context: defaultContext,
+      user_prompt: prompt.trim() ? prompt.trim() : null,
+      constraints: {},
+    };
+
+    try {
+      setLoading(true);
+      setError(null);
+      setPack(null);
+      const result = await postJson<DraftPack>("/api/draft", req);
+      setPack(result);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatForInsert = (s: DraftBlockSuggestion): string => {
+    const text = s.content.trim();
+    if (!text) return "";
+    if (s.block_type === "heading") return `\n\n## ${text}\n`;
+    if (s.block_type === "bullets") {
+      const lines = text
+        .split("\n")
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .map((l) => (l.startsWith("-") || l.startsWith("•") ? l : `- ${l}`));
+      return `\n\n${lines.join("\n")}\n`;
+    }
+    if (s.block_type === "callout") return `\n\n> ${text.replace(/\n/g, "\n> ")}\n`;
+    return `\n\n${text}\n`;
+  };
+
+  if (!open) return null;
+  return (
+    <div className="overlay" role="dialog" aria-modal="true">
+      <div className="overlay__card">
+        <div className="overlay__head">
+          <div>
+            <div className="overlay__title">Draft launcher</div>
+            <div className="muted">
+              Get a quick draft, then turn it into a defensible position via evidence cards and a full judgement run.
+            </div>
+          </div>
+          <button className="btn btn--ghost" type="button" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="draftGrid">
+          <div className="card">
+            <div className="kicker">Request</div>
+
+            <div className="field">
+              <div className="field__label">Artefact</div>
+              <select
+                className="select"
+                value={artefactType}
+                onChange={(e) => setArtefactType(e.target.value as DraftArtefactType)}
+              >
+                <option value="plan_chapter">Plan chapter</option>
+                <option value="policy_clause">Policy clause</option>
+                <option value="place_portrait">Place portrait</option>
+                <option value="consultation_summary">Consultation summary</option>
+                <option value="site_assessment">Site assessment</option>
+                <option value="officer_report_section">Officer report section</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <div className="field__label">Audience</div>
+              <input className="input" value={audience} onChange={(e) => setAudience(e.target.value)} />
+            </div>
+
+            <div className="field">
+              <div className="field__label">Style</div>
+              <input className="input" value={styleGuide} onChange={(e) => setStyleGuide(e.target.value)} />
+            </div>
+
+            <div className="field">
+              <div className="field__label">Time budget</div>
+              <select className="select" value={timeBudget} onChange={(e) => setTimeBudget(Number(e.target.value))}>
+                <option value={5}>5s (fast)</option>
+                <option value={10}>10s</option>
+                <option value={20}>20s (better)</option>
+              </select>
+            </div>
+
+            <div className="field">
+              <div className="field__label">Prompt</div>
+              <textarea
+                ref={promptRef}
+                className="textarea"
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="What do you want drafted? Include scope, site, policies, or what to avoid."
+              />
+            </div>
+
+            <div className="actions" style={{ marginTop: 12 }}>
+              <button className="btn" type="button" disabled={loading} onClick={submit}>
+                {loading ? "Drafting…" : "Generate draft"}
+              </button>
+              <button
+                className="btn btn--ghost"
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  setPrompt("");
+                  setPack(null);
+                  setError(null);
+                }}
+              >
+                Reset
+              </button>
+            </div>
+
+            {error ? (
+              <div className="card" style={{ marginTop: 12, borderColor: "rgba(245, 195, 21, 0.55)" }}>
+                <div className="kicker">Draft failed</div>
+                <div className="muted" style={{ marginTop: 6, whiteSpace: "pre-wrap" }}>
+                  {error}
+                </div>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="card">
+            <div className="kicker">Draft pack</div>
+            {!pack && !loading ? (
+              <div className="muted" style={{ marginTop: 10 }}>
+                Generate a draft to see insertable blocks. Later: evidence cards + accept/reject + tracked changes.
+              </div>
+            ) : null}
+
+            {loading ? (
+              <div className="muted" style={{ marginTop: 10 }}>
+                Drafting with the configured LLM (or scaffold fallback)…
+              </div>
+            ) : null}
+
+            {pack ? (
+              <>
+                <div className="draftPackMeta">
+                  <span className="pill pill--small">Status: {pack.status}</span>
+                  <span className="pill pill--small">Blocks: {pack.suggestions.length}</span>
+                  <span className="pill pill--small">Created: {new Date(pack.created_at).toLocaleString()}</span>
+                </div>
+
+                <div className="draftSuggestions">
+                  {pack.suggestions.map((s) => (
+                    <div key={s.suggestion_id} className="draftSuggestion">
+                      <div className="draftSuggestion__head">
+                        <div className="draftSuggestion__meta">
+                          <span className="pill pill--small">{s.block_type}</span>
+                          {s.requires_judgement_run ? (
+                            <span className="pill pill--small pill--attention">Judgement run required</span>
+                          ) : null}
+                          {s.evidence_refs?.length ? (
+                            <span className="pill pill--small">Evidence refs: {s.evidence_refs.length}</span>
+                          ) : null}
+                        </div>
+                        <div className="draftSuggestion__actions">
+                          <button
+                            className="btn btn--small"
+                            type="button"
+                            onClick={() => {
+                              onInsert({ ...s, content: formatForInsert(s) });
+                            }}
+                          >
+                            Insert
+                          </button>
+                          <button
+                            className="btn btn--ghost btn--small"
+                            type="button"
+                            onClick={() => {
+                              const text = formatForInsert(s).trim();
+                              const p = navigator.clipboard?.writeText(text);
+                              if (p) p.catch(() => {});
+                            }}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                      {s.limitations_text ? (
+                        <div className="muted" style={{ marginTop: 8 }}>
+                          {s.limitations_text}
+                        </div>
+                      ) : null}
+                      <div className="draftSuggestion__content">{s.content}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
@@ -406,6 +734,7 @@ function CaseBoard({
 export default function App() {
   const [mode, setMode] = useState<Mode>("plan");
   const [view, setView] = useState<View>("document");
+  const [showDraft, setShowDraft] = useState(false);
   const [showTrace, setShowTrace] = useState(false);
 
   const [processModel, setProcessModel] = useState<CulpProcessModel | null>(null);
@@ -740,7 +1069,7 @@ export default function App() {
               <button
                 className="btn"
                 type="button"
-                onClick={() => setDocBody((b) => `${b}\n\n[DRAFT] Inserted placeholder draft block.`)}
+                onClick={() => setShowDraft(true)}
               >
                 Draft
               </button>
@@ -750,12 +1079,21 @@ export default function App() {
               <Toggle
                 value={view}
                 onChange={(v) => setView(v as View)}
-                options={[
-                  { value: "document", label: "Document" },
-                  { value: "map", label: "Map/Plan" },
-                  { value: "judgement", label: "Judgement" },
-                  { value: "reality", label: "Reality" },
-                ]}
+                options={
+                  mode === "plan"
+                    ? [
+                        { value: "document", label: "Deliverable" },
+                        { value: "map", label: "Map & plans" },
+                        { value: "judgement", label: "Scenarios" },
+                        { value: "reality", label: "Visuals" },
+                      ]
+                    : [
+                        { value: "document", label: "Officer report" },
+                        { value: "map", label: "Site & plans" },
+                        { value: "judgement", label: "Balance" },
+                        { value: "reality", label: "Photos" },
+                      ]
+                }
               />
             </div>
           </div>
@@ -835,6 +1173,20 @@ export default function App() {
         </aside>
       </div>
 
+      <DraftOverlay
+        open={showDraft}
+        onClose={() => setShowDraft(false)}
+        mode={mode}
+        defaultContext={{
+          culp_stage_id: mode === "plan" ? selectedStageId : null,
+          plan_project_id: null,
+          scenario_id: null,
+          framing_id: null,
+          application_id: null,
+          site_id: null,
+        }}
+        onInsert={(s) => setDocBody((b) => `${b}${s.content}`)}
+      />
       <TraceOverlay open={showTrace} onClose={() => setShowTrace(false)} />
     </div>
   );
