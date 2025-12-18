@@ -7,6 +7,6 @@ providers:
   EmbeddingProvider: AzureOpenAIEmbeddings # model: text-embedding-3-large
   LLMProvider: AzureOpenAI # model: gpt-5.2-preview
   VLMProvider: AzureOpenAI # model: gpt-5.2-preview
-  SegmentationProvider: AzureAIAgentService_CodeInterpreter # Native Sandbox
+  SegmentationProvider: SAM2_AzureContainerApps # Raster segmentation for plans/images; vector geoprocessing handled separately (PostGIS/GDAL tools)
   WorkflowProvider: MicrosoftAgentFramework
   ObservabilityProvider: AzureApplicationInsights

@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Application",
+  "type": "object",
+  "description": "A development management application represented as a canonical reasoning object.",
+  "properties": {
+    "application_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": "string" },
+    "reference": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["new", "validating", "consultation", "assessment", "determination", "issued", "closed"]
+    },
+    "site_id": { "type": ["string", "null"] },
+    "site_geometry_wkt": { "type": ["string", "null"] },
+    "proposal_metadata": { "type": "object" },
+    "received_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["application_id", "authority_id", "reference", "status", "received_at"]
+}
+

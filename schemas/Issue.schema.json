@@ -15,9 +15,7 @@
         },
         "initial_evidence_hooks": {
             "type": "array",
-            "items": {
-                "type": "string"
-            }
+            "items": { "$ref": "EvidenceRef.schema.json" }
         },
         "uncertainty_flags": {
             "type": "array",

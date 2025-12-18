@@ -1,6 +1,7 @@
 moves:
   framing:
     input:
+      - RunContext
       - user_intent
       - culp_stage
       - political_framing_selection
@@ -23,15 +24,16 @@ moves:
       - KG (Knowledge Graph)
     output:
       - CuratedEvidenceSet
-      - ToolRequests[]
+      - ToolRequest[]
   
   evidence_interpretation:
     input:
       - CuratedEvidenceSet
-      - ToolOutputs
+      - ToolRun[]
     output:
       - Interpretation[]
       - PlanRealityInterpretation
+      - ReasoningTrace[]
   
   considerations_formation:
     input:
@@ -46,6 +48,7 @@ moves:
       - Framing
     output:
       - WeighingRecord
+      - ReasoningTrace[]
   
   negotiation_and_alteration:
     input:
@@ -60,5 +63,5 @@ moves:
       - NegotiationMove[]
       - Framing
     output:
-      - Trajectory[]
+      - Trajectory
       - ScenarioJudgementSheet

@@ -1,0 +1,64 @@
+version: 1
+description: >
+  Registry of public data sources used to seed baselining, constraints, evidence, and scenario evaluation.
+  Sources must be accessed and logged as evidence instruments (ToolRun + artefacts + limitations).
+
+sources:
+  - id: planning_data_platform
+    name: "planning.data.gov.uk datasets"
+    method: api_or_bulk
+    domain: spatial_strategy
+    outputs:
+      - spatial_layers
+      - designations
+    licence_notes: "Check dataset-specific licence and attribution requirements."
+    refresh_cadence: "varies"
+
+  - id: environment_agency_flood
+    name: "Environment Agency flood risk designations"
+    method: api
+    domain: spatial_strategy
+    outputs:
+      - flood_zones
+    licence_notes: "EA licensing applies; store limitations."
+    refresh_cadence: "periodic"
+
+  - id: ons_census
+    name: "ONS Census / demographic statistics"
+    method: api
+    domain: spatial_strategy
+    outputs:
+      - demographic_metrics
+      - household_change
+    licence_notes: "ONS Open Government Licence (verify per dataset)."
+    refresh_cadence: "infrequent"
+
+  - id: dft_connectivity
+    name: "DfT connectivity indicators"
+    method: api
+    domain: spatial_strategy
+    outputs:
+      - accessibility_metrics
+    licence_notes: "DfT tool limitations must be displayed."
+    refresh_cadence: "varies"
+
+  - id: local_plan_document_discovery
+    name: "Council plan document discovery (web)"
+    method: scrape
+    domain: spatial_strategy
+    outputs:
+      - plan_documents
+      - policy_maps
+    licence_notes: "Respect council site terms/robots; cache and store artefacts for audit."
+    refresh_cadence: "on-demand"
+
+  - id: arcgis_endpoint_discovery
+    name: "ArcGIS endpoint discovery (web)"
+    method: scrape
+    domain: spatial_strategy
+    outputs:
+      - gis_endpoints
+      - layer_catalogues
+    licence_notes: "Respect service terms; avoid heavy automated querying; store limitations."
+    refresh_cadence: "on-demand"
+

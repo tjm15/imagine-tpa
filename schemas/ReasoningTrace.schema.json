@@ -1,0 +1,43 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ReasoningTrace",
+  "type": "object",
+  "description": "A structured, replayable log of interpretive steps taken within a move (not just final outputs).",
+  "properties": {
+    "trace_id": { "type": "string", "format": "uuid" },
+    "move_type": {
+      "type": "string",
+      "enum": [
+        "framing",
+        "issue_surfacing",
+        "evidence_curation",
+        "evidence_interpretation",
+        "considerations_formation",
+        "weighing_and_balance",
+        "negotiation_and_alteration",
+        "positioning_and_narration"
+      ]
+    },
+    "steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "step_id": { "type": "string", "format": "uuid" },
+          "statement": { "type": "string" },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "assumptions_used": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        },
+        "required": ["step_id", "statement"]
+      }
+    }
+  },
+  "required": ["trace_id", "move_type", "steps"]
+}
+

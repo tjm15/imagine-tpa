@@ -1,0 +1,304 @@
+version: 1
+source: "https://theplannersassistant.uk/#/capabilities"
+
+reasoning_chain:
+  description: >
+    A UI-facing, 7-step “reasoning chain” used to navigate capability modules in the dashboard.
+    This does not replace the frozen 8-move grammar; it is an interaction model that maps onto
+    the 8 moves and the underlying procedure log.
+  phases:
+    - id: evidence
+      label: Evidence
+      purpose: "Acquire, normalize, and cite inputs (docs, GIS, live feeds)."
+    - id: context
+      label: Context
+      purpose: "Assemble situational context (site/history/baselines/gates) for the run."
+    - id: patterns
+      label: Patterns
+      purpose: "Surface salient patterns, risks, themes, and issue clusters."
+    - id: options
+      label: Options
+      purpose: "Generate, mutate, and compare options/alternatives and negotiation deltas."
+    - id: tests
+      label: Tests
+      purpose: "Apply operational/statutory tests and draft mitigation/conditions."
+    - id: judgement
+      label: Judgement
+      purpose: "Form and weigh the balance, identify what is decisive."
+    - id: explanation
+      label: Explanation
+      purpose: "Draft defensible narrative outputs with citations and replayable traces."
+
+pipelines:
+  - id: spatial_strategy
+    label: Spatial Strategy
+    outputs:
+      - "Spatial Plan"
+    notes: "Plan-making and scenario work aligned to CULP stages."
+  - id: development_management
+    label: Development Management
+    outputs:
+      - "Casework"
+    notes: "Everyday DM assessment support (applications, negotiation, report drafting)."
+  - id: monitoring_delivery
+    label: Monitoring & Delivery
+    outputs:
+      - "Monitoring"
+    notes: "Live evidence + monitoring, delivery tests, and statutory reporting."
+
+capabilities:
+  # --- Spatial Strategy ---
+  - id: spatial_strategy_unified_baselining
+    pipeline: spatial_strategy
+    phase: evidence
+    title: Unified Baselining
+    powered_by: evidence_baselining_tool
+    description: >
+      Ingest live geospatial layers, census data, and needs assessments into a single, queryable
+      baseline to spot constraints and opportunities.
+    primary_outputs:
+      - CuratedEvidenceSet
+      - EvidenceCard
+
+  - id: spatial_strategy_risk_readiness_triage
+    pipeline: spatial_strategy
+    phase: context
+    title: Risk & Readiness Triage
+    powered_by: prep_risk_timetable_tool
+    description: >
+      Assess critical path: governance structures, resourcing levels, and political decision gates.
+      Acts as a “Gateway 1” diagnostic before the 30‑month clock starts.
+    primary_outputs:
+      - ToolRun
+      - EvidenceCard
+
+  - id: spatial_strategy_visioning_theme_extraction
+    pipeline: spatial_strategy
+    phase: patterns
+    title: Visioning & Theme Extraction
+    powered_by: feedback_analysis_vision_tool
+    description: >
+      Cluster consultation responses into dominant themes, then generate concept models to test
+      how the vision lands physically for concrete “what‑if” debates.
+    primary_outputs:
+      - Interpretation
+      - EvidenceCard
+
+  - id: spatial_strategy_strategic_modeling_alternatives
+    pipeline: spatial_strategy
+    phase: options
+    title: Strategic Modeling & Alternatives
+    powered_by: strategy_modeler
+    description: >
+      Model multiple growth scenarios (e.g., “Transport Hubs” vs “Dispersed Growth”) and quantify
+      trade-offs (yield, infrastructure load, green belt impact) for Reasonable Alternatives.
+    primary_outputs:
+      - Trajectory
+      - ScenarioJudgementSheet
+
+  - id: spatial_strategy_continuous_sustainability
+    pipeline: spatial_strategy
+    phase: tests
+    title: Continuous Sustainability
+    powered_by: sea_hra_tool
+    description: >
+      Run continuous environmental checks against emerging allocations, flagging risks to
+      biodiversity/air quality while strategy remains fluid (SEA/HRA style).
+    primary_outputs:
+      - InstrumentOutput
+      - Interpretation
+
+  - id: spatial_strategy_pre_submission_inspection
+    pipeline: spatial_strategy
+    phase: judgement
+    title: Pre-Submission Inspection
+    powered_by: gateway_3_inspector
+    description: >
+      “AI Inspector” simulates examination, stress-testing against NPPF soundness tests and
+      highlighting evidence gaps or policy conflicts before submission.
+    primary_outputs:
+      - WeighingRecord
+      - GovernanceReport
+
+  - id: spatial_strategy_policy_drafting_justification
+    pipeline: spatial_strategy
+    phase: explanation
+    title: Policy Drafting & Justification
+    powered_by: policy_drafter
+    description: >
+      Translate spatial decisions and evidence into compliant policy wording with clause-level
+      traceability to the evidence that justifies it.
+    primary_outputs:
+      - EvidenceCard
+      - ScenarioJudgementSheet
+
+  # --- Development Management ---
+  - id: dm_intake_auto_extraction
+    pipeline: development_management
+    phase: evidence
+    title: Intake & Auto-Extraction
+    powered_by: application_intake
+    description: >
+      Read application documents (forms, DAS, transport statements) and extract key metrics
+      (unit mix, tenure split, height) to populate the case file.
+    primary_outputs:
+      - ToolRun
+      - EvidenceCard
+
+  - id: dm_context_analyzer
+    pipeline: development_management
+    phase: context
+    title: Context Analyzer
+    powered_by: context_analyzer
+    description: >
+      Compile site history: prior refusals, appeal precedents, and active constraints (e.g. TPOs,
+      flood zones) to provide immediate situational awareness.
+    primary_outputs:
+      - CuratedEvidenceSet
+      - EvidenceCard
+
+  - id: dm_material_consideration_triage
+    pipeline: development_management
+    phase: patterns
+    title: Material Consideration Triage
+    powered_by: risk_triage
+    description: >
+      Identify key material considerations, flagging high-risk conflicts early (heritage harm,
+      flood risk) so specialist consultees can be engaged immediately.
+    primary_outputs:
+      - Issue
+      - IssueMap
+
+  - id: dm_negotiation_workspace
+    pipeline: development_management
+    phase: options
+    title: Negotiation Workspace
+    powered_by: negotiation_workspace
+    description: >
+      Track amendments against original concerns and verify whether requested changes have been
+      delivered as drawings/parameters are updated.
+    primary_outputs:
+      - NegotiationMove
+      - ReasoningTrace
+
+  - id: dm_condition_drafter
+    pipeline: development_management
+    phase: tests
+    title: Condition Drafter
+    powered_by: condition_drafter
+    description: >
+      Suggest precise, enforceable conditions linked to identified harms, ensuring mitigation is
+      robust and lawful.
+    primary_outputs:
+      - NegotiationMove
+      - EvidenceCard
+
+  - id: dm_planning_balance
+    pipeline: development_management
+    phase: judgement
+    title: Planning Balance
+    powered_by: planning_balance
+    description: >
+      Structured workspace for weighing public benefits against harms with a visible “golden
+      thread” and appeal-defensible recommendation support.
+    primary_outputs:
+      - WeighingRecord
+      - ScenarioJudgementSheet
+
+  - id: dm_report_generation
+    pipeline: development_management
+    phase: explanation
+    title: Report Generation
+    powered_by: report_generator
+    description: >
+      Automate drafting of standard officer report sections and structure the assessment
+      argument, citing every piece of evidence used.
+    primary_outputs:
+      - ScenarioJudgementSheet
+      - EvidenceCard
+
+  # --- Monitoring & Delivery ---
+  - id: monitoring_live_data_connectors
+    pipeline: monitoring_delivery
+    phase: evidence
+    title: Live Data Connectors
+    powered_by: monitoring_connectors
+    description: >
+      Connect directly to completions, appeals, and S106 systems to keep the evidence base live,
+      creating a real-time feedback loop between plan and reality.
+    primary_outputs:
+      - ToolRun
+      - EvidenceCard
+
+  - id: monitoring_adoption_baseline
+    pipeline: monitoring_delivery
+    phase: context
+    title: Adoption Baseline
+    powered_by: adoption_tool
+    description: >
+      Lock the policies map and key metrics at adoption to create a baseline against which future
+      divergence is measured.
+    primary_outputs:
+      - ToolRun
+      - EvidenceCard
+
+  - id: monitoring_trend_detection
+    pipeline: monitoring_delivery
+    phase: patterns
+    title: Trend Detection
+    powered_by: trend_analysis
+    description: >
+      Monitor divergence in key metrics (delivery, employment floorspace, appeal overturns) and
+      flag trends suggesting policy failure or obsolescence.
+    primary_outputs:
+      - Interpretation
+      - EvidenceCard
+
+  - id: monitoring_intervention_triggers
+    pipeline: monitoring_delivery
+    phase: options
+    title: Intervention Triggers
+    powered_by: trigger_engine
+    description: >
+      Suggest interventions when thresholds are breached (e.g., trigger action plan), enabling
+      agile plan maintenance.
+    primary_outputs:
+      - NegotiationMove
+      - EvidenceCard
+
+  - id: monitoring_five_year_supply_check
+    pipeline: monitoring_delivery
+    phase: tests
+    title: 5-Year Supply Check
+    powered_by: supply_checker
+    description: >
+      Continuous automated testing of deliverable sites against trajectory and NPPF buffers for
+      always-on five-year land supply status.
+    primary_outputs:
+      - InstrumentOutput
+      - WeighingRecord
+
+  - id: monitoring_year_4_evaluation
+    pipeline: monitoring_delivery
+    phase: judgement
+    title: Year-4 Evaluation
+    powered_by: year_4_evaluation_tool
+    description: >
+      Structured “Keep/Amend/Delete” evaluation of policies based on accumulated data to seed the
+      next Local Plan evidence base.
+    primary_outputs:
+      - WeighingRecord
+      - ScenarioJudgementSheet
+
+  - id: monitoring_amr_automation
+    pipeline: monitoring_delivery
+    phase: explanation
+    title: AMR Automation
+    powered_by: monitoring_builder
+    description: >
+      Draft the Annual Monitoring Report narrative from live data feeds, transforming a statutory
+      burden into a strategic health-check.
+    primary_outputs:
+      - ScenarioJudgementSheet
+      - EvidenceCard
+

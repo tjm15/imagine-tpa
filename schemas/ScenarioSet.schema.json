@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScenarioSet",
+  "type": "object",
+  "description": "A set of scenarios for a plan project and stage, shown as tabs in Judgement Mode and the Spatial Strategy workspace.",
+  "properties": {
+    "scenario_set_id": { "type": "string", "format": "uuid" },
+    "plan_project_id": { "type": "string" },
+    "culp_stage_id": { "type": "string" },
+    "framing_ids": {
+      "type": "array",
+      "description": "Frame IDs (one per political framing) used to generate scenario×framing tabs.",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "scenario_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "tab_ids": {
+      "type": "array",
+      "description": "Convenience list of tabs (scenario×framing) generated for this set.",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "selected_tab_id": { "type": ["string", "null"], "format": "uuid" },
+    "selection_rationale": { "type": ["string", "null"] },
+    "selected_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["scenario_set_id", "scenario_ids", "framing_ids"]
+}

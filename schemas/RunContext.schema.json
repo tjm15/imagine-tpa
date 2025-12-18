@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RunContext",
+  "type": "object",
+  "description": "Anchors + process stage + provider profile for a single judgement run.",
+  "properties": {
+    "run_id": { "type": "string", "format": "uuid" },
+    "profile": { "type": "string", "description": "Deployment profile selected for this run (no hybrid runtime)." },
+    "culp_stage_id": { "type": "string" },
+    "authority_id": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "anchors": { "type": "object" },
+    "notes": { "type": "string" }
+  },
+  "required": ["run_id", "profile", "culp_stage_id", "created_at"]
+}
+

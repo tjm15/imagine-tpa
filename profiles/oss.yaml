@@ -7,6 +7,6 @@ providers:
   EmbeddingProvider: Qwen3-8B-Embedding # Text (NetraEmbed for Images)
   LLMProvider: GPT-OSS-20b # vLLM/mxfp4 (Upgrade: GPT-OSS:120B)
   VLMProvider: Qwen3-VL-30b # (Upgrade: Qwen3-VL:32B)
-  SegmentationProvider: Local_Python_Geopandas # System Process
+  SegmentationProvider: SAM2_Local # Raster segmentation for plans/images; vector geoprocessing handled separately (PostGIS/GeoPandas/GDAL tools)
   WorkflowProvider: LangGraph # python
   ObservabilityProvider: Phoenix # Local Tracing

@@ -18,9 +18,7 @@
         },
         "premises": {
             "type": "array",
-            "items": {
-                "type": "string"
-            }
+            "items": { "$ref": "EvidenceRef.schema.json" }
         },
         "assumptions": {
             "type": "array",

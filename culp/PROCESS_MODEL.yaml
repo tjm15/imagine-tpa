@@ -1,6 +1,21 @@
 process_id: culp_30_month_v1
 source_of_truth: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 
+sequencing:
+  required_by_law:
+    # As summarised in the GOV.UK overview diagram (high-level, mandatory order).
+    - timetable
+    - notice_of_plan_making
+    - scoping_consultation
+    - gateway_1
+    - publish_scoping_summary
+    - consult_on_proposed_content_and_evidence
+    - gateway_2
+    - consult_on_proposed_local_plan
+    - gateway_3
+    - examination
+    - adoption_and_publication
+
 phases:
   - id: getting_ready_pre_30m
     title: "Getting ready (pre-30-month clock)"
@@ -10,13 +25,20 @@ phases:
   - id: submit_for_examination_m24_29
     title: "Submit for examination (Months 24–29)"
   - id: adopt_and_publish_m30_31
-    title: "Adopt + publish (Months 30–31)"s
+    title: "Adopt + publish (Months 30–31)"
   - id: monitor_m31_plus
     title: "Monitor (Month 31+)"
 
 stages:
 
   # --- Getting ready (pre-30-month clock) ---
+  - id: confirm_sea_requirement
+    phase: getting_ready_pre_30m
+    title: "Confirm SEA requirement"
+    required_artefacts:
+      - sea_requirement_record
+    gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
+
   - id: timetable
     phase: getting_ready_pre_30m
     title: "Timetable"
@@ -111,6 +133,7 @@ stages:
       - proposed_local_plan_draft
       - policies_map_draft
       - consultation_summary_report
+      - sds_conformity_consultation_if_applicable
       - statement_of_consultation
     gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 

@@ -12,9 +12,7 @@
         },
         "evidence_refs": {
             "type": "array",
-            "items": {
-                "type": "string"
-            }
+            "items": { "$ref": "EvidenceRef.schema.json" }
         },
         "assumptions_used": {
             "type": "array",
@@ -25,6 +23,12 @@
         },
         "limitations_text": {
             "type": "string"
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0.0,
+            "maximum": 1.0,
+            "description": "Optional model/provider confidence for this interpretation when available (do not treat as truth)."
         }
     },
     "required": [

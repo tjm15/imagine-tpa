@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DeliberateOmission",
+  "type": "object",
+  "description": "A logged omission made during evidence curation, with an explicit reason.",
+  "properties": {
+    "omission_id": { "type": "string", "format": "uuid" },
+    "description": { "type": "string" },
+    "reason": { "type": "string" },
+    "would_have_addressed_issue_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    }
+  },
+  "required": ["omission_id", "description", "reason"]
+}
+

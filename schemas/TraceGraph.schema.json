@@ -1,0 +1,80 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "TraceGraph",
+  "type": "object",
+  "description": "A deterministic, UI-ready flowchart projection of MoveEvents/ToolRuns/AuditEvents for a run or tab (graphical traceability).",
+  "properties": {
+    "trace_graph_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "mode": { "type": "string", "enum": ["summary", "inspect", "forensic"] },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "node_id": { "type": "string" },
+          "node_type": {
+            "type": "string",
+            "enum": [
+              "run",
+              "move",
+              "tool_run",
+              "evidence",
+              "interpretation",
+              "assumption",
+              "ledger",
+              "weighing",
+              "negotiation",
+              "output",
+              "audit_event"
+            ]
+          },
+          "label": { "type": "string" },
+          "ref": {
+            "type": "object",
+            "description": "Optional typed reference to a canonical object (move_id, tool_run_id, evidence_ref, etc.)."
+          },
+          "layout": {
+            "type": "object",
+            "properties": {
+              "x": { "type": "number" },
+              "y": { "type": "number" },
+              "group": { "type": ["string", "null"] }
+            }
+          },
+          "severity": { "type": ["string", "null"], "enum": ["info", "warning", "error", null] }
+        },
+        "required": ["node_id", "node_type", "label"]
+      }
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "edge_id": { "type": "string" },
+          "src_id": { "type": "string" },
+          "dst_id": { "type": "string" },
+          "edge_type": {
+            "type": "string",
+            "enum": [
+              "TRIGGERS",
+              "USES",
+              "PRODUCES",
+              "CITES",
+              "ASSUMES",
+              "SUPPORTS",
+              "CONTRADICTS",
+              "SUPERSEDES"
+            ]
+          },
+          "label": { "type": ["string", "null"] }
+        },
+        "required": ["edge_id", "src_id", "dst_id", "edge_type"]
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["trace_graph_id", "run_id", "mode", "nodes", "edges", "created_at"]
+}
+

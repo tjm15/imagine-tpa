@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthorityPackManifest",
+  "type": "object",
+  "description": "Bundle of authority policy documents and GIS sources used to seed ingestion. Ingestion must normalize legacy variants into a single internal representation.",
+  "properties": {
+    "id": { "type": "string" },
+    "name": { "type": "string" },
+    "documents": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string", "description": "Legacy form: filename-only (requires additional lookup/download)." },
+          { "$ref": "AuthorityPackDocument.schema.json" }
+        ]
+      }
+    },
+    "gis_data": {
+      "type": "object",
+      "properties": {
+        "interactive_map_url": { "type": ["string", "null"] },
+        "source": { "type": ["string", "null"] },
+        "layers": {
+          "type": "array",
+          "items": { "$ref": "GISLayerRef.schema.json" }
+        }
+      }
+    },
+    "gis_sources": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": { "type": "string" },
+          "url": { "type": "string" },
+          "service_type": { "type": "string" },
+          "layers": {
+            "type": "array",
+            "items": { "$ref": "GISLayerRef.schema.json" }
+          }
+        },
+        "required": ["name", "url", "service_type"]
+      }
+    },
+    "policy_index": {
+      "type": "object",
+      "properties": {
+        "plan_name": { "type": "string" },
+        "adoption_date": { "type": ["string", "null"], "format": "date" },
+        "map_url": { "type": ["string", "null"] }
+      }
+    }
+  },
+  "required": ["id", "name", "documents"]
+}
+

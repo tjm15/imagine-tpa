@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScenarioDelta",
+  "type": "object",
+  "description": "A structured description of what changed between two scenarios, used for AI-assisted iteration and negotiation of alternatives.",
+  "properties": {
+    "scenario_delta_id": { "type": "string", "format": "uuid" },
+    "from_scenario_id": { "type": "string", "format": "uuid" },
+    "to_scenario_id": { "type": "string", "format": "uuid" },
+    "changes": { "type": "object", "description": "Machine-readable diff or patch-like structure." },
+    "delta_summary": { "type": "string" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    }
+  },
+  "required": ["scenario_delta_id", "from_scenario_id", "to_scenario_id", "changes"]
+}
+

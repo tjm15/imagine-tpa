@@ -1,0 +1,37 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "CuratedEvidenceSet",
+  "type": "object",
+  "description": "Evidence atoms curated for a run, mapped to issues, plus tool requests and deliberate omissions.",
+  "properties": {
+    "curated_evidence_set_id": { "type": "string", "format": "uuid" },
+    "evidence_atoms": {
+      "type": "array",
+      "items": { "$ref": "EvidenceAtom.schema.json" }
+    },
+    "evidence_by_issue": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue_id": { "type": "string", "format": "uuid" },
+          "evidence_atom_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        },
+        "required": ["issue_id", "evidence_atom_ids"]
+      }
+    },
+    "deliberate_omissions": {
+      "type": "array",
+      "items": { "$ref": "DeliberateOmission.schema.json" }
+    },
+    "tool_requests": {
+      "type": "array",
+      "items": { "$ref": "ToolRequest.schema.json" }
+    }
+  },
+  "required": ["curated_evidence_set_id", "evidence_atoms", "evidence_by_issue"]
+}
+

@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DraftBlockSuggestion",
+  "type": "object",
+  "description": "A structured suggestion suitable for insertion into the Living Document (ghost text/comment bubble).",
+  "properties": {
+    "suggestion_id": { "type": "string", "format": "uuid" },
+    "block_type": { "type": "string", "enum": ["heading", "paragraph", "bullets", "table", "figure", "callout", "other"] },
+    "content": { "type": "string" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    },
+    "assumption_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "limitations_text": { "type": ["string", "null"] },
+    "requires_judgement_run": {
+      "type": "boolean",
+      "description": "True if the suggestion contains or implies a recommendation/position that must be backed by a full grammar run before sign-off."
+    },
+    "insertion_hint": {
+      "type": "object",
+      "description": "Optional hint about where this block would go (e.g. section id or cursor position)."
+    }
+  },
+  "required": ["suggestion_id", "block_type", "content", "evidence_refs", "requires_judgement_run"]
+}
+

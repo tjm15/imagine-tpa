@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EvidenceCard",
+  "type": "object",
+  "description": "A UI-friendly, provenance-backed evidence summary card used in sheets and the dashboard sidebar.",
+  "properties": {
+    "card_id": { "type": "string", "format": "uuid" },
+    "card_type": {
+      "type": "string",
+      "enum": ["policy", "document", "map", "overlay", "instrument", "photo", "table", "chart", "note", "other"]
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    },
+    "artifact_ref": { "type": "string", "description": "Optional path/blob reference to a rendered artefact (image, overlay, chart, etc.)." },
+    "limitations_text": { "type": "string" }
+  },
+  "required": ["card_id", "card_type", "title", "evidence_refs"]
+}
+

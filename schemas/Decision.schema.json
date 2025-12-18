@@ -1,0 +1,15 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Decision",
+  "type": "object",
+  "description": "A DM decision outcome record (not a decision engine output).",
+  "properties": {
+    "decision_id": { "type": "string", "format": "uuid" },
+    "application_id": { "type": "string", "format": "uuid" },
+    "outcome": { "type": "string", "enum": ["approve", "refuse", "withdrawn", "undetermined"] },
+    "decision_date": { "type": ["string", "null"], "format": "date" },
+    "officer_report_document_id": { "type": ["string", "null"] }
+  },
+  "required": ["decision_id", "application_id", "outcome"]
+}
+

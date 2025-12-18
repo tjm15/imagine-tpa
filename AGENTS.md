@@ -387,12 +387,19 @@ Material considerations are produced here, but they do not replace the grammar.
 **Input:** weighing + negotiation + framing
 **Outputs:**
 
-* `Trajectory[]` (3–7) **tabs**, each explicitly conditional on a framing:
+* A set of **Scenario × Political Framing** tabs (`ScenarioSet` + `ScenarioFramingTab[]`), where each tab is a distinct, inspectable judgement surface.
+
+  * Tab count is `|scenarios| × |framings|` (the UI may filter/cluster tabs, but the underlying set is explicit).
+  * A user’s tab selection is always an explicit, auditable event (`AuditEvent`), never a silent agent choice.
+
+* For each Scenario × Political Framing tab:
+
+  * `Trajectory` (position statement), explicitly conditional:
 
   * “Under framing X, a reasonable position is…”
   * explicit assumptions and uncertainties
   * evidence card references
-* `ScenarioJudgementSheet` (renderable object for each trajectory/tab)
+  * `ScenarioJudgementSheet` (renderable object for that tab)
 
 ---
 
@@ -511,7 +518,7 @@ This maps directly to the GOV.UK “Create or update a local plan using the new 
 For each stage:
 
 * status and artefacts required (published / draft / blocked)
-* one or more **Scenario/Judgement Sheets** as tabs (3–7)
+* one or more **Scenario × Political Framing** tabs (each producing a `ScenarioJudgementSheet`)
 * evidence cards linked to underlying artefacts
 
 No “compare cockpit”; comparison happens by flipping tabs.

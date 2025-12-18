@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MonitoringEvent",
+  "type": "object",
+  "description": "A monitoring event ingested from live connectors (completions, appeals, S106, etc.).",
+  "properties": {
+    "monitoring_event_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": "string" },
+    "event_type": { "type": "string" },
+    "event_date": { "type": "string", "format": "date" },
+    "payload": { "type": "object" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    }
+  },
+  "required": ["monitoring_event_id", "authority_id", "event_type", "event_date"]
+}
+

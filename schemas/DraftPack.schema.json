@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "DraftPack",
+  "type": "object",
+  "description": "A quick-draft output bundle: structured suggestions + provenance pointers + tool runs used.",
+  "properties": {
+    "draft_pack_id": { "type": "string", "format": "uuid" },
+    "draft_request_id": { "type": "string", "format": "uuid" },
+    "status": { "type": "string", "enum": ["complete", "partial", "failed"] },
+    "suggestions": {
+      "type": "array",
+      "items": { "$ref": "DraftBlockSuggestion.schema.json" }
+    },
+    "tool_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["draft_pack_id", "draft_request_id", "status", "suggestions", "created_at"]
+}
+

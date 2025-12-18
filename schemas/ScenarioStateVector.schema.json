@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScenarioStateVector",
+  "type": "object",
+  "description": "A computable scenario representation (state vector) used for plan-making options and reasonable alternatives.",
+  "properties": {
+    "land_use_intentions": { "type": "object" },
+    "density_height_envelopes": { "type": "object" },
+    "transport_assumptions": { "type": "object" },
+    "policy_weightings": { "type": "object" },
+    "opportunity_constraint_signatures": { "type": "object" },
+    "strategic_goals": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "site_selection": {
+      "type": "object",
+      "description": "Scenario-defined site allocation and phasing choices (where applicable)."
+    }
+  }
+}
+

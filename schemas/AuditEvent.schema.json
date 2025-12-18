@@ -1,0 +1,21 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuditEvent",
+  "type": "object",
+  "description": "Immutable event log entry capturing user actions, agent actions, and system/tool activity for forensic replay in the dashboard.",
+  "properties": {
+    "event_id": { "type": "string", "format": "uuid" },
+    "timestamp": { "type": "string", "format": "date-time" },
+    "event_type": { "type": "string" },
+    "actor_type": { "type": "string", "enum": ["user", "agent", "system"] },
+    "actor_id": { "type": ["string", "null"] },
+    "run_id": { "type": ["string", "null"], "format": "uuid" },
+    "plan_project_id": { "type": ["string", "null"] },
+    "culp_stage_id": { "type": ["string", "null"] },
+    "scenario_id": { "type": ["string", "null"], "format": "uuid" },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "payload": { "type": "object" }
+  },
+  "required": ["event_id", "timestamp", "event_type", "actor_type"]
+}
+

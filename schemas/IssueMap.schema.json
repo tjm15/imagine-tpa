@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "IssueMap",
+  "type": "object",
+  "description": "Relationships between surfaced issues (clusters, dependencies, conflicts).",
+  "properties": {
+    "issue_map_id": { "type": "string", "format": "uuid" },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "src_issue_id": { "type": "string", "format": "uuid" },
+          "dst_issue_id": { "type": "string", "format": "uuid" },
+          "relation_type": {
+            "type": "string",
+            "enum": ["depends_on", "conflicts_with", "supports", "duplicates", "subset_of", "other"]
+          },
+          "justification": { "type": "string" }
+        },
+        "required": ["src_issue_id", "dst_issue_id", "relation_type"]
+      }
+    },
+    "clusters": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "cluster_id": { "type": "string", "format": "uuid" },
+          "label": { "type": "string" },
+          "issue_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        },
+        "required": ["cluster_id", "issue_ids"]
+      }
+    }
+  },
+  "required": ["issue_map_id", "edges"]
+}
+

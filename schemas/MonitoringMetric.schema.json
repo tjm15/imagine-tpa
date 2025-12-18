@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MonitoringMetric",
+  "type": "object",
+  "description": "A measured metric value used for monitoring, trend detection, and triggers.",
+  "properties": {
+    "metric_id": { "type": "string" },
+    "authority_id": { "type": "string" },
+    "period": { "type": "string", "description": "E.g. 2024-Q4, 2023-24, 2025-01." },
+    "value": {},
+    "unit": { "type": ["string", "null"] },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    }
+  },
+  "required": ["metric_id", "authority_id", "period", "value"]
+}
+

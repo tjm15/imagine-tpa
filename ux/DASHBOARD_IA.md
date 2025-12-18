@@ -3,6 +3,12 @@
 ## Core Principle
 The dashboard is a **Digital Case Officer**. It functions like a familiar document editor ("Smart Word") where the primary focus is always the deliverable.
 
+## Capability Navigation (Reasoning Chain)
+The dashboard exposes system functionality through a **Reasoning Chain** UI:
+`Evidence → Context → Patterns → Options → Tests → Judgement → Explanation`.
+
+This is a navigation model for capability modules (see `capabilities/CAPABILITIES_CATALOGUE.yaml`). It does **not** replace the frozen 8‑move grammar in `grammar/GRAMMAR.md`; judgement outputs are still produced and logged via the grammar and surfaced in Judgement Mode.
+
 ## Global Layout (The 70/30 Split)
 
 ### 1. The Workspace (70% - Left)
@@ -18,6 +24,7 @@ The dashboard is a **Digital Case Officer**. It functions like a familiar docume
     *   *Example*: If cursor is in "Highways", show "Local Plan Policy T1" and "Transport Assessment Key Data".
 *   **Evidence Shelf**:
     *   Draggable facts/citations. "Drag this 5YHLS figure into your report".
+    *   Evidence items are rendered as provenance-backed `EvidenceCard`s (`schemas/EvidenceCard.schema.json`).
 *   **Map Reference**:
     *   A mini-map card appearing at the top of the sidebar. Expandable if needed, but not the primary distinct view.
 
@@ -52,10 +59,15 @@ The dashboard is a **Digital Case Officer**. It functions like a familiar docume
     *   *Sidebar*: Shows "Map Layers" (Themes) instead of Smart Feed.
 *   **Judgement Mode**: replaces the Document pane with the **Infographic Sheet**.
     *   *Metaphor*: Tabbed Dashboard (Non-editable).
-    *   *Feature*: Tabs = Scenarios. Visualizes the logic chain for comparison (e.g., Option A vs B). Reviewers use this to "Sign Off" on the reasoning.
-*   **Reality Mode**:
-    *   *Metaphor*: Augmented Reality View.
-    *   *Feature*: Projects plan vectors (wireframes) onto site photos/street view ("Slice B").
+    *   *Feature*: Tabs = **Scenario × Political Framing** combinations (e.g., *Dispersed Growth × High-Growth framing*).
+      * Each tab is backed by:
+        * a `Scenario` + `ScenarioStateVector` (the option), and
+        * a `Framing` (the political lens),
+        * producing one `Trajectory` + `ScenarioJudgementSheet` for that combination.
+      * The system is heavily AI assisted: agents propose scenarios, compute deltas, run tools/tests, and draft the narrative — but the user’s selection of a tab is always an explicit, auditable event (no “silent” AI selection).
+    *   **Reality Mode**:
+        *   *Metaphor*: Augmented Reality View.
+        *   *Feature*: Projects plan vectors (wireframes) onto site photos/street view ("Slice B").
 
 ### 4. Navigation (Minimalist Header)
 *   **Project Breadcrumbs**: `Projects > TPA/2024/001 > Officer Report`.

@@ -6,10 +6,30 @@
         "title": {
             "type": "string"
         },
+        "scenario": {
+            "type": "object",
+            "description": "Optional scenario metadata for the tab this sheet represents.",
+            "properties": {
+                "scenario_id": { "type": "string", "format": "uuid" },
+                "title": { "type": "string" }
+            }
+        },
+        "framing": {
+            "type": "object",
+            "description": "Optional framing metadata for the tab this sheet represents.",
+            "properties": {
+                "framing_id": { "type": "string", "format": "uuid" },
+                "political_framing_id": { "type": "string" },
+                "frame_title": { "type": "string" }
+            }
+        },
         "sections": {
             "type": "object",
             "properties": {
                 "framing_summary": {
+                    "type": "string"
+                },
+                "scenario_summary": {
                     "type": "string"
                 },
                 "key_issues": {
@@ -20,9 +40,7 @@
                 },
                 "evidence_cards": {
                     "type": "array",
-                    "items": {
-                        "type": "object"
-                    }
+                    "items": { "$ref": "EvidenceCard.schema.json" }
                 },
                 "planning_balance": {
                     "type": "string"

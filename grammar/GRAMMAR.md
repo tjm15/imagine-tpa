@@ -16,7 +16,7 @@ This document defines the 8-move grammar that dictates the system's logic.
 ## 3. Evidence Curation
 **Goal**: Gather the facts required to assess the issues.
 * **Mechanism**: Retrieval (vector/hybrid/FTS) + Graph Traversal.
-* **Outputs**: `CuratedEvidenceSet` (atoms mapped to issues), `DeliberateOmissions` (what was ignored), `ToolRequests` (to fill gaps).
+* **Outputs**: `CuratedEvidenceSet` (atoms mapped to issues), `DeliberateOmissions` (what was ignored), `ToolRequest[]` (to fill gaps).
 
 ## 4. Evidence Interpretation (The Reasoning Engine)
 **Goal**: Make sense of the evidence employing statutory tests and heuristics.
@@ -45,5 +45,5 @@ This document defines the 8-move grammar that dictates the system's logic.
 ## 8. Positioning & Narration
 **Goal**: Tell the story.
 * **Mechanism**: Narrative generation conditional on the Framing and Weighing.
-* **Outputs**: `Trajectory[]` (Tabs), `ScenarioJudgementSheet` (The final renderable object).
-* **Key**: "Under framing X, a reasonable position is Y..."
+* **Outputs**: `Trajectory` + `ScenarioJudgementSheet` per **Scenario × Political Framing** tab.
+* **Key**: "Under framing X, for scenario S, a reasonable position is Y..."

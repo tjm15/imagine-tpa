@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EvidenceAtom",
+  "type": "object",
+  "description": "A minimal, directly sourced unit of evidence used by the grammar (chunk excerpt, spatial fact, overlay, instrument output, etc.).",
+  "properties": {
+    "evidence_atom_id": { "type": "string", "format": "uuid" },
+    "evidence_type": {
+      "type": "string",
+      "enum": [
+        "doc_chunk",
+        "policy_clause",
+        "spatial_feature",
+        "visual_asset",
+        "projection_artifact",
+        "instrument_output",
+        "user_provided",
+        "other"
+      ]
+    },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+    "metadata": { "type": "object" },
+    "limitations_text": { "type": "string" }
+  },
+  "required": ["evidence_atom_id", "evidence_type", "evidence_ref"]
+}
+

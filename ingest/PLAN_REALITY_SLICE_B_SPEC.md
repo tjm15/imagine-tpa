@@ -2,9 +2,13 @@
 
 This component handles the registration of "Plans" (PDF/Images) to "Reality" (GIS World).
 
+This is a **slice acceptance test spec**; see `tests/SLICES_SPEC.md` for how slices are used to drive implementation and testing.
+
 ## Requirements
 * **Tier 0 Registration**: Every visual asset must have a `Transform` (World Matrix) or a `Frame`.
-* **Sam2 Segmentation**: Use SAM2 to extract features from raster plans.
+* **SAM2 Segmentation (Raster)**: Use SAM2 to extract features from **raster** plans/images (north arrows, scale bars, boundaries, key symbols).
+  * This is implemented via the `SegmentationProvider` interface (see `platform/PROVIDER_INTERFACES.md`).
+  * Vector geoprocessing (buffers/intersections/tiling) is handled by GIS tools (PostGIS/GeoPandas/GDAL) and logged as `ToolRun`s, not by the segmentation provider.
 * **Overlays**: Must produce `ProjectionArtifact` (the plan warped onto the map).
 
 ## Uncertainty

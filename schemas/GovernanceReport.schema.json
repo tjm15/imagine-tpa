@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GovernanceReport",
+  "type": "object",
+  "description": "Governance/lint output for a run, including hard errors and soft warnings.",
+  "properties": {
+    "governance_report_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "hard_errors": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "move_id": { "type": ["string", "null"], "format": "uuid" }
+        },
+        "required": ["code", "message"]
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string" },
+          "message": { "type": "string" },
+          "evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "move_id": { "type": ["string", "null"], "format": "uuid" }
+        },
+        "required": ["code", "message"]
+      }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["governance_report_id", "run_id", "hard_errors", "warnings", "created_at"]
+}
+

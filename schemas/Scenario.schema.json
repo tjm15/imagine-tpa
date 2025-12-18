@@ -1,0 +1,30 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Scenario",
+  "type": "object",
+  "description": "A scenario option the user can compare and select between in the Spatial Strategy workspace.",
+  "properties": {
+    "scenario_id": { "type": "string", "format": "uuid" },
+    "plan_project_id": { "type": "string" },
+    "culp_stage_id": { "type": "string" },
+    "title": { "type": "string" },
+    "summary": { "type": "string" },
+    "state_vector": { "$ref": "ScenarioStateVector.schema.json" },
+    "parent_scenario_id": { "type": ["string", "null"], "format": "uuid" },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "candidate", "shortlisted", "selected", "archived"]
+    },
+    "created_by": {
+      "type": "string",
+      "enum": ["user", "agent", "system"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    }
+  },
+  "required": ["scenario_id", "title", "status", "created_by", "created_at"]
+}
+

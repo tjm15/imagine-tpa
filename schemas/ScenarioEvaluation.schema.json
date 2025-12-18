@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ScenarioEvaluation",
+  "type": "object",
+  "description": "Evidence-backed evaluation outputs for a scenario (yield, constraints, trade-offs, sustainability checks, etc.).",
+  "properties": {
+    "scenario_evaluation_id": { "type": "string", "format": "uuid" },
+    "scenario_id": { "type": "string", "format": "uuid" },
+    "summary": { "type": "string" },
+    "key_metrics": { "type": "object" },
+    "key_evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    },
+    "tool_run_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    }
+  },
+  "required": ["scenario_evaluation_id", "scenario_id"]
+}
+

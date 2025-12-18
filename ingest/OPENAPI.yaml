@@ -15,6 +15,74 @@ paths:
                 file:
                   type: string
                   format: binary
+  /ingest/application:
+    post:
+      summary: Upload and process an application bundle (DM)
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                application_id: { type: string }
+                authority_id: { type: string }
+                reference: { type: string }
+                files:
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+              required: [application_id, authority_id]
+  /ingest/authority_pack:
+    post:
+      summary: Ingest an authority pack manifest (documents + GIS sources)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                authority_pack_id: { type: string }
+                manifest: { type: object }
+              required: [authority_pack_id]
+  /ingest/monitoring/event:
+    post:
+      summary: Ingest a monitoring event (Monitoring & Delivery)
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                authority_id: { type: string }
+                event_type: { type: string }
+                event_date: { type: string, format: date }
+                payload: { type: object }
+              required: [authority_id, event_type, event_date]
+  /sync/connector/{connector_id}:
+    post:
+      summary: Trigger a connector sync run
+      parameters:
+        - in: path
+          name: connector_id
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                authority_id: { type: string }
+                since: { type: string, format: date-time }
+  /ingest/job/{job_id}:
+    get:
+      summary: Get ingestion job status
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string }
   /ingest/plan_reality:
     post:
       summary: Register a visual asset to world coordinates

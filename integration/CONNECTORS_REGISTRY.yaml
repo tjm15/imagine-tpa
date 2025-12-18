@@ -1,0 +1,83 @@
+version: 1
+connectors:
+  - id: bops
+    name: BOPS Connector
+    domain: development_management
+    direction: bidirectional
+    description: "Sync applications, documents, consultees, and outcomes."
+    required_config:
+      - base_url
+      - auth
+
+  - id: planx
+    name: PlanX Connector
+    domain: development_management
+    direction: inbound
+    description: "Import user-led enquiries, site constraint signals, and structured inputs."
+    required_config:
+      - base_url
+      - auth
+
+  - id: odp
+    name: Open Digital Planning (ODP) Connector
+    domain: spatial_strategy
+    direction: inbound
+    description: "Ingest ODP-aligned plan documents, policy datasets, design codes, and spatial data."
+    required_config:
+      - base_url
+      - auth
+
+  - id: monitoring_completions
+    name: Completions Connector
+    domain: monitoring_delivery
+    direction: inbound
+    description: "Ingest housing/employment completions feeds for live monitoring."
+    required_config:
+      - source_system
+      - auth
+
+  - id: monitoring_appeals
+    name: Appeals Connector
+    domain: monitoring_delivery
+    direction: inbound
+    description: "Ingest appeal decisions and overturn rates for trend detection."
+    required_config:
+      - source_system
+      - auth
+
+  - id: monitoring_s106
+    name: S106/CIL Connector
+    domain: monitoring_delivery
+    direction: inbound
+    description: "Ingest developer contributions data for delivery and infrastructure monitoring."
+    required_config:
+      - source_system
+      - auth
+
+  - id: planning_data_platform
+    name: planning.data.gov.uk Connector
+    domain: spatial_strategy
+    direction: inbound
+    description: "Ingest public planning datasets and designations (API/bulk)."
+    required_config:
+      - base_url
+      - dataset_allowlist
+
+  - id: ons
+    name: ONS Connector
+    domain: spatial_strategy
+    direction: inbound
+    description: "Ingest demographic and census statistics needed for baselining and monitoring."
+    required_config:
+      - base_url
+      - dataset_ids
+
+  - id: council_document_discovery
+    name: Council Document Discovery
+    domain: spatial_strategy
+    direction: inbound
+    description: "Governed web discovery/scraping to find plan PDFs and policy maps when no API exists."
+    required_config:
+      - authority_id
+      - domain_allowlist
+      - request_budget

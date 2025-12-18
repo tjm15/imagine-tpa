@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdoptionBaseline",
+  "type": "object",
+  "description": "A fixed baseline captured at adoption (policies map + key metrics) for divergence tracking.",
+  "properties": {
+    "adoption_baseline_id": { "type": "string", "format": "uuid" },
+    "authority_id": { "type": "string" },
+    "adoption_date": { "type": "string", "format": "date" },
+    "policies_map_ref": { "type": ["string", "null"] },
+    "metrics": { "type": "object" },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    }
+  },
+  "required": ["adoption_baseline_id", "authority_id", "adoption_date"]
+}
+

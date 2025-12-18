@@ -1,0 +1,8 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "EvidenceRef",
+  "type": "string",
+  "description": "Stable pointer to a source fragment in canonical storage or artefacts, formatted as {source_type}::{source_id}::{fragment_selector}. Example: doc::doc-123::page-4-para-2",
+  "pattern": "^[a-zA-Z0-9_-]+::[^:]+::.+$"
+}
+

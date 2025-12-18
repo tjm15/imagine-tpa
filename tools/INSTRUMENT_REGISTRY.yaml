@@ -16,3 +16,15 @@ instruments:
     type: "model_inference"
     description: "Urban simulation model for transport/land use."
     required_inputs: ["scenario_params"]
+
+  - id: sea_hra
+    name: "SEA/HRA Continuous Checks"
+    type: "internal_workflow"
+    description: "Runs continuous sustainability checks over emerging allocations and flags risks with limitations."
+    required_inputs: ["allocation_set_ref", "constraints_ref"]
+
+  - id: five_year_supply
+    name: "5-Year Land Supply Checker"
+    type: "internal_workflow"
+    description: "Computes an always-on 5YHLS status from trajectories and deliverability signals."
+    required_inputs: ["site_trajectory_ref", "deliverability_signals_ref"]

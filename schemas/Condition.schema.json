@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Condition",
+  "type": "object",
+  "description": "A draft or final planning condition linked to identified issues/harms.",
+  "properties": {
+    "condition_id": { "type": "string", "format": "uuid" },
+    "application_id": { "type": "string", "format": "uuid" },
+    "condition_text": { "type": "string" },
+    "reason_text": { "type": ["string", "null"] },
+    "status": { "type": "string", "enum": ["draft", "proposed", "final", "superseded"] },
+    "evidence_refs": {
+      "type": "array",
+      "items": { "$ref": "EvidenceRef.schema.json" }
+    }
+  },
+  "required": ["condition_id", "application_id", "condition_text", "status"]
+}
+

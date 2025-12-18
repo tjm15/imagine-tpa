@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AuthorityPackDocument",
+  "type": "object",
+  "description": "A document entry in an authority pack manifest (preferred v2 shape).",
+  "properties": {
+    "title": { "type": "string" },
+    "url": { "type": "string" },
+    "type": { "type": "string" },
+    "status": { "type": "string" },
+    "published_date": { "type": ["string", "null"], "format": "date" },
+    "file_path": { "type": ["string", "null"] }
+  },
+  "required": ["title", "url", "type"]
+}
+

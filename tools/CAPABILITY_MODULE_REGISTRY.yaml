@@ -1,0 +1,269 @@
+version: 1
+description: >
+  Registry of internal capability modules referenced by the public “Capabilities” model.
+  These are implemented as workflows/tools that must log `ToolRun` and produce provenance-backed outputs.
+
+modules:
+  - id: evidence_baselining_tool
+    name: Evidence & Baselining Tool
+    pipeline: spatial_strategy
+    phase: evidence
+    summary: "Ingest and normalize evidence feeds (GIS, datasets, topic papers) into a queryable baseline."
+    required_inputs:
+      - authority_id
+      - culp_stage_id
+    outputs:
+      - CuratedEvidenceSet
+      - EvidenceCard[]
+
+  - id: prep_risk_timetable_tool
+    name: Prep Risk & Timetable Tool
+    pipeline: spatial_strategy
+    phase: context
+    summary: "Assess plan readiness, critical path, and resourcing risk (Gateway-style diagnostic)."
+    required_inputs:
+      - authority_id
+      - culp_stage_id
+      - timetable_object
+    outputs:
+      - EvidenceCard[]
+      - ToolRun
+
+  - id: feedback_analysis_vision_tool
+    name: Feedback Analysis & Vision Tool
+    pipeline: spatial_strategy
+    phase: patterns
+    summary: "Cluster consultation responses into themes and generate interpretable vision artefacts."
+    required_inputs:
+      - authority_id
+      - consultation_corpus_ref
+    outputs:
+      - Interpretation[]
+      - EvidenceCard[]
+
+  - id: strategy_modeler
+    name: Strategy Modeler
+    pipeline: spatial_strategy
+    phase: options
+    summary: "Generate and compare spatial strategy scenarios and reasonable alternatives."
+    required_inputs:
+      - authority_id
+      - plan_project_id
+      - culp_stage_id
+      - framing_ids
+      - scenario_params
+      - spatial_constraints_ref
+    outputs:
+      - Scenario[]
+      - ScenarioSet
+      - ScenarioFramingTab[]
+      - Trajectory[]
+      - ScenarioJudgementSheet[]
+
+  - id: sea_hra_tool
+    name: SEA/HRA Tool
+    pipeline: spatial_strategy
+    phase: tests
+    summary: "Continuous sustainability checks (SEA/HRA style) over emerging allocations."
+    instrument_id: sea_hra
+    required_inputs:
+      - allocation_set_ref
+      - constraints_ref
+    outputs:
+      - InstrumentOutput
+      - Interpretation[]
+
+  - id: gateway_3_inspector
+    name: Gateway 3 Inspector
+    pipeline: spatial_strategy
+    phase: judgement
+    summary: "Pre-submission inspection simulation against soundness-style tests."
+    required_inputs:
+      - draft_plan_ref
+      - evidence_base_index_ref
+    outputs:
+      - GovernanceReport
+      - WeighingRecord
+
+  - id: policy_drafter
+    name: Policy Drafter
+    pipeline: spatial_strategy
+    phase: explanation
+    summary: "Generate policy wording and justification with clause-level provenance."
+    required_inputs:
+      - policy_intent
+      - supporting_evidence_refs
+    outputs:
+      - EvidenceCard[]
+      - ScenarioJudgementSheet
+
+  - id: application_intake
+    name: Application Intake
+    pipeline: development_management
+    phase: evidence
+    summary: "Extract key proposal metrics from submissions during validation."
+    required_inputs:
+      - application_id
+      - uploaded_documents_refs
+    outputs:
+      - ToolRun
+      - EvidenceCard[]
+
+  - id: context_analyzer
+    name: Context Analyzer
+    pipeline: development_management
+    phase: context
+    summary: "Compile site history, constraints, and precedents into a case context bundle."
+    required_inputs:
+      - application_id
+      - site_geometry_ref
+    outputs:
+      - CuratedEvidenceSet
+      - EvidenceCard[]
+
+  - id: risk_triage
+    name: Risk Triage
+    pipeline: development_management
+    phase: patterns
+    summary: "Identify material considerations and high-risk conflicts early."
+    required_inputs:
+      - application_id
+      - curated_evidence_set_id
+    outputs:
+      - Issue[]
+      - IssueMap
+
+  - id: negotiation_workspace
+    name: Negotiation Workspace
+    pipeline: development_management
+    phase: options
+    summary: "Track revisions, assess deltas, and verify delivery of requested changes."
+    required_inputs:
+      - application_id
+      - revision_refs
+    outputs:
+      - NegotiationMove[]
+      - ReasoningTrace[]
+
+  - id: condition_drafter
+    name: Condition Drafter
+    pipeline: development_management
+    phase: tests
+    summary: "Draft precise, enforceable planning conditions tied to identified harms."
+    required_inputs:
+      - application_id
+      - issues_in_play
+    outputs:
+      - EvidenceCard[]
+      - NegotiationMove[]
+
+  - id: planning_balance
+    name: Planning Balance
+    pipeline: development_management
+    phase: judgement
+    summary: "Support weighing of harms/benefits and defensible recommendation logic."
+    required_inputs:
+      - application_id
+      - consideration_ledger_entries
+    outputs:
+      - WeighingRecord
+      - ScenarioJudgementSheet
+
+  - id: report_generator
+    name: Report Generator
+    pipeline: development_management
+    phase: explanation
+    summary: "Draft officer report sections with citations and structured argument."
+    required_inputs:
+      - application_id
+      - judgement_outputs
+    outputs:
+      - ScenarioJudgementSheet
+      - EvidenceCard[]
+
+  - id: monitoring_connectors
+    name: Monitoring Connectors
+    pipeline: monitoring_delivery
+    phase: evidence
+    summary: "Connect to live delivery systems (completions, appeals, S106) to keep monitoring data current."
+    required_inputs:
+      - authority_id
+      - connector_config
+    outputs:
+      - ToolRun
+      - EvidenceCard[]
+
+  - id: adoption_tool
+    name: Adoption Tool
+    pipeline: monitoring_delivery
+    phase: context
+    summary: "Freeze an adoption baseline (policies map + key metrics) for divergence tracking."
+    required_inputs:
+      - authority_id
+      - adoption_date
+      - adopted_plan_ref
+    outputs:
+      - ToolRun
+      - EvidenceCard[]
+
+  - id: trend_analysis
+    name: Trend Analysis
+    pipeline: monitoring_delivery
+    phase: patterns
+    summary: "Detect divergence trends in monitoring metrics and flag emerging policy failures."
+    required_inputs:
+      - authority_id
+      - monitoring_timeseries_ref
+    outputs:
+      - Interpretation[]
+      - EvidenceCard[]
+
+  - id: trigger_engine
+    name: Trigger Engine
+    pipeline: monitoring_delivery
+    phase: options
+    summary: "Suggest interventions when thresholds are breached."
+    required_inputs:
+      - authority_id
+      - trigger_thresholds
+    outputs:
+      - NegotiationMove[]
+      - EvidenceCard[]
+
+  - id: supply_checker
+    name: Supply Checker
+    pipeline: monitoring_delivery
+    phase: tests
+    summary: "Compute continuous five-year land supply status from trajectories and deliverability signals."
+    instrument_id: five_year_supply
+    required_inputs:
+      - authority_id
+      - site_trajectory_ref
+      - deliverability_signals_ref
+    outputs:
+      - InstrumentOutput
+      - WeighingRecord
+
+  - id: year_4_evaluation_tool
+    name: Year-4 Evaluation Tool
+    pipeline: monitoring_delivery
+    phase: judgement
+    summary: "Structure Keep/Amend/Delete evaluation of policies from accumulated monitoring evidence."
+    required_inputs:
+      - authority_id
+      - monitoring_evidence_bundle_ref
+    outputs:
+      - WeighingRecord
+      - ScenarioJudgementSheet
+
+  - id: monitoring_builder
+    name: Monitoring Builder
+    pipeline: monitoring_delivery
+    phase: explanation
+    summary: "Draft AMR narrative and supporting tables from live data feeds."
+    required_inputs:
+      - authority_id
+      - reporting_period
+    outputs:
+      - ScenarioJudgementSheet
+      - EvidenceCard[]
