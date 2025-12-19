@@ -11,7 +11,7 @@ This spec defines the visual context layer as an evidence substrate and reasonin
 
 ## 1) Providers (by profile)
 * **Azure**: `VLMProvider = AzureOpenAI` (multimodal), `SegmentationProvider` (SAM2), optional `WebAutomationProvider` for web captures.
-* **OSS**: `VLMProvider = Qwen3‑VL`, `SegmentationProvider = SAM2`, optional `WebAutomationProvider` (Playwright-backed).
+* **OSS**: `VLMProvider = NVIDIA-Nemotron-Nano-12B-v2-VL-FP8`, `SegmentationProvider = SAM2`, optional `WebAutomationProvider` (Playwright-backed).
 
 All model outputs must be **structured JSON**, logged as `ToolRun` with prompt versioning where applicable.
 

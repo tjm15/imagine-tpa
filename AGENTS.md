@@ -124,7 +124,7 @@ This profile is deployable on your own hardware (home GPU or on-prem or any clou
 
 **Vision (VLM)**
 
-* **Qwen3‑VL** for multimodal understanding, spatial reasoning cues, plan reading ([Qwen][9])
+* **NVIDIA Nemotron-Nano-12B-v2-VL-FP8** for multimodal understanding, spatial reasoning cues, plan reading ([NVIDIA][9])
 
 **Segmentation**
 
@@ -570,7 +570,7 @@ This is the “contract pack” that freezes the system’s shape.
   * OSS profile: Docling ([IBM Research][17])
 * `ingest/VISUAL_SPEC.md`
 
-  * OSS: Qwen3‑VL ([Qwen][9])
+  * OSS: NVIDIA Nemotron-Nano-12B-v2-VL-FP8 ([NVIDIA][9])
   * OSS segmentation: SAM2 ([arXiv][10])
 * `ingest/RETRIEVAL_INDEX_SPEC.md`
 
@@ -629,7 +629,7 @@ This is the “contract pack” that freezes the system’s shape.
 # Part H — The “SOTA Dec 2025” stance in one line
 
 * **Azure profile** uses Azure AI Search hybrid retrieval ([Microsoft Learn][2]), Azure Document Intelligence ([Microsoft Azure][3]), and Azure OpenAI (Foundry Models) ([Microsoft Learn][4]) on Azure Container Apps ([Microsoft Learn][5]).
-* **OSS profile** uses Docling ([IBM Research][17]), SAM2 ([arXiv][10]), Qwen3‑VL ([Qwen][9]), Qwen3 Embedding + reranker family ([Qwen][8]), GPT-OSS ([GPT-OSS][11]), served via vLLM/SGLang ([GitHub][12]), orchestrated with LangGraph 1.0 ([LangChain Blog][13]).
+* **OSS profile** uses Docling ([IBM Research][17]), SAM2 ([arXiv][10]), NVIDIA Nemotron-Nano-12B-v2-VL-FP8 ([NVIDIA][9]), Qwen3 Embedding + reranker family ([Qwen][8]), GPT-OSS ([GPT-OSS][11]), served via vLLM/SGLang ([GitHub][12]), orchestrated with LangGraph 1.0 ([LangChain Blog][13]).
 
 ---
 
@@ -653,7 +653,7 @@ That gives you a stable mental map and prevents drift while keeping creativity f
 [6]: https://devblogs.microsoft.com/semantic-kernel/semantic-kernel-and-microsoft-agent-framework/?utm_source=chatgpt.com "Semantic Kernel and Microsoft Agent Framework"
 [7]: https://www.docling.ai/?utm_source=chatgpt.com "Docling - Open Source Document Processing for AI"
 [8]: https://qwenlm.github.io/blog/qwen3-embedding/?utm_source=chatgpt.com "Qwen3 Embedding: Advancing Text Embedding and ..."
-[9]: https://qwen.ai/blog?from=research.latest-advancements-list&id=99f0335c4ad9ff6153e517418d48535ab6d8afef&utm_source=chatgpt.com "Today, we officially launch the all-new Qwen3-VL ..."
+[9]: https://nvidia.github.io/nemotron/?utm_source=chatgpt.com "NVIDIA Nemotron-Nano-12B-v2-VL-FP8"
 [10]: https://arxiv.org/abs/2408.00714?utm_source=chatgpt.com "SAM 2: Segment Anything in Images and Videos"
 [11]: https://hf.co/openai/gpt-oss-20b "openai/gpt-oss-20b (model card)"
 [12]: https://github.com/vllm-project/vllm?utm_source=chatgpt.com "vllm-project/vllm: A high-throughput and memory-efficient ..."

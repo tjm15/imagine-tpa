@@ -158,7 +158,7 @@ LLMs propose tool requests; tools execute deterministically and are logged.
 OSS profile:
 * **Embeddings**: `Qwen/Qwen3-Embedding-*`
 * **Reranking**: `Qwen/Qwen3-Reranker-4B` (cross-encoder)
-* **VLM**: `Qwen3‑VL`
+* **VLM**: `NVIDIA-Nemotron-Nano-12B-v2-VL-FP8`
 * **Segmentation**: `SAM 2`
 * **Serving**: `vLLM` (LLM/VLM), TEI (embeddings/reranking)
 * **Orchestration**: `LangGraph 1.0`

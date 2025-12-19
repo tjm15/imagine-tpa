@@ -119,7 +119,7 @@ services:
       TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
       # Model IDs used in outbound requests (should match the served model IDs).
       TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
-      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-Qwen/Qwen3-VL-32B}
+      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
       TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
       TPA_RERANKER_MODEL_ID: ${TPA_RERANKER_MODEL_ID:-Qwen/Qwen3-Reranker-4B}
       # Optional (OSS dev): model supervisor auto-starts/stops model services so you don't run LLM+VLM simultaneously on one GPU.
@@ -234,8 +234,6 @@ services:
     # Start on-demand: `--profile llm up -d tpa-llm` (avoid running LLM+VLM simultaneously on a single GPU).
     profiles: ["llm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
-    # Run as non-root for security (vLLM supports this).
-    user: "${UID:-1000}:${GID:-1000}"
     command: >
       ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       --host 0.0.0.0
@@ -257,12 +255,11 @@ services:
     # Start on-demand: `--profile vlm up -d tpa-vlm` (avoid running LLM+VLM simultaneously on a single GPU).
     profiles: ["vlm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
-    # Run as non-root for security (vLLM supports this).
-    user: "${UID:-1000}:${GID:-1000}"
     command: >
-      ${TPA_VLM_MODEL_ID:-Qwen/Qwen3-VL-32B}
+      ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
       --host 0.0.0.0
       --port 8000
+      --trust-remote-code
       ${TPA_VLM_VLLM_ARGS:---max-num-seqs 1}
     environment:
       HF_HOME: /models/cache
