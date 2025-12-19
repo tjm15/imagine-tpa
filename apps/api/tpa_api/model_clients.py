@@ -11,7 +11,7 @@ def _llm_model_id() -> str:
 
 
 def _vlm_model_id() -> str:
-    return os.environ.get("TPA_VLM_MODEL_ID") or "Qwen/Qwen3-VL-30B"
+    return os.environ.get("TPA_VLM_MODEL_ID") or "Qwen/Qwen3-VL-32B"
 
 
 def _model_supervisor_headers() -> dict[str, str]:

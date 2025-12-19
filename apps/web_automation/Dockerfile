@@ -1,7 +1,15 @@
-ARG PLAYWRIGHT_IMAGE=mcr.microsoft.com/playwright:latest
-FROM ${PLAYWRIGHT_IMAGE}
+ARG NODE_IMAGE=node:22-alpine
+FROM ${NODE_IMAGE}
+
+# Install Playwright dependencies (includes Chromium, Firefox, WebKit)
+RUN apk add --no-cache \
+    libc6-compat \
+    ca-certificates
 
 WORKDIR /app
+
+COPY apps/web_automation/package.json* ./
+RUN if [ -f package.json ]; then npm ci --production; else npm install -g playwright; fi
 
 COPY apps/web_automation/server.mjs /app/server.mjs
 

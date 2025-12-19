@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+@theme {
+  /* The Planner's Assistant — Core Colour Palette */
+  
+  /* Primary - Deep Navy (Headings / Logos / Authority) */
+  --color-ink: #2a3a60;
+  --color-ink-light: #3d5178;
+  --color-ink-dark: #1f2b47;
+  
+  /* Accent - Bright Yellow (Highlights / Actions / Key Signals) */
+  --color-brand: #f5c315;
+  --color-brand-light: #f8d456;
+  --color-brand-dark: #d4a600;
+  
+  /* Secondary - Soft Teal (Tagline / Secondary Accents) */
+  --color-accent: #329c85;
+  --color-accent-light: #5eb5a2;
+  --color-accent-dark: #267a68;
+  
+  /* Background - Light Lavender-Grey (Panels / App Background) */
+  --color-surface: #e6e6ef;
+  --color-surface-light: #f3f3f8;
+  --color-surface-dark: #d4d4e0;
+  
+  /* Body Text / UI Chrome - Muted Grey-Blue */
+  --color-text: #545c6d;
+  --color-text-light: #707788;
+  --color-text-dark: #3d4352;
+  
+  /* Status colors */
+  --color-evidence: #059669; /* emerald-600 */
+  --color-evidence-light: #ecfdf5; /* emerald-50 */
+  
+  --color-warning: #ea580c; /* orange-600 */
+  --color-warning-light: #fff7ed; /* orange-50 */
+  
+  --color-stage: #f97316; /* orange-500 */
+  --color-stage-light: #fff7ed; /* orange-50 */
+  
+  --color-success: #10b981; /* emerald-500 */
+  --color-success-light: #ecfdf5; /* emerald-50 */
+  
+  /* Neutral scale - subtle greys for UI chrome */
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f3f3f8;
+  --color-neutral-200: #e6e6ef;
+  --color-neutral-300: #d4d4e0;
+  --color-neutral-400: #9a9fb0;
+  --color-neutral-500: #707788;
+  --color-neutral-600: #545c6d;
+  --color-neutral-700: #3d4352;
+  --color-neutral-800: #2a3a60;
+  --color-neutral-900: #1f2b47;
+  
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+/* Base Styles */
+@layer base {
+  :root {
+    --background: 230 230 239; /* Light lavender-grey */
+    --foreground: 216 221 233; /* Deep Navy for text */
+
+    --card: 0 0% 100%;
+    --card-foreground: 216 32% 27%; /* Deep Navy */
+ 
+    --popover: 0 0% 100%;
+    --popover-foreground: 216 32% 27%;
+ 
+    --primary: 42 90% 52%; /* Bright Yellow */
+    --primary-foreground: 216 32% 27%; /* Deep Navy on yellow */
+ 
+    --secondary: 169 51% 40%; /* Soft Teal */
+    --secondary-foreground: 0 0% 100%;
+ 
+    --muted: 230 230 239; /* Light lavender-grey */
+    --muted-foreground: 216 15% 38%; /* Muted Grey-Blue */
+ 
+    --accent: 169 51% 40%; /* Soft Teal */
+    --accent-foreground: 0 0% 100%;
+ 
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 230 12% 85%;
+    --input: 230 12% 85%;
+    --ring: 42 90% 52%; /* Bright Yellow */
+ 
+    --radius: 0.5rem;
+  }
+ 
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    color: var(--color-text);
+    background-color: var(--color-surface);
+  }
+}
+
+/* Utility for hiding scrollbar but allowing scroll */
+.scrollbar-hide::-webkit-scrollbar {
+    display: none;
+}
+.scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+}
