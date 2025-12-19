@@ -3,19 +3,29 @@ instruments:
     name: "DfT Connectivity Tool"
     type: "external_api"
     description: "Returns PTAL-like connectivity scores for a site."
-    required_inputs: ["lat", "lon"]
+    required_inputs: ["site_id", "lat", "lon"]
+    notes: "Provide either site_id (preferred, uses canonical geometry) OR lat+lon."
     
   - id: environment_agency_flood
     name: "EA Flood Risk"
     type: "external_api"
     description: "Returns flood zone designation."
-    required_inputs: ["polygon_wkt"]
+    required_inputs: ["site_id", "polygon_wkt", "polygon_geojson"]
+    notes: "Provide one of site_id OR polygon_wkt OR polygon_geojson."
     
   - id: casa_quant
     name: "CASA QUANT"
     type: "model_inference"
     description: "Urban simulation model for transport/land use."
     required_inputs: ["scenario_params"]
+
+  - id: townscape_vlm_assessment
+    name: "Townscape / Visual Impact Assessment (VLM)"
+    type: "model_inference"
+    description: "Produces planner-legible townscape/visual impact signals from plans, elevations, streetscape photos, and photomontages (may include quantitative proxies with explicit uncertainty)."
+    required_inputs:
+      - "visual_asset_refs"
+      - "viewpoint_context"
 
   - id: sea_hra
     name: "SEA/HRA Continuous Checks"

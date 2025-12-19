@@ -1,0 +1,81 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "RetrievalFrame",
+  "type": "object",
+  "description": "A persisted, move-specific retrieval plan for Context Assembly. It records what will be searched (and how) without claiming conclusions.",
+  "properties": {
+    "retrieval_frame_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "move_type": {
+      "type": "string",
+      "enum": [
+        "framing",
+        "issue_surfacing",
+        "evidence_curation",
+        "evidence_interpretation",
+        "considerations_formation",
+        "weighing_and_balance",
+        "negotiation_and_alteration",
+        "positioning_and_narration"
+      ]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "based_on_retrieval_frame_id": { "type": ["string", "null"], "format": "uuid" },
+    "budgets": {
+      "type": "object",
+      "description": "Budgets are advisory inputs to Context Assembly and downstream agents (tokens/time/candidate limits).",
+      "properties": {
+        "token_budget": { "type": ["integer", "null"], "minimum": 0 },
+        "time_budget_seconds": { "type": ["number", "null"], "minimum": 0 },
+        "max_candidates_per_query": { "type": ["integer", "null"], "minimum": 1 },
+        "max_atoms_per_issue": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "additionalProperties": true
+    },
+    "modalities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["text", "spatial", "visual", "instrument", "precedent", "consultation"]
+      }
+    },
+    "queries": {
+      "type": "array",
+      "description": "Query intents for candidate generation. Selection happens separately and must be logged.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue_id": { "type": ["string", "null"], "format": "uuid" },
+          "purpose": {
+            "type": "string",
+            "enum": ["primary", "countervailing", "contextual"]
+          },
+          "modality": {
+            "type": "string",
+            "enum": ["text", "spatial", "visual", "instrument", "precedent", "consultation"]
+          },
+          "query": { "type": "string" },
+          "filters": { "type": "object" },
+          "top_k": { "type": ["integer", "null"], "minimum": 1 }
+        },
+        "required": ["purpose", "modality", "query"]
+      }
+    },
+    "deliberate_omissions_policy": {
+      "type": "string",
+      "description": "How omissions should be recorded (e.g. duplicates excluded, out-of-scope plan cycles, insufficient provenance)."
+    },
+    "notes": { "type": ["string", "null"] },
+    "assumptions": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "uncertainty": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["move_type", "queries"]
+}
+

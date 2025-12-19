@@ -1,7 +1,11 @@
 name: tpa-oss
 
+# Recommended defaults: `restart: no` prevents ghost containers after crashes.
+# `init: true` ensures proper signal handling (SIGTERM/SIGKILL).
+# `user: "${UID:-1000}:${GID:-1000}"` runs as non-root (not needed for all services).
 x-service-defaults: &service_defaults
-  restart: unless-stopped
+  restart: "no"
+  init: true
 
 services:
   tpa-db:
@@ -136,6 +140,16 @@ services:
         condition: service_started
     ports:
       - "${TPA_API_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=2).read();\"",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
     <<: *service_defaults
 
   # --- OSS DocParseProvider (Docling) ---
@@ -158,7 +172,8 @@ services:
         NODE_IMAGE: ${TPA_UI_NODE_IMAGE:-node:alpine}
         NGINX_IMAGE: ${TPA_UI_NGINX_IMAGE:-nginx:alpine}
     depends_on:
-      - tpa-api
+      tpa-api:
+        condition: service_healthy
     ports:
       - "${TPA_UI_PORT:-3000}:80"
     <<: *service_defaults
@@ -166,6 +181,8 @@ services:
   # --- Model runtime supervisor (OSS single-user auto-start/stop) ---
   # Enable with: `--profile models-auto` and set `TPA_MODEL_SUPERVISOR_URL=http://tpa-model-supervisor:8091`
   # See: platform/MODEL_RUNTIME_SPEC.md
+  # NOTE: This service needs Docker socket access and should NOT have restart:unless-stopped
+  # to prevent ghost container issues. Use explicit restart policy override.
   tpa-model-supervisor:
     profiles: ["models-auto"]
     build:
@@ -188,7 +205,9 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       - tpa-api
-    <<: *service_defaults
+    # Explicitly use 'no' restart to prevent ghost containers (supervisor manages other containers).
+    restart: "no"
+    init: true
 
   # React/Vite dev server (hot reload). Bring up with: `--profile ui-dev`.
   # Prefer this for active UI work; `tpa-ui` is the production-like build.
@@ -215,6 +234,8 @@ services:
     # Start on-demand: `--profile llm up -d tpa-llm` (avoid running LLM+VLM simultaneously on a single GPU).
     profiles: ["llm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
+    # Run as non-root for security (vLLM supports this).
+    user: "${UID:-1000}:${GID:-1000}"
     command: >
       ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       --host 0.0.0.0
@@ -236,6 +257,8 @@ services:
     # Start on-demand: `--profile vlm up -d tpa-vlm` (avoid running LLM+VLM simultaneously on a single GPU).
     profiles: ["vlm", "models"]
     image: ${TPA_VLLM_IMAGE:-vllm/vllm-openai:latest}
+    # Run as non-root for security (vLLM supports this).
+    user: "${UID:-1000}:${GID:-1000}"
     command: >
       ${TPA_VLM_MODEL_ID:-Qwen/Qwen3-VL-30B}
       --host 0.0.0.0
@@ -254,12 +277,15 @@ services:
   tpa-embeddings:
     # Start on-demand: `--profile embeddings up -d tpa-embeddings`.
     profiles: ["embeddings", "models"]
-    image: ${TPA_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:turing-latest}
+    image: vllm/vllm-openai:latest
+    # Run as non-root for security (vLLM supports this).
+    user: "${UID:-1000}:${GID:-1000}"
+    command: --model ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B} --task embedding --trust-remote-code --max-model-len 32768 --port 8080
     environment:
-      MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
       HF_HOME: /models/cache
-    # Optional: enable GPU acceleration for embeddings (note: single-GPU installs should use the model supervisor to avoid VRAM contention).
+      HF_TOKEN: ${HF_TOKEN:-}
     gpus: all
+    shm_size: '8gb'
     ports:
       - "8030:8080"
     volumes:
@@ -271,6 +297,8 @@ services:
   tpa-reranker:
     profiles: ["reranker", "models"]
     image: ${TPA_TEI_IMAGE:-ghcr.io/huggingface/text-embeddings-inference:turing-latest}
+    # Run as non-root for security.
+    user: "${UID:-1000}:${GID:-1000}"
     environment:
       MODEL_ID: ${TPA_RERANKER_MODEL_ID:-Qwen/Qwen3-Reranker-4B}
       HF_HOME: /models/cache

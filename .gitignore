@@ -2,6 +2,7 @@
 authority_packs/
 national_policy/
 models/
+data/
 .env
 
 # Python

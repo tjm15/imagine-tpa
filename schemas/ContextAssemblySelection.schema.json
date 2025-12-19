@@ -1,0 +1,91 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextAssemblySelection",
+  "type": "object",
+  "description": "LLM-assisted selection over candidate evidence refs for Context Assembly. The system deterministically materialises EvidenceAtoms from the selected refs.",
+  "properties": {
+    "selections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "issue_id": { "type": "string", "format": "uuid" },
+          "supporting_evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "countervailing_evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "contextual_evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "deliberate_omissions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "description": { "type": "string" },
+                "reason": { "type": "string" },
+                "would_have_addressed_issue_ids": {
+                  "type": "array",
+                  "items": { "type": "string", "format": "uuid" }
+                }
+              },
+              "required": ["description", "reason"]
+            }
+          },
+          "tool_requests": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tool_name": { "type": "string" },
+                "instrument_id": { "type": "string" },
+                "purpose": { "type": "string" },
+                "blocking": { "type": "boolean" },
+                "inputs": { "type": "object" }
+              },
+              "required": ["purpose", "inputs"]
+            }
+          },
+          "notes": { "type": ["string", "null"] }
+        },
+        "required": ["issue_id"]
+      }
+    },
+    "global_deliberate_omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "description": { "type": "string" },
+          "reason": { "type": "string" },
+          "would_have_addressed_issue_ids": {
+            "type": "array",
+            "items": { "type": "string", "format": "uuid" }
+          }
+        },
+        "required": ["description", "reason"]
+      }
+    },
+    "global_tool_requests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "tool_name": { "type": "string" },
+          "instrument_id": { "type": "string" },
+          "purpose": { "type": "string" },
+          "blocking": { "type": "boolean" },
+          "inputs": { "type": "object" }
+        },
+        "required": ["purpose", "inputs"]
+      }
+    }
+  },
+  "required": ["selections"]
+}
+

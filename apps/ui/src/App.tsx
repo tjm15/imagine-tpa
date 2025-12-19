@@ -1926,13 +1926,13 @@ export default function App() {
 
         if (status === "running") {
           setLastIngestSummary(
-            `Ingest running · docs ${counts?.documents_seen ?? "?"} · chunks ${counts?.chunks ?? "?"}${currentDoc ? ` · ${currentDoc}` : ""}`,
+            `Ingest running · docs ${counts?.documents_seen ?? "?"} · chunks ${counts?.chunks ?? "?"} · policies ${counts?.policies_created ?? "?"}${currentDoc ? ` · ${currentDoc}` : ""}`,
           );
           continue;
         }
 
         setLastIngestSummary(
-          `Ingest ${status || "done"} · docs ${counts?.documents_created ?? "?"} · chunks ${counts?.chunks ?? "?"} · embeddings ${counts?.chunk_embeddings_inserted ?? "?"}`,
+          `Ingest ${status || "done"} · docs ${counts?.documents_created ?? "?"} · chunks ${counts?.chunks ?? "?"} · policies ${counts?.policies_created ?? "?"} · chunk_emb ${counts?.chunk_embeddings_inserted ?? "?"} · clause_emb ${counts?.policy_clause_embeddings_inserted ?? "?"}`,
         );
         return;
       }

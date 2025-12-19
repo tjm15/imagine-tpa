@@ -305,6 +305,34 @@ CREATE TABLE IF NOT EXISTS spatial_features (
   properties jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
+-- Precomputed spatial enrichment for a Site (Slice C).
+-- Stored as a logged fingerprint object with provenance (ToolRun) and optional plan-cycle scoping.
+CREATE TABLE IF NOT EXISTS site_fingerprints (
+  id uuid PRIMARY KEY,
+  site_id uuid NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+  plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL,
+  authority_id text,
+  fingerprint_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL,
+  is_current boolean NOT NULL DEFAULT true,
+  superseded_by_fingerprint_id uuid REFERENCES site_fingerprints (id) ON DELETE SET NULL,
+  confidence_hint text,
+  uncertainty_note text
+);
+
+CREATE INDEX IF NOT EXISTS site_fingerprints_site_idx
+  ON site_fingerprints (site_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS site_fingerprints_current_null_plan_unique
+  ON site_fingerprints (site_id)
+  WHERE is_current = true AND plan_cycle_id IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS site_fingerprints_current_plan_unique
+  ON site_fingerprints (site_id, plan_cycle_id)
+  WHERE is_current = true AND plan_cycle_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS plan_projects (
   id uuid PRIMARY KEY,
   authority_id text NOT NULL,
@@ -539,6 +567,55 @@ CREATE TABLE IF NOT EXISTS move_events (
 
 CREATE UNIQUE INDEX IF NOT EXISTS move_events_run_sequence_unique
   ON move_events (run_id, sequence);
+
+-- Context Assembly spine: persisted retrieval frames that can be refined over a run.
+-- These are not conclusions; they are logged plans for what evidence will be sought for a specific move.
+CREATE TABLE IF NOT EXISTS retrieval_frames (
+  id uuid PRIMARY KEY,
+  run_id uuid NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+  move_type text NOT NULL,
+  version integer NOT NULL,
+  is_current boolean NOT NULL DEFAULT true,
+  superseded_by_frame_id uuid REFERENCES retrieval_frames (id) ON DELETE SET NULL,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  frame_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS retrieval_frames_current_unique
+  ON retrieval_frames (run_id, move_type)
+  WHERE is_current = true;
+
+CREATE INDEX IF NOT EXISTS retrieval_frames_run_move_idx
+  ON retrieval_frames (run_id, move_type, version DESC);
+
+-- Executable evidence-gathering requests produced by Context Assembly (Move 3) and beyond.
+-- These are NOT tool runs; they are queued intentions that become ToolRuns when executed.
+CREATE TABLE IF NOT EXISTS tool_requests (
+  id uuid PRIMARY KEY,
+  run_id uuid NOT NULL REFERENCES runs (id) ON DELETE CASCADE,
+  move_event_id uuid REFERENCES move_events (id) ON DELETE SET NULL,
+  requested_by_move_type text,
+  tool_name text NOT NULL,
+  instrument_id text,
+  purpose text NOT NULL,
+  inputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  blocking boolean NOT NULL DEFAULT true,
+  status text NOT NULL DEFAULT 'pending',
+  created_at timestamptz NOT NULL,
+  started_at timestamptz,
+  completed_at timestamptz,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  outputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  evidence_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  error_text text
+);
+
+CREATE INDEX IF NOT EXISTS tool_requests_run_idx
+  ON tool_requests (run_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS tool_requests_status_idx
+  ON tool_requests (status);
 
 -- Explicit, legible junction: which evidence was relied on by which reasoning step.
 CREATE TABLE IF NOT EXISTS reasoning_evidence_links (

@@ -77,6 +77,11 @@ Goal: turn drawings, elevations, diagrams, streetscapes, and CGIs into **plannin
 * materiality and roofscape cues (always caveated)
 * design-code semantics (setbacks, active frontage, roof form, articulation)
 
+Townscape note (explicitly allowed):
+* Townscape assessment may produce **both qualitative judgements** (planner language) and **quantitative proxies** (e.g. estimated storeys, approximate height deltas, view occlusion ratios, skyline line-of-sight hits).
+* Quantitative proxies can be **model-derived estimates** or **deterministic calculations** where inputs exist; both are valid evidence instruments when logged.
+* These outputs are **never treated as determinations**. They must carry explicit limitations + uncertainty, and can later be improved via fine-tuning/finishing the townscape model.
+
 Outputs (minimum):
 * `VisualFeature[]` and/or `SegmentationMask[]` representing detected cues (with confidence + tool_run provenance)
 * `Interpretation[]` phrased as planner-legible statements (e.g., “appears 2–3 storeys above established ridge line”), with limitations

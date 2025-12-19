@@ -84,6 +84,20 @@ cp .env.example .env
 
 Edit `.env` (at minimum: Postgres + MinIO secrets).
 
+**Important for security and reliability:**
+Run the setup script to configure UID/GID for non-root containers:
+
+```bash
+./scripts/setup_env.sh
+```
+
+This sets `UID` and `GID` in your `.env` to your current user, ensuring model containers run as your user instead of root. This prevents:
+- Security issues (containers running as root)
+- Permission problems with volumes
+- Ghost container issues after Docker daemon crashes
+
+**Restart policy:** The compose file now uses `restart: no` by default instead of `restart: unless-stopped`. This prevents containers from automatically restarting after Docker daemon crashes, which was causing "ghost containers" that persisted in containerd but weren't visible to `docker ps`.
+
 ### Step 2.2 — Boot the OSS stack
 ```bash
 docker compose -f docker/compose.oss.yml up -d --build
@@ -101,10 +115,16 @@ If you see `tpa-minio-init` fail, it usually means MinIO wasn’t ready yet or c
 
 ### Step 2.3 — Verify
 * API health: `http://localhost:${TPA_API_PORT:-8000}/healthz`
+* API readiness (checks DB connectivity): `http://localhost:${TPA_API_PORT:-8000}/readyz`
 * UI: `http://localhost:${TPA_UI_PORT:-3000}`
 * Spec pack validation (file-level): `python scripts/validate_spec_pack.py --root .`
 
 The scaffold UI should show CULP stages and required artefacts (stage gate panel semantics).
+
+If the UI shows **502 Bad Gateway** on API calls:
+* Check the API directly: `curl -v http://localhost:${TPA_API_PORT:-8000}/healthz`
+* Check the UI proxy: `curl -v http://localhost:${TPA_UI_PORT:-3000}/api/healthz`
+* Inspect container logs: `docker compose -f docker/compose.oss.yml logs --tail=200 tpa-api tpa-ui`
 
 ### Step 2.4 — Boot the “full featureset” profiles (optional)
 This compose file includes opt-in profiles for heavier capabilities:
@@ -436,3 +456,58 @@ Goal:
 * Add real authority ingestion + PlanIt seeding for DM.
 
 This keeps the system implementable while preserving the planner-first UX.
+
+---
+
+## 12) Troubleshooting
+
+### Ghost containers (containers invisible to `docker ps` but still running)
+
+**Symptom:** You see processes running (e.g., vLLM using GPU memory), but `docker ps -a` shows no containers.
+
+**Cause:** After Docker daemon crashes or restarts, containers can persist in containerd but become invisible to Docker CLI. This was exacerbated by `restart: unless-stopped` policy.
+
+**Fix:**
+1. Run the cleanup script:
+   ```bash
+   ./scripts/cleanup_ghost_containers.sh
+   ```
+
+2. If that doesn't work, do a full containerd reset:
+   ```bash
+   sudo systemctl stop docker.socket docker.service containerd.service
+   sudo rm -rf /var/lib/containerd/io.containerd.metadata.v1.bolt/meta.db
+   sudo systemctl start containerd.service docker.service
+   ```
+
+**Prevention:** The compose file now uses `restart: no` by default, and all services have `init: true` for proper signal handling. This prevents ghost containers from forming.
+
+### Permission errors in model containers
+
+**Symptom:** Model containers fail to write to `/models/cache` or similar.
+
+**Cause:** Container is running as your user (UID/GID from `.env`), but the volume is owned by root.
+
+**Fix:**
+```bash
+./scripts/fix_volume_permissions.sh
+```
+
+This will set the correct ownership on the `tpa_models` volume.
+
+### Model supervisor keeps restarting containers
+
+**Symptom:** You stop containers with `docker compose down`, but they immediately restart.
+
+**Cause:** The model supervisor (`tpa-model-supervisor`) has Docker socket access and may be managing container lifecycle.
+
+**Fix:**
+1. Stop the model supervisor first:
+   ```bash
+   docker compose -f docker/compose.oss.yml stop tpa-model-supervisor
+   ```
+
+2. Then stop other containers:
+   ```bash
+   ./scripts/docker_down.sh
+   ```

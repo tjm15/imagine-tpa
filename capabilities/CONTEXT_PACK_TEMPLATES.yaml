@@ -1,0 +1,130 @@
+version: 1
+title: Context Pack Templates
+description: >
+  Planner-legible heuristics for Context Assembly. These templates guide retrieval-frame
+  generation and candidate coverage for different work modes and CULP stages.
+
+  They are deliberately "soft": they do not decide outcomes. They bias Context Assembly
+  toward reasonable evidence coverage (including counter-evidence) and executable
+  tool requests across text + spatial + visual modalities.
+
+  Modes:
+    - plan_studio: local plan / spatial strategy work (CULP aligned)
+    - casework: development management work (applications / officer reports)
+
+defaults:
+  max_global_queries_per_template: 8
+  max_instrument_hints_per_template: 6
+
+templates:
+  - template_id: plan_studio.baselining_and_place_portrait.evidence_curation.v1
+    mode: plan_studio
+    culp_stage_id: baselining_and_place_portrait
+    move_type: evidence_curation
+    global_queries:
+      - purpose: contextual
+        modality: text
+        query: "place portrait baseline evidence key issues"
+      - purpose: contextual
+        modality: text
+        query: "spatial strategy vision outcomes objectives"
+      - purpose: contextual
+        modality: text
+        query: "housing need supply trajectory delivery phasing"
+      - purpose: contextual
+        modality: text
+        query: "employment economy town centre hierarchy"
+      - purpose: contextual
+        modality: text
+        query: "transport accessibility public transport active travel"
+      - purpose: contextual
+        modality: text
+        query: "flood risk climate change adaptation drainage"
+      - purpose: contextual
+        modality: text
+        query: "heritage townscape character conservation area listed building"
+      - purpose: contextual
+        modality: text
+        query: "biodiversity nature recovery green infrastructure"
+    instrument_hints:
+      - instrument_id: dft_connectivity
+        purpose: "Quantify public transport connectivity / accessibility for relevant sites or focus areas."
+        when_issue_keywords: ["accessibility", "transport", "public transport", "bus", "rail", "connectivity", "ptal"]
+        blocking: false
+      - instrument_id: environment_agency_flood
+        purpose: "Retrieve flood zone / flood risk signals for relevant sites or focus areas."
+        when_issue_keywords: ["flood", "drainage", "surface water", "fluvial", "coastal", "sequential test"]
+        blocking: false
+      - instrument_id: townscape_vlm_assessment
+        purpose: "VLM-based townscape/visual assessment when plans/photos/photomontages exist."
+        when_issue_keywords: ["townscape", "heritage", "character", "design", "views", "skyline", "photomontage"]
+        blocking: false
+
+  - template_id: plan_studio.options_and_evidence_development.evidence_curation.v1
+    mode: plan_studio
+    culp_stage_id: options_and_evidence_development
+    move_type: evidence_curation
+    global_queries:
+      - purpose: contextual
+        modality: text
+        query: "reasonable alternatives appraisal methodology"
+      - purpose: contextual
+        modality: text
+        query: "site selection criteria constraints methodology"
+      - purpose: contextual
+        modality: text
+        query: "deliverability viability infrastructure funding phasing"
+      - purpose: contextual
+        modality: text
+        query: "highways capacity mitigation residual impacts"
+      - purpose: contextual
+        modality: text
+        query: "water wastewater capacity nutrients"
+      - purpose: contextual
+        modality: text
+        query: "habitats regulations assessment hra screening"
+      - purpose: contextual
+        modality: text
+        query: "strategic flood risk assessment sfra sequential test"
+    instrument_hints:
+      - instrument_id: dft_connectivity
+        purpose: "Connectivity evidence for option comparison."
+        when_issue_keywords: ["accessibility", "transport", "connectivity", "mode share", "ptal"]
+        blocking: false
+      - instrument_id: environment_agency_flood
+        purpose: "Flood evidence for option comparison."
+        when_issue_keywords: ["flood", "sequential test", "exception test", "sfra"]
+        blocking: false
+
+  - template_id: casework.default.evidence_curation.v1
+    mode: casework
+    culp_stage_id: null
+    move_type: evidence_curation
+    global_queries:
+      - purpose: contextual
+        modality: text
+        query: "material considerations policy compliance balance"
+      - purpose: contextual
+        modality: text
+        query: "design quality local character amenity daylight sunlight"
+      - purpose: contextual
+        modality: text
+        query: "heritage impact significance harm justification"
+      - purpose: contextual
+        modality: text
+        query: "highways safety access parking servicing"
+      - purpose: contextual
+        modality: text
+        query: "flood risk drainage sequential test"
+      - purpose: contextual
+        modality: text
+        query: "ecology biodiversity net gain mitigation"
+    instrument_hints:
+      - instrument_id: environment_agency_flood
+        purpose: "Flood zone signals for application sites."
+        when_issue_keywords: ["flood", "drainage", "surface water", "sequential test"]
+        blocking: false
+      - instrument_id: townscape_vlm_assessment
+        purpose: "VLM-based townscape/visual assessment for submitted visuals."
+        when_issue_keywords: ["design", "townscape", "heritage", "photomontage", "elevation", "street scene"]
+        blocking: false
