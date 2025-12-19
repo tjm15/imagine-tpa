@@ -1,0 +1,58 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* Custom Color Palette */
+  --color-accent: #329c85;
+  --color-ink: #2a3a60;
+  --color-ink-dark: #1f2b47;
+  --color-brand: #f5c315;
+  --color-brand-light: #f8d456;
+  --color-brand-dark: #d4a600;
+  --color-accent-light: #5eb5a2;
+  --color-accent-dark: #267a68;
+  --color-surface: #e6e6ef;
+  --color-surface-light: #f3f3f8;
+  --color-text: #545c6d;
+  --color-text-light: #707788;
+  --color-text-dark: #3d4352;
+  --color-warning: #ea580c;
+  --color-warning-light: #fff7ed;
+  --color-stage: #f97316;
+  --color-success: #10b981;
+  --color-success-light: #ecfdf5;
+
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f3f3f8;
+  --color-neutral-200: #e6e6ef;
+  --color-neutral-300: #d4d4e0;
+  --color-neutral-400: #9a9fb0;
+  --color-neutral-500: #707788;
+  --color-neutral-600: #545c6d;
+  --color-neutral-700: #3d4352;
+  --color-neutral-900: #1f2b47;
+}
+
+/* 
+  Tailwind v4 automatically handles preflight. 
+  Add any other custom base styles here if strictly necessary, 
+  but try to use utility classes.
+*/
+
+:root {
+    /* Expose theme colors as standard CSS variables for inline style usage */
+    --color-surface: #e6e6ef;
+    --color-surface-light: #f3f3f8;
+    --color-ink: #2a3a60;
+    --color-ink-dark: #1f2b47;
+    --color-accent: #329c85;
+    --color-brand: #f5c315;
+    --color-brand-light: #f8d456;
+    --color-text: #545c6d;
+    --color-text-light: #707788;
+    --color-text-dark: #3d4352;
+    --color-neutral-300: #d4d4e0;
+    --color-neutral-200: #e6e6ef;
+}
