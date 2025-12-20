@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from ..spec_io import _read_json, _read_yaml, _spec_root
+from ..services import spec as spec_service
 
 
 router = APIRouter(tags=["spec"])
@@ -11,49 +11,29 @@ router = APIRouter(tags=["spec"])
 
 @router.get("/spec/culp/process-model")
 def culp_process_model() -> JSONResponse:
-    root = _spec_root()
-    model_path = root / "culp" / "PROCESS_MODEL.yaml"
-    return JSONResponse(content=_read_yaml(model_path))
+    return spec_service.culp_process_model()
 
 
 @router.get("/spec/culp/artefact-registry")
 def culp_artefact_registry() -> JSONResponse:
-    root = _spec_root()
-    registry_path = root / "culp" / "ARTEFACT_REGISTRY.yaml"
-    return JSONResponse(content=_read_yaml(registry_path))
+    return spec_service.culp_artefact_registry()
 
 
 @router.get("/spec/authorities/selected")
 def selected_authorities() -> JSONResponse:
-    root = _spec_root()
-    selected_path = root / "authorities" / "SELECTED_AUTHORITIES.yaml"
-    return JSONResponse(content=_read_yaml(selected_path))
+    return spec_service.selected_authorities()
 
 
 @router.get("/spec/framing/political-framings")
 def political_framings() -> JSONResponse:
-    root = _spec_root()
-    framings_path = root / "framing" / "POLITICAL_FRAMINGS.yaml"
-    return JSONResponse(content=_read_yaml(framings_path))
+    return spec_service.political_framings()
 
 
 @router.get("/spec/schemas")
 def list_schemas() -> dict[str, list[str]]:
-    root = _spec_root()
-    schemas_dir = root / "schemas"
-    if not schemas_dir.exists():
-        raise HTTPException(status_code=404, detail="schemas directory missing in spec root")
-    names = sorted(p.name for p in schemas_dir.glob("*.schema.json"))
-    return {"schemas": names}
+    return spec_service.list_schemas()
 
 
 @router.get("/spec/schemas/{schema_name}")
 def get_schema(schema_name: str) -> JSONResponse:
-    if "/" in schema_name or ".." in schema_name:
-        raise HTTPException(status_code=400, detail="Invalid schema name")
-    root = _spec_root()
-    schema_path = root / "schemas" / schema_name
-    if not schema_path.name.endswith(".schema.json"):
-        raise HTTPException(status_code=400, detail="Schema name must end with .schema.json")
-    return JSONResponse(content=_read_json(schema_path))
-
+    return spec_service.get_schema(schema_name)

@@ -1,47 +1,36 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 import json
+import mimetypes
 import os
 import re
-import mimetypes
+import tempfile
 import threading
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
-from datetime import date, datetime, timezone
-
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from psycopg import errors as pg_errors
 
-from .api_utils import validate_uuid_or_400 as _validate_uuid_or_400
-from .blob_store import minio_client_or_none as _minio_client_or_none
-from .context_assembly import ContextAssemblyDeps, assemble_curated_evidence_set_sync
-from .chunking import _semantic_chunk_lines
-from .db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one, init_db_pool, shutdown_db_pool
-from .evidence import _ensure_evidence_ref_row, _parse_evidence_ref
-from .model_clients import (
-    _embed_texts,
-    _embed_texts_sync,
-    _ensure_model_role,
-    _ensure_model_role_sync,
-    _llm_model_id,
-    _rerank_texts_sync,
-    _vlm_model_id,
-)
-from .prompting import _llm_structured_sync
-from .retrieval import _gather_draft_evidence, _retrieve_chunks_hybrid_sync, _retrieve_policy_clauses_hybrid_sync
-from .spec_io import _read_json, _read_yaml, _spec_root
-from .text_utils import _extract_json_object
-from .time_utils import _utc_now, _utc_now_iso
-from .tool_requests import persist_tool_requests_for_move
-from .vector_utils import _vector_literal
-from .routes.retrieval_frames import router as retrieval_frames_router
-from .routes.tool_requests import router as tool_requests_router
+from ..api_utils import validate_uuid_or_400 as _validate_uuid_or_400
+from ..audit import _audit_event
+from ..blob_store import minio_client_or_none as _minio_client_or_none
+from ..chunking import _semantic_chunk_lines
+from ..db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one
+from ..evidence import _ensure_evidence_ref_row
+from ..model_clients import _embed_texts_sync
+from ..prompting import _llm_structured_sync
+from ..spec_io import _read_json, _read_yaml
+from ..time_utils import _utc_now
+from ..vector_utils import _vector_literal
 
 
 _POLICY_SPEECH_ACT_NORMATIVE_FORCE = {
@@ -383,7 +372,7 @@ def _extract_policies_from_document_chunks(
             return None
         pref = (m.group("ref") or "").strip()
         rest = (m.group("rest") or "").strip()
-        title = rest.lstrip(": -–—").strip() or None
+        title = rest.lstrip(": -\u2013\u2014").strip() or None
         return pref.upper(), title
 
     def looks_like_policy_code(text: str) -> bool:
@@ -1062,22 +1051,6 @@ def _extract_pdf_pages_text(*, path: Path) -> tuple[list[str], str, list[dict[st
     return page_texts, "pypdf", []
 
 
-app = FastAPI(title="TPA API (Scaffold)", version="0.0.0")
-
-
-@app.on_event("startup")
-def _startup_db_pool() -> None:
-    init_db_pool()
-
-
-@app.on_event("shutdown")
-def _shutdown_db_pool() -> None:
-    shutdown_db_pool()
-
-app.include_router(retrieval_frames_router)
-app.include_router(tool_requests_router)
-
-
 def _authority_packs_root() -> Path:
     return Path(os.environ.get("TPA_AUTHORITY_PACKS_ROOT", "/authority_packs")).resolve()
 
@@ -1093,2172 +1066,261 @@ def _load_authority_pack_manifest(authority_id: str) -> dict[str, Any]:
     raise HTTPException(status_code=404, detail=f"Authority pack manifest not found for '{authority_id}'")
 
 
+def _is_http_url(value: str | None) -> bool:
+    if not value or not isinstance(value, str):
+        return False
+    try:
+        parsed = urlparse(value)
+    except Exception:  # noqa: BLE001
+        return False
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
+
+
+def _sanitize_filename(value: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("-")
+    return cleaned or "document"
+
+
+def _derive_filename_for_url(url: str, *, content_type: str | None = None) -> str:
+    parsed = urlparse(url)
+    name = Path(parsed.path).name or "document"
+    name = _sanitize_filename(name)
+    stem = Path(name).stem or "document"
+    suffix = Path(name).suffix
+    if not suffix and content_type:
+        suffix = mimetypes.guess_extension(content_type.split(";")[0].strip()) or ""
+    if not suffix:
+        suffix = ".pdf"
+    digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:10]
+    return f"{stem}-{digest}{suffix}"
+
+
+def _web_automation_ingest_url(
+    *,
+    url: str,
+    ingest_batch_id: str,
+    timeout_seconds: float = 60.0,
+) -> dict[str, Any]:
+    base_url = os.environ.get("TPA_WEB_AUTOMATION_BASE_URL")
+    if not base_url:
+        return {"ok": False, "error": "web_automation_unconfigured"}
+
+    tool_run_id = str(uuid4())
+    started = _utc_now()
+    tool_run_inserted = False
+    try:
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, ingest_batch_id, tool_name, inputs_logged, outputs_logged, status,
+              started_at, ended_at, confidence_hint, uncertainty_note
+            )
+            VALUES (%s, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+            """,
+            (
+                tool_run_id,
+                ingest_batch_id,
+                "web_ingest",
+                json.dumps({"url": url, "base_url": base_url}, ensure_ascii=False),
+                json.dumps({}, ensure_ascii=False),
+                "running",
+                started,
+                "low",
+                "Web capture requested; awaiting response.",
+            ),
+        )
+        tool_run_inserted = True
+    except Exception:  # noqa: BLE001
+        tool_run_inserted = False
+
+    payload = {
+        "url": url,
+        "timeout_ms": int(timeout_seconds * 1000),
+        "max_bytes": int(os.environ.get("TPA_WEB_MAX_FETCH_BYTES", "12000000")),
+        "screenshot": False,
+    }
+
+    try:
+        with httpx.Client(timeout=timeout_seconds + 5.0) as client:
+            resp = client.post(base_url.rstrip("/") + "/ingest", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        if tool_run_inserted:
+            _db_execute(
+                """
+                UPDATE tool_runs
+                SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                    confidence_hint = %s, uncertainty_note = %s
+                WHERE id = %s::uuid
+                """,
+                (
+                    "error",
+                    json.dumps({"error": str(exc)}, ensure_ascii=False),
+                    _utc_now(),
+                    "low",
+                    "Web capture failed; check web automation service connectivity.",
+                    tool_run_id,
+                ),
+            )
+        return {"ok": False, "error": f"web_ingest_failed: {exc}", "tool_run_id": tool_run_id}
+
+    content_type = data.get("content_type")
+    content_type_norm = str(content_type or "").lower()
+    if "pdf" not in content_type_norm:
+        if tool_run_inserted:
+            _db_execute(
+                """
+                UPDATE tool_runs
+                SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                    confidence_hint = %s, uncertainty_note = %s
+                WHERE id = %s::uuid
+                """,
+                (
+                    "partial",
+                    json.dumps(
+                        {
+                            "content_type": content_type,
+                            "final_url": data.get("final_url"),
+                            "http_status": data.get("http_status"),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    _utc_now(),
+                    "low",
+                    "Web capture succeeded but did not return a PDF payload.",
+                    tool_run_id,
+                ),
+            )
+        return {
+            "ok": False,
+            "error": f"unsupported_content_type:{content_type}",
+            "tool_run_id": tool_run_id,
+        }
+
+    payload_b64 = data.get("content_base64")
+    if not isinstance(payload_b64, str) or not payload_b64:
+        if tool_run_inserted:
+            _db_execute(
+                """
+                UPDATE tool_runs
+                SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                    confidence_hint = %s, uncertainty_note = %s
+                WHERE id = %s::uuid
+                """,
+                (
+                    "error",
+                    json.dumps({"error": "missing_content_base64"}, ensure_ascii=False),
+                    _utc_now(),
+                    "low",
+                    "Web capture returned an empty payload.",
+                    tool_run_id,
+                ),
+            )
+        return {"ok": False, "error": "missing_content_base64", "tool_run_id": tool_run_id}
+
+    try:
+        data_bytes = base64.b64decode(payload_b64)
+    except Exception as exc:  # noqa: BLE001
+        if tool_run_inserted:
+            _db_execute(
+                """
+                UPDATE tool_runs
+                SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                    confidence_hint = %s, uncertainty_note = %s
+                WHERE id = %s::uuid
+                """,
+                (
+                    "error",
+                    json.dumps({"error": str(exc)}, ensure_ascii=False),
+                    _utc_now(),
+                    "low",
+                    "Web capture payload could not be decoded.",
+                    tool_run_id,
+                ),
+            )
+        return {"ok": False, "error": f"decode_failed:{exc}", "tool_run_id": tool_run_id}
+
+    if content_type_norm == "pdf":
+        content_type = "application/pdf"
+
+    outputs = {
+        "content_type": content_type,
+        "content_bytes": len(data_bytes),
+        "final_url": data.get("final_url"),
+        "requested_url": data.get("requested_url"),
+        "http_status": data.get("http_status"),
+        "limitations_text": data.get("limitations_text"),
+        "filename": data.get("filename"),
+    }
+    if tool_run_inserted:
+        _db_execute(
+            """
+            UPDATE tool_runs
+            SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                confidence_hint = %s, uncertainty_note = %s
+            WHERE id = %s::uuid
+            """,
+            (
+                "success",
+                json.dumps(outputs, ensure_ascii=False),
+                _utc_now(),
+                "medium",
+                "Web capture delivered a PDF payload; treat as evidence artefact.",
+                tool_run_id,
+            ),
+        )
+
+    return {
+        "ok": True,
+        "bytes": data_bytes,
+        "content_type": content_type,
+        "final_url": data.get("final_url") or url,
+        "requested_url": data.get("requested_url") or url,
+        "filename": data.get("filename"),
+        "limitations_text": data.get("limitations_text"),
+        "tool_run_id": tool_run_id,
+    }
+
+
 def _normalize_authority_pack_documents(manifest: dict[str, Any]) -> list[dict[str, Any]]:
     raw = manifest.get("documents", [])
     if raw is None:
         return []
     if isinstance(raw, list) and all(isinstance(x, str) for x in raw):
-        return [{"file_path": x, "title": Path(x).stem, "source": "authority_pack"} for x in raw]
+        out: list[dict[str, Any]] = []
+        for item in raw:
+            if _is_http_url(item):
+                title = Path(urlparse(item).path).stem or "document"
+                out.append({"file_path": None, "source_url": item, "title": title, "source": "web_automation"})
+            else:
+                out.append({"file_path": item, "title": Path(item).stem, "source": "authority_pack"})
+        return out
     if isinstance(raw, list) and all(isinstance(x, dict) for x in raw):
         out: list[dict[str, Any]] = []
         for d in raw:
             fp = d.get("file_path") or d.get("path") or d.get("file")
-            if not fp:
+            source_url = d.get("url") or d.get("source_url") or d.get("href")
+            if not fp and not source_url:
                 continue
+            title_hint = d.get("title")
+            if not title_hint:
+                if source_url:
+                    title_hint = Path(urlparse(str(source_url)).path).stem or "document"
+                elif fp:
+                    title_hint = Path(str(fp)).stem
             out.append(
                 {
                     "file_path": fp,
-                    "title": d.get("title") or Path(str(fp)).stem,
+                    "source_url": source_url,
+                    "title": title_hint,
                     "document_type": d.get("type") or d.get("document_type"),
-                    "source": d.get("source") or "authority_pack",
+                    "source": d.get("source") or ("web_automation" if source_url else "authority_pack"),
                     "published_date": d.get("published_date") or d.get("date"),
                 }
             )
         return out
     return []
-
-
-@app.get("/healthz")
-def healthz() -> dict[str, str]:
-    return {"status": "ok"}
-
-
-@app.get("/spec/culp/process-model")
-def culp_process_model() -> JSONResponse:
-    root = _spec_root()
-    model_path = root / "culp" / "PROCESS_MODEL.yaml"
-    return JSONResponse(content=_read_yaml(model_path))
-
-
-@app.get("/spec/culp/artefact-registry")
-def culp_artefact_registry() -> JSONResponse:
-    root = _spec_root()
-    registry_path = root / "culp" / "ARTEFACT_REGISTRY.yaml"
-    return JSONResponse(content=_read_yaml(registry_path))
-
-
-@app.get("/spec/authorities/selected")
-def selected_authorities() -> JSONResponse:
-    root = _spec_root()
-    selected_path = root / "authorities" / "SELECTED_AUTHORITIES.yaml"
-    return JSONResponse(content=_read_yaml(selected_path))
-
-
-@app.get("/spec/framing/political-framings")
-def political_framings() -> JSONResponse:
-    root = _spec_root()
-    framings_path = root / "framing" / "POLITICAL_FRAMINGS.yaml"
-    return JSONResponse(content=_read_yaml(framings_path))
-
-
-async def _llm_blocks(
-    *,
-    draft_request: dict[str, Any],
-    time_budget_seconds: float,
-    evidence_context: list[dict[str, Any]] | None = None,
-) -> list[dict[str, Any]] | None:
-    base_url = await _ensure_model_role(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
-    if not base_url:
-        return None
-
-    model = _llm_model_id()
-    timeout = min(max(time_budget_seconds, 1.0), 60.0)
-
-    system = (
-        "You are The Planner's Assistant. Produce a quick first draft for a UK planning professional. "
-        "You will be given an evidence_context list. When you make factual claims, cite relevant evidence "
-        "by including EvidenceRef strings in an 'evidence_refs' array per block. "
-        "Return ONLY valid JSON with this shape: "
-        "{ \"blocks\": [ {\"block_type\": \"heading|paragraph|bullets|callout|other\", \"content\": string, "
-        "\"evidence_refs\": string[], \"requires_judgement_run\": boolean } ] }. "
-        "Keep it concise and useful. Do not include markdown fences."
-    )
-    user = json.dumps({"draft_request": draft_request, "evidence_context": evidence_context or []}, ensure_ascii=False)
-
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 900,
-    }
-
-    url = base_url.rstrip("/") + "/chat/completions"
-    try:
-        async with httpx.AsyncClient(timeout=timeout) as client:
-            resp = await client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception:
-        return None
-
-    try:
-        content = data["choices"][0]["message"]["content"]
-    except Exception:
-        return None
-
-    obj = _extract_json_object(content)
-    if not obj:
-        return None
-    blocks = obj.get("blocks")
-    if not isinstance(blocks, list):
-        return None
-    cleaned: list[dict[str, Any]] = []
-    for b in blocks[:8]:
-        if not isinstance(b, dict):
-            continue
-        block_type = b.get("block_type")
-        content_text = b.get("content")
-        evidence_refs = b.get("evidence_refs")
-        requires = b.get("requires_judgement_run")
-        if block_type not in {"heading", "paragraph", "bullets", "callout", "other"}:
-            continue
-        if not isinstance(content_text, str) or not content_text.strip():
-            continue
-        if not isinstance(evidence_refs, list):
-            evidence_refs = []
-        cleaned_refs = [r for r in evidence_refs if isinstance(r, str) and "::" in r][:10]
-        if not isinstance(requires, bool):
-            requires = False
-        cleaned.append(
-            {
-                "block_type": block_type,
-                "content": content_text.strip(),
-                "evidence_refs": cleaned_refs,
-                "requires_judgement_run": bool(requires),
-            }
-        )
-    return cleaned or None
-
-
-@app.post("/draft")
-async def draft(request: dict[str, Any]) -> JSONResponse:
-    required = ["draft_request_id", "requested_at", "requested_by", "artefact_type", "time_budget_seconds"]
-    missing = [k for k in required if k not in request]
-    if missing:
-        raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
-
-    artefact_type = request.get("artefact_type")
-    time_budget_seconds = float(request.get("time_budget_seconds") or 10)
-
-    constraints = request.get("constraints") if isinstance(request.get("constraints"), dict) else {}
-    authority_id = constraints.get("authority_id") if isinstance(constraints.get("authority_id"), str) else None
-    plan_cycle_id = constraints.get("plan_cycle_id") if isinstance(constraints.get("plan_cycle_id"), str) else None
-    query_text = (request.get("user_prompt") or "") if isinstance(request.get("user_prompt"), str) else ""
-    if not query_text.strip():
-        query_text = str(artefact_type or "draft")
-    evidence_context = (
-        _gather_draft_evidence(authority_id=authority_id, plan_cycle_id=plan_cycle_id, query_text=query_text)
-        if authority_id
-        else []
-    )
-
-    llm_blocks = await _llm_blocks(
-        draft_request=request,
-        time_budget_seconds=time_budget_seconds,
-        evidence_context=evidence_context,
-    )
-    if llm_blocks is None:
-        llm_blocks = [
-            {
-                "block_type": "heading",
-                "content": "Draft (starter)",
-                "evidence_refs": [],
-                "requires_judgement_run": False,
-            },
-            {
-                "block_type": "paragraph",
-                "content": (
-                    "This is a quick draft starter intended for planner review. "
-                    "Next: bind claims to evidence cards and run a judgement pass where needed."
-                ),
-                "evidence_refs": [],
-                "requires_judgement_run": False,
-            },
-        ]
-
-    suggestions: list[dict[str, Any]] = []
-    for block in llm_blocks:
-        suggestions.append(
-            {
-                "suggestion_id": str(uuid4()),
-                "block_type": block["block_type"],
-                "content": block["content"],
-                "evidence_refs": block.get("evidence_refs", []) or [],
-                "assumption_ids": [],
-                "limitations_text": (
-                    None
-                    if block.get("requires_judgement_run") is False
-                    else "Requires a full judgement run before sign-off."
-                ),
-                "requires_judgement_run": bool(block.get("requires_judgement_run")),
-                "insertion_hint": {"artefact_type": artefact_type},
-            }
-        )
-
-    pack = {
-        "draft_pack_id": str(uuid4()),
-        "draft_request_id": request["draft_request_id"],
-        "status": "complete",
-        "suggestions": suggestions,
-        "tool_run_ids": [],
-        "created_at": _utc_now_iso(),
-    }
-    return JSONResponse(content=pack)
-
-
-@app.get("/spec/schemas")
-def list_schemas() -> dict[str, list[str]]:
-    root = _spec_root()
-    schemas_dir = root / "schemas"
-    if not schemas_dir.exists():
-        raise HTTPException(status_code=404, detail="schemas directory missing in spec root")
-    names = sorted(p.name for p in schemas_dir.glob("*.schema.json"))
-    return {"schemas": names}
-
-
-@app.get("/spec/schemas/{schema_name}")
-def get_schema(schema_name: str) -> JSONResponse:
-    if "/" in schema_name or ".." in schema_name:
-        raise HTTPException(status_code=400, detail="Invalid schema name")
-    root = _spec_root()
-    schema_path = root / "schemas" / schema_name
-    if not schema_path.name.endswith(".schema.json"):
-        raise HTTPException(status_code=400, detail="Schema name must end with .schema.json")
-    return JSONResponse(content=_read_json(schema_path))
-
-
-def _audit_event(
-    *,
-    event_type: str,
-    actor_type: str = "user",
-    actor_id: str | None = None,
-    run_id: str | None = None,
-    plan_project_id: str | None = None,
-    culp_stage_id: str | None = None,
-    scenario_id: str | None = None,
-    tool_run_id: str | None = None,
-    payload: dict[str, Any] | None = None,
-) -> None:
-    _db_execute(
-        """
-        INSERT INTO audit_events (
-          id, timestamp, event_type, actor_type, actor_id, run_id, plan_project_id,
-          culp_stage_id, scenario_id, tool_run_id, payload_jsonb
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb)
-        """,
-        (
-            str(uuid4()),
-            _utc_now(),
-            event_type,
-            actor_type,
-            actor_id,
-            run_id,
-            plan_project_id,
-            culp_stage_id,
-            scenario_id,
-            tool_run_id,
-            json.dumps(payload or {}, ensure_ascii=False),
-        ),
-    )
-
-
-class PlanCycleCreate(BaseModel):
-    authority_id: str
-    plan_name: str
-    status: str
-    weight_hint: str | None = None
-    effective_from: date | None = None
-    effective_to: date | None = None
-    supersede_existing: bool = Field(
-        default=False,
-        description="If true, deactivate any conflicting active plan cycle(s) for this authority (sets is_active=false and superseded_by_cycle_id).",
-    )
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-@app.post("/plan-cycles")
-def create_plan_cycle(body: PlanCycleCreate) -> JSONResponse:
-    now = _utc_now()
-    authority_id = (body.authority_id or "").strip()
-    if not authority_id:
-        raise HTTPException(status_code=400, detail="authority_id must not be empty")
-
-    plan_name = (body.plan_name or "").strip() or "Plan cycle"
-    status = _normalize_plan_cycle_status(body.status)
-    weight_hint = (body.weight_hint or "").strip().lower() if isinstance(body.weight_hint, str) and body.weight_hint.strip() else None
-
-    conflict_statuses = _plan_cycle_conflict_statuses(status)
-    conflicts: list[dict[str, Any]] = []
-    if conflict_statuses:
-        placeholders = ",".join(["%s"] * len(conflict_statuses))
-        conflicts = _db_fetch_all(
-            f"""
-            SELECT id, plan_name, status, weight_hint, updated_at
-            FROM plan_cycles
-            WHERE authority_id = %s
-              AND is_active = true
-              AND status IN ({placeholders})
-            ORDER BY updated_at DESC
-            """,
-            tuple([authority_id, *conflict_statuses]),
-        )
-        if conflicts and not body.supersede_existing:
-            existing_id = str(conflicts[0]["id"])
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"An active plan cycle already exists for authority '{authority_id}' with status in {set(conflict_statuses)} "
-                    f"(e.g. {existing_id}). Update/deactivate it, or retry with supersede_existing=true."
-                ),
-            )
-
-    new_id = str(uuid4())
-    try:
-        row = _db_execute_returning(
-            """
-            INSERT INTO plan_cycles (
-              id, authority_id, plan_name, status, weight_hint, effective_from, effective_to,
-              metadata_jsonb, created_at, updated_at
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-            RETURNING
-              id, authority_id, plan_name, status, weight_hint, effective_from, effective_to,
-              superseded_by_cycle_id, is_active, metadata_jsonb, created_at, updated_at
-            """,
-            (
-                new_id,
-                authority_id,
-                plan_name,
-                status,
-                weight_hint,
-                body.effective_from,
-                body.effective_to,
-                json.dumps(body.metadata, ensure_ascii=False),
-                now,
-                now,
-            ),
-        )
-    except pg_errors.UniqueViolation as exc:
-        # DB-level guard for race conditions and non-UI clients.
-        raise HTTPException(
-            status_code=409,
-            detail="Conflicting active plan cycle exists for this authority/status group. Deactivate it or supersede it.",
-        ) from exc
-
-    if conflicts and body.supersede_existing:
-        for c in conflicts:
-            try:
-                _db_execute(
-                    """
-                    UPDATE plan_cycles
-                    SET is_active = false, superseded_by_cycle_id = %s::uuid, updated_at = %s
-                    WHERE id = %s::uuid
-                    """,
-                    (new_id, now, str(c["id"])),
-                )
-            except Exception:  # noqa: BLE001
-                pass
-        _audit_event(
-            event_type="plan_cycle_superseded",
-            payload={
-                "authority_id": authority_id,
-                "new_plan_cycle_id": new_id,
-                "superseded_cycle_ids": [str(c["id"]) for c in conflicts],
-            },
-        )
-
-    _audit_event(
-        event_type="plan_cycle_created",
-        payload={"plan_cycle_id": str(row["id"]), "authority_id": row["authority_id"], "status": row["status"]},
-    )
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "plan_cycle_id": str(row["id"]),
-                "authority_id": row["authority_id"],
-                "plan_name": row["plan_name"],
-                "status": row["status"],
-                "weight_hint": row["weight_hint"],
-                "effective_from": row["effective_from"],
-                "effective_to": row["effective_to"],
-                "superseded_by_cycle_id": row["superseded_by_cycle_id"],
-                "is_active": row["is_active"],
-                "metadata": row["metadata_jsonb"] or {},
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-        )
-    )
-
-
-class PlanCyclePatch(BaseModel):
-    status: str | None = None
-    weight_hint: str | None = None
-    effective_from: date | None = None
-    effective_to: date | None = None
-    superseded_by_cycle_id: str | None = None
-    is_active: bool | None = None
-    metadata: dict[str, Any] | None = None
-
-
-@app.patch("/plan-cycles/{plan_cycle_id}")
-def patch_plan_cycle(plan_cycle_id: str, body: PlanCyclePatch) -> JSONResponse:
-    plan_cycle_id = _validate_uuid_or_400(plan_cycle_id, field_name="plan_cycle_id")
-    existing = _db_fetch_one(
-        "SELECT id, authority_id, status, is_active FROM plan_cycles WHERE id = %s::uuid",
-        (plan_cycle_id,),
-    )
-    if not existing:
-        raise HTTPException(status_code=404, detail="plan_cycle_id not found")
-
-    next_status = _normalize_plan_cycle_status(body.status) if body.status is not None else _normalize_plan_cycle_status(existing["status"])
-    next_is_active = bool(body.is_active) if body.is_active is not None else bool(existing["is_active"])
-    conflict_statuses = _plan_cycle_conflict_statuses(next_status)
-    if next_is_active and conflict_statuses:
-        placeholders = ",".join(["%s"] * len(conflict_statuses))
-        conflict = _db_fetch_one(
-            f"""
-            SELECT id
-            FROM plan_cycles
-            WHERE authority_id = %s
-              AND is_active = true
-              AND status IN ({placeholders})
-              AND id <> %s::uuid
-            LIMIT 1
-            """,
-            tuple([existing["authority_id"], *conflict_statuses, plan_cycle_id]),
-        )
-        if conflict:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"Cannot activate/set status to {set(conflict_statuses)}: another active plan cycle exists ({str(conflict['id'])}). "
-                    "Deactivate/supersede it first."
-                ),
-            )
-
-    now = _utc_now()
-    try:
-        row = _db_execute_returning(
-            """
-            UPDATE plan_cycles
-            SET
-              status = COALESCE(%s, status),
-              weight_hint = COALESCE(%s, weight_hint),
-              effective_from = COALESCE(%s, effective_from),
-              effective_to = COALESCE(%s, effective_to),
-              superseded_by_cycle_id = COALESCE(%s::uuid, superseded_by_cycle_id),
-              is_active = COALESCE(%s, is_active),
-              metadata_jsonb = COALESCE(%s::jsonb, metadata_jsonb),
-              updated_at = %s
-            WHERE id = %s::uuid
-            RETURNING
-              id, authority_id, plan_name, status, weight_hint, effective_from, effective_to,
-              superseded_by_cycle_id, is_active, metadata_jsonb, created_at, updated_at
-            """,
-            (
-                body.status,
-                body.weight_hint,
-                body.effective_from,
-                body.effective_to,
-                body.superseded_by_cycle_id,
-                body.is_active,
-                json.dumps(body.metadata, ensure_ascii=False) if body.metadata is not None else None,
-                now,
-                plan_cycle_id,
-            ),
-        )
-    except pg_errors.UniqueViolation as exc:
-        raise HTTPException(status_code=409, detail="Conflicting active plan cycle exists for this authority/status group.") from exc
-    _audit_event(
-        event_type="plan_cycle_updated",
-        payload={"plan_cycle_id": str(row["id"]), "changes": jsonable_encoder(body)},
-    )
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "plan_cycle_id": str(row["id"]),
-                "authority_id": row["authority_id"],
-                "plan_name": row["plan_name"],
-                "status": row["status"],
-                "weight_hint": row["weight_hint"],
-                "effective_from": row["effective_from"],
-                "effective_to": row["effective_to"],
-                "superseded_by_cycle_id": row["superseded_by_cycle_id"],
-                "is_active": row["is_active"],
-                "metadata": row["metadata_jsonb"] or {},
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-            }
-        )
-    )
-
-
-@app.get("/plan-cycles")
-def list_plan_cycles(authority_id: str | None = None, active_only: bool = True) -> JSONResponse:
-    where: list[str] = []
-    params: list[Any] = []
-    if authority_id:
-        where.append("authority_id = %s")
-        params.append(authority_id)
-    if active_only:
-        where.append("is_active = true")
-
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-    rows = _db_fetch_all(
-        f"""
-        SELECT
-          id, authority_id, plan_name, status, weight_hint, effective_from, effective_to,
-          superseded_by_cycle_id, is_active, metadata_jsonb, created_at, updated_at
-        FROM plan_cycles
-        {where_sql}
-        ORDER BY updated_at DESC
-        """,
-        tuple(params),
-    )
-    items = [
-        {
-            "plan_cycle_id": str(r["id"]),
-            "authority_id": r["authority_id"],
-            "plan_name": r["plan_name"],
-            "status": r["status"],
-            "weight_hint": r["weight_hint"],
-            "effective_from": r["effective_from"],
-            "effective_to": r["effective_to"],
-            "superseded_by_cycle_id": r["superseded_by_cycle_id"],
-            "is_active": r["is_active"],
-            "metadata": r["metadata_jsonb"] or {},
-            "created_at": r["created_at"],
-            "updated_at": r["updated_at"],
-        }
-        for r in rows
-    ]
-    return JSONResponse(content=jsonable_encoder({"plan_cycles": items}))
-
-
-class PlanProjectCreate(BaseModel):
-    authority_id: str
-    process_model_id: str
-    title: str
-    status: str = Field(default="draft")
-    current_stage_id: str | None = None
-    metadata: dict[str, Any] = Field(default_factory=dict)
-
-
-@app.post("/plan-projects")
-def create_plan_project(body: PlanProjectCreate) -> JSONResponse:
-    now = _utc_now()
-    row = _db_execute_returning(
-        """
-        INSERT INTO plan_projects (
-          id, authority_id, process_model_id, title, status, current_stage_id,
-          metadata_jsonb, created_at, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s)
-        RETURNING id, authority_id, process_model_id, title, status, current_stage_id, metadata_jsonb, created_at, updated_at
-        """,
-        (
-            str(uuid4()),
-            body.authority_id,
-            body.process_model_id,
-            body.title,
-            body.status,
-            body.current_stage_id,
-            json.dumps(body.metadata, ensure_ascii=False),
-            now,
-            now,
-        ),
-    )
-    _audit_event(
-        event_type="plan_project_created",
-        plan_project_id=str(row["id"]),
-        payload={"authority_id": body.authority_id, "process_model_id": body.process_model_id},
-    )
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "plan_project_id": str(row["id"]),
-                "authority_id": row["authority_id"],
-                "process_model_id": row["process_model_id"],
-                "title": row["title"],
-                "status": row["status"],
-                "current_stage_id": row["current_stage_id"],
-                "created_at": row["created_at"],
-                "updated_at": row["updated_at"],
-                "metadata": row["metadata_jsonb"] or {},
-            }
-        )
-    )
-
-
-@app.get("/plan-projects")
-def list_plan_projects(authority_id: str | None = None) -> JSONResponse:
-    if authority_id:
-        rows = _db_fetch_all(
-            """
-            SELECT id, authority_id, process_model_id, title, status, current_stage_id, metadata_jsonb, created_at, updated_at
-            FROM plan_projects
-            WHERE authority_id = %s
-            ORDER BY updated_at DESC
-            """,
-            (authority_id,),
-        )
-    else:
-        rows = _db_fetch_all(
-            """
-            SELECT id, authority_id, process_model_id, title, status, current_stage_id, metadata_jsonb, created_at, updated_at
-            FROM plan_projects
-            ORDER BY updated_at DESC
-            """
-        )
-    items = [
-        {
-            "plan_project_id": str(r["id"]),
-            "authority_id": r["authority_id"],
-            "process_model_id": r["process_model_id"],
-            "title": r["title"],
-            "status": r["status"],
-            "current_stage_id": r["current_stage_id"],
-            "created_at": r["created_at"],
-            "updated_at": r["updated_at"],
-            "metadata": r["metadata_jsonb"] or {},
-        }
-        for r in rows
-    ]
-    return JSONResponse(content=jsonable_encoder({"plan_projects": items}))
-
-
-@app.get("/scenarios")
-def list_scenarios(plan_project_id: str | None = None, culp_stage_id: str | None = None, limit: int = 100) -> JSONResponse:
-    limit = max(1, min(int(limit), 500))
-    where: list[str] = []
-    params: list[Any] = []
-    if plan_project_id:
-        where.append("plan_project_id = %s::uuid")
-        params.append(plan_project_id)
-    if culp_stage_id:
-        where.append("culp_stage_id = %s")
-        params.append(culp_stage_id)
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-
-    rows = _db_fetch_all(
-        f"""
-        SELECT
-          id, plan_project_id, culp_stage_id, title, summary,
-          state_vector_jsonb, parent_scenario_id, status, created_by, created_at, updated_at
-        FROM scenarios
-        {where_sql}
-        ORDER BY updated_at DESC
-        LIMIT %s
-        """,
-        tuple(params + [limit]),
-    )
-
-    items = [
-        {
-            "scenario_id": str(r["id"]),
-            "plan_project_id": str(r["plan_project_id"]),
-            "culp_stage_id": r["culp_stage_id"],
-            "title": r["title"],
-            "summary": r["summary"] or "",
-            "state_vector": r["state_vector_jsonb"] or {},
-            "parent_scenario_id": str(r["parent_scenario_id"]) if r["parent_scenario_id"] else None,
-            "status": r["status"],
-            "created_by": r["created_by"],
-            "created_at": r["created_at"],
-            "updated_at": r["updated_at"],
-        }
-        for r in rows
-    ]
-    return JSONResponse(content=jsonable_encoder({"scenarios": items}))
-
-
-@app.get("/scenario-sets")
-def list_scenario_sets(
-    plan_project_id: str | None = None,
-    culp_stage_id: str | None = None,
-    limit: int = 25,
-) -> JSONResponse:
-    limit = max(1, min(int(limit), 200))
-    where: list[str] = []
-    params: list[Any] = []
-    if plan_project_id:
-        where.append("plan_project_id = %s::uuid")
-        params.append(plan_project_id)
-    if culp_stage_id:
-        where.append("culp_stage_id = %s")
-        params.append(culp_stage_id)
-    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
-
-    rows = _db_fetch_all(
-        f"""
-        SELECT id, plan_project_id, culp_stage_id, tab_ids_jsonb, selected_tab_id, selected_at
-        FROM scenario_sets
-        {where_sql}
-        ORDER BY selected_at DESC NULLS LAST
-        LIMIT %s
-        """,
-        tuple(params + [limit]),
-    )
-    items = [
-        {
-            "scenario_set_id": str(r["id"]),
-            "plan_project_id": str(r["plan_project_id"]),
-            "culp_stage_id": r["culp_stage_id"],
-            "tab_count": len(r["tab_ids_jsonb"] or []),
-            "selected_tab_id": str(r["selected_tab_id"]) if r["selected_tab_id"] else None,
-            "selected_at": r["selected_at"],
-        }
-        for r in rows
-    ]
-    return JSONResponse(content=jsonable_encoder({"scenario_sets": items}))
-
-class ScenarioCreate(BaseModel):
-    plan_project_id: str
-    culp_stage_id: str
-    title: str
-    summary: str | None = None
-    state_vector: dict[str, Any] = Field(default_factory=dict)
-    parent_scenario_id: str | None = None
-    status: str = Field(default="draft")
-    created_by: str = Field(default="user")
-
-
-@app.post("/scenarios")
-def create_scenario(body: ScenarioCreate) -> JSONResponse:
-    now = _utc_now()
-    row = _db_execute_returning(
-        """
-        INSERT INTO scenarios (
-          id, plan_project_id, culp_stage_id, title, summary, state_vector_jsonb, parent_scenario_id,
-          status, created_by, created_at, updated_at
-        )
-        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s)
-        RETURNING id, plan_project_id, culp_stage_id, title, summary, state_vector_jsonb, parent_scenario_id, status, created_by, created_at
-        """,
-        (
-            str(uuid4()),
-            body.plan_project_id,
-            body.culp_stage_id,
-            body.title,
-            body.summary,
-            json.dumps(body.state_vector, ensure_ascii=False),
-            body.parent_scenario_id,
-            body.status,
-            body.created_by,
-            now,
-            now,
-        ),
-    )
-    _audit_event(
-        event_type="scenario_created",
-        plan_project_id=body.plan_project_id,
-        culp_stage_id=body.culp_stage_id,
-        scenario_id=str(row["id"]),
-        payload={"title": body.title},
-    )
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "scenario_id": str(row["id"]),
-                "plan_project_id": str(row["plan_project_id"]),
-                "culp_stage_id": row["culp_stage_id"],
-                "title": row["title"],
-                "summary": row["summary"] or "",
-                "state_vector": row["state_vector_jsonb"] or {},
-                "parent_scenario_id": row["parent_scenario_id"],
-                "status": row["status"],
-                "created_by": row["created_by"],
-                "created_at": row["created_at"],
-                "assumptions": [],
-            }
-        )
-    )
-
-
-class ScenarioSetCreate(BaseModel):
-    plan_project_id: str
-    culp_stage_id: str
-    scenario_ids: list[str]
-    political_framing_ids: list[str]
-
-
-@app.post("/scenario-sets")
-def create_scenario_set(body: ScenarioSetCreate) -> JSONResponse:
-    if not body.scenario_ids:
-        raise HTTPException(status_code=400, detail="scenario_ids must not be empty")
-    if not body.political_framing_ids:
-        raise HTTPException(status_code=400, detail="political_framing_ids must not be empty")
-
-    now = _utc_now()
-    scenario_set_id = str(uuid4())
-    tab_ids: list[str] = []
-
-    _db_execute(
-        """
-        INSERT INTO scenario_sets (
-          id, plan_project_id, culp_stage_id, political_framing_ids_jsonb, scenario_ids_jsonb, tab_ids_jsonb
-        )
-        VALUES (%s, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb)
-        """,
-        (
-            scenario_set_id,
-            body.plan_project_id,
-            body.culp_stage_id,
-            json.dumps(body.political_framing_ids, ensure_ascii=False),
-            json.dumps(body.scenario_ids, ensure_ascii=False),
-            "[]",
-        ),
-    )
-
-    for scenario_id in body.scenario_ids:
-        for framing_id in body.political_framing_ids:
-            tab_id = str(uuid4())
-            tab_ids.append(tab_id)
-            _db_execute(
-                """
-                INSERT INTO scenario_framing_tabs (
-                  id, scenario_set_id, scenario_id, political_framing_id, framing_id, run_id, status,
-                  trajectory_id, judgement_sheet_ref, updated_at
-                )
-                VALUES (%s, %s, %s, %s, NULL, NULL, %s, NULL, NULL, %s)
-                """,
-                (tab_id, scenario_set_id, scenario_id, framing_id, "queued", now),
-            )
-
-    _db_execute(
-        "UPDATE scenario_sets SET tab_ids_jsonb = %s::jsonb WHERE id = %s",
-        (json.dumps(tab_ids, ensure_ascii=False), scenario_set_id),
-    )
-
-    _audit_event(
-        event_type="scenario_set_created",
-        plan_project_id=body.plan_project_id,
-        culp_stage_id=body.culp_stage_id,
-        payload={"scenario_set_id": scenario_set_id, "tab_count": len(tab_ids)},
-    )
-
-    return get_scenario_set(scenario_set_id)
-
-
-@app.get("/scenario-sets/{scenario_set_id}")
-def get_scenario_set(scenario_set_id: str) -> JSONResponse:
-    row = _db_fetch_one(
-        """
-        SELECT id, plan_project_id, culp_stage_id, political_framing_ids_jsonb, scenario_ids_jsonb, tab_ids_jsonb,
-               selected_tab_id, selection_rationale, selected_at
-        FROM scenario_sets
-        WHERE id = %s
-        """,
-        (scenario_set_id,),
-    )
-    if not row:
-        raise HTTPException(status_code=404, detail="ScenarioSet not found")
-
-    tabs = _db_fetch_all(
-        """
-        SELECT id, scenario_set_id, scenario_id, political_framing_id, framing_id, run_id, status,
-               trajectory_id, judgement_sheet_ref, updated_at
-        FROM scenario_framing_tabs
-        WHERE scenario_set_id = %s
-        ORDER BY updated_at DESC
-        """,
-        (scenario_set_id,),
-    )
-
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "scenario_set": {
-                    "scenario_set_id": str(row["id"]),
-                    "plan_project_id": str(row["plan_project_id"]),
-                    "culp_stage_id": row["culp_stage_id"],
-                    "political_framing_ids": row["political_framing_ids_jsonb"] or [],
-                    "scenario_ids": row["scenario_ids_jsonb"] or [],
-                    "tab_ids": row["tab_ids_jsonb"] or [],
-                    "selected_tab_id": row["selected_tab_id"],
-                    "selection_rationale": row["selection_rationale"],
-                    "selected_at": row["selected_at"],
-                },
-                "tabs": [
-                    {
-                        "tab_id": str(t["id"]),
-                        "scenario_set_id": str(t["scenario_set_id"]),
-                        "scenario_id": str(t["scenario_id"]),
-                        "political_framing_id": t["political_framing_id"],
-                        "framing_id": t["framing_id"],
-                        "run_id": t["run_id"],
-                        "status": t["status"],
-                        "trajectory_id": t["trajectory_id"],
-                        "judgement_sheet_ref": t["judgement_sheet_ref"],
-                        "last_updated_at": t["updated_at"],
-                    }
-                    for t in tabs
-                ],
-            }
-        )
-    )
-
-
-class ScenarioTabSelection(BaseModel):
-    tab_id: str
-    selection_rationale: str | None = None
-
-
-@app.post("/scenario-sets/{scenario_set_id}/select-tab")
-def select_scenario_tab(scenario_set_id: str, body: ScenarioTabSelection) -> JSONResponse:
-    now = _utc_now()
-    _db_execute(
-        """
-        UPDATE scenario_sets
-        SET selected_tab_id = %s, selection_rationale = %s, selected_at = %s
-        WHERE id = %s
-        """,
-        (body.tab_id, body.selection_rationale, now, scenario_set_id),
-    )
-
-    row = _db_fetch_one("SELECT plan_project_id, culp_stage_id FROM scenario_sets WHERE id = %s", (scenario_set_id,))
-    if row:
-        _audit_event(
-            event_type="scenario_tab_selected",
-            plan_project_id=str(row["plan_project_id"]),
-            culp_stage_id=row["culp_stage_id"],
-            payload={"scenario_set_id": scenario_set_id, "tab_id": body.tab_id, "rationale": body.selection_rationale},
-        )
-    return get_scenario_set(scenario_set_id)
-
-
-class ScenarioTabRunRequest(BaseModel):
-    time_budget_seconds: float = Field(default=120.0, ge=5.0, le=900.0)
-    max_issues: int = Field(default=6, ge=2, le=12)
-    evidence_per_issue: int = Field(default=4, ge=1, le=10)
-    context_token_budget: int = Field(
-        default=128000,
-        ge=4096,
-        le=200000,
-        description="Advisory input context budget for Context Assembly (input tokens, not output tokens).",
-    )
-
-
-def _insert_move_event(
-    *,
-    run_id: str,
-    move_type: str,
-    sequence: int,
-    status: str,
-    inputs: dict[str, Any],
-    outputs: dict[str, Any],
-    evidence_refs_considered: list[str],
-    assumptions_introduced: list[dict[str, Any]],
-    uncertainty_remaining: list[str],
-    tool_run_ids: list[str],
-) -> str:
-    move_event_id = str(uuid4())
-    now = _utc_now()
-    _db_execute(
-        """
-        INSERT INTO move_events (
-          id, run_id, move_type, sequence, status, created_at, started_at, ended_at,
-          backtracked_from_move_id, backtrack_reason,
-          inputs_jsonb, outputs_jsonb, evidence_refs_considered_jsonb, assumptions_introduced_jsonb,
-          uncertainty_remaining_jsonb, tool_run_ids_jsonb
-        )
-        VALUES (%s, %s::uuid, %s, %s, %s, %s, %s, %s, NULL, NULL,
-                %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb)
-        """,
-        (
-            move_event_id,
-            run_id,
-            move_type,
-            sequence,
-            status,
-            now,
-            now,
-            now,
-            json.dumps(inputs, ensure_ascii=False),
-            json.dumps(outputs, ensure_ascii=False),
-            json.dumps(evidence_refs_considered[:200], ensure_ascii=False),
-            json.dumps(assumptions_introduced, ensure_ascii=False),
-            json.dumps(uncertainty_remaining[:20], ensure_ascii=False),
-            json.dumps(tool_run_ids, ensure_ascii=False),
-        ),
-    )
-    return move_event_id
-
-
-def _link_evidence_to_move(
-    *,
-    run_id: str,
-    move_event_id: str,
-    evidence_refs: list[str],
-    role: str,
-) -> None:
-    seen: set[tuple[str, str, str]] = set()
-    now = _utc_now()
-    for evidence_ref in evidence_refs:
-        evidence_ref_id = _ensure_evidence_ref_row(evidence_ref)
-        if not evidence_ref_id:
-            continue
-        key = (move_event_id, evidence_ref_id, role)
-        if key in seen:
-            continue
-        seen.add(key)
-        _db_execute(
-            """
-            INSERT INTO reasoning_evidence_links (id, run_id, move_event_id, evidence_ref_id, role, note, created_at)
-            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s, NULL, %s)
-            """,
-            (str(uuid4()), run_id, move_event_id, evidence_ref_id, role, now),
-        )
-
-
-def _build_evidence_cards_from_atoms(evidence_atoms: list[dict[str, Any]], limit: int = 6) -> list[dict[str, Any]]:
-    cards: list[dict[str, Any]] = []
-    for atom in evidence_atoms[: max(1, min(limit, 12))]:
-        ref = atom.get("evidence_ref")
-        if not isinstance(ref, str):
-            continue
-        title = atom.get("title") if isinstance(atom.get("title"), str) else "Evidence"
-        summary = atom.get("summary") if isinstance(atom.get("summary"), str) else ""
-        card: dict[str, Any] = {
-            "card_id": str(uuid4()),
-            "card_type": "document",
-            "title": title,
-            "summary": summary,
-            "evidence_refs": [ref],
-            "limitations_text": atom.get("limitations_text") if isinstance(atom.get("limitations_text"), str) else "",
-        }
-        artifact_ref = atom.get("artifact_ref")
-        if isinstance(artifact_ref, str) and artifact_ref:
-            card["artifact_ref"] = artifact_ref
-        cards.append(card)
-    return cards
-
-
-@app.post("/scenario-framing-tabs/{tab_id}/run")
-def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = None) -> JSONResponse:
-    body = body or ScenarioTabRunRequest()
-
-    tab = _db_fetch_one(
-        """
-        SELECT
-          t.id AS tab_id,
-          t.scenario_set_id,
-          t.scenario_id,
-          t.political_framing_id,
-          t.status AS tab_status,
-          ss.plan_project_id,
-          ss.culp_stage_id,
-          s.title AS scenario_title,
-          s.summary AS scenario_summary,
-          s.state_vector_jsonb,
-          pp.authority_id,
-          pp.metadata_jsonb->>'plan_cycle_id' AS plan_cycle_id
-        FROM scenario_framing_tabs t
-        JOIN scenario_sets ss ON ss.id = t.scenario_set_id
-        JOIN scenarios s ON s.id = t.scenario_id
-        JOIN plan_projects pp ON pp.id = ss.plan_project_id
-        WHERE t.id = %s::uuid
-        """,
-        (tab_id,),
-    )
-    if not tab:
-        raise HTTPException(status_code=404, detail="ScenarioFramingTab not found")
-
-    authority_id = tab["authority_id"]
-    plan_cycle_id = tab.get("plan_cycle_id")
-
-    # Framing preset from spec pack.
-    political_pack = _read_yaml(_spec_root() / "framing" / "POLITICAL_FRAMINGS.yaml")
-    framing_presets = political_pack.get("political_framings") if isinstance(political_pack, dict) else []
-    framing_preset = None
-    for f in framing_presets or []:
-        if isinstance(f, dict) and f.get("political_framing_id") == tab["political_framing_id"]:
-            framing_preset = f
-            break
-
-    scenario_title = tab.get("scenario_title") or "Scenario"
-    scenario_summary = tab.get("scenario_summary") or ""
-    framing_title = (framing_preset or {}).get("title") or tab["political_framing_id"]
-
-    run_id = str(uuid4())
-    now = _utc_now()
-    _db_execute(
-        """
-        INSERT INTO runs (id, profile, culp_stage_id, anchors_jsonb, created_at)
-        VALUES (%s, %s, %s, %s::jsonb, %s)
-        """,
-        (
-            run_id,
-            os.environ.get("TPA_PROFILE", "oss"),
-            tab.get("culp_stage_id"),
-            json.dumps(
-                {
-                    "tab_id": str(tab["tab_id"]),
-                    "scenario_set_id": str(tab["scenario_set_id"]),
-                    "scenario_id": str(tab["scenario_id"]),
-                    "political_framing_id": tab["political_framing_id"],
-                    "plan_project_id": str(tab["plan_project_id"]),
-                    "authority_id": authority_id,
-                    "plan_cycle_id": plan_cycle_id,
-                },
-                ensure_ascii=False,
-            ),
-            now,
-        ),
-    )
-
-    _audit_event(
-        event_type="scenario_tab_run_started",
-        run_id=run_id,
-        plan_project_id=str(tab["plan_project_id"]),
-        culp_stage_id=tab.get("culp_stage_id"),
-        scenario_id=str(tab["scenario_id"]),
-        payload={"tab_id": str(tab["tab_id"]), "political_framing_id": tab["political_framing_id"]},
-    )
-
-    sequence = 1
-    all_uncertainties: list[str] = []
-    all_tool_runs: list[str] = []
-
-    # --- Move 1: Framing (mostly deterministic; assumptions are explicit)
-    framing_obj = {
-        "frame_id": str(uuid4()),
-        "frame_title": f"{scenario_title} · {framing_title}",
-        "political_framing_id": tab["political_framing_id"],
-        "purpose": "Form a planner-legible position for the selected spatial strategy scenario under an explicit political framing.",
-        "scope": {
-            "area": authority_id,
-            "sites": [],
-            "time_horizon": tab.get("culp_stage_id") or "plan_period",
-        },
-        "decision_audience": "planner",
-        "explicit_goals": (framing_preset or {}).get("default_goals") or [],
-        "explicit_constraints": (framing_preset or {}).get("default_constraints") or [],
-        "non_goals": (framing_preset or {}).get("non_goals") or [],
-    }
-    assumptions: list[dict[str, Any]] = []
-    framing_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="framing",
-        sequence=sequence,
-        status="success",
-        inputs={
-            "scenario_id": str(tab["scenario_id"]),
-            "scenario_title": scenario_title,
-            "political_framing_id": tab["political_framing_id"],
-            "culp_stage_id": tab.get("culp_stage_id"),
-        },
-        outputs={"framing": framing_obj, "assumptions": assumptions},
-        evidence_refs_considered=[],
-        assumptions_introduced=assumptions,
-        uncertainty_remaining=[],
-        tool_run_ids=[],
-    )
-    sequence += 1
-
-    # --- Move 2: Issue surfacing (LLM-assisted; seeded by quick retrieval)
-    issue_retrieval = _retrieve_chunks_hybrid_sync(
-        query=f"{scenario_title}. {scenario_summary}".strip(),
-        authority_id=authority_id,
-        plan_cycle_id=plan_cycle_id,
-        limit=10,
-        rerank=True,
-        rerank_top_n=15,
-    )
-    issue_tool_ids = [issue_retrieval.get("tool_run_id"), issue_retrieval.get("rerank_tool_run_id")]
-    issue_tool_ids = [t for t in issue_tool_ids if isinstance(t, str)]
-    all_tool_runs.extend(issue_tool_ids)
-    seed_evidence = issue_retrieval.get("results") if isinstance(issue_retrieval, dict) else []
-    seed_evidence_refs = [r.get("evidence_ref") for r in seed_evidence if isinstance(r, dict)]
-    seed_evidence_refs = [r for r in seed_evidence_refs if isinstance(r, str)]
-
-    per_call_budget = max(6.0, float(body.time_budget_seconds) / 6.0)
-    issue_prompt = (
-        "You are the Scout agent for The Planner's Assistant.\n"
-        "Task: Surface the material planning issues for the scenario under the political framing.\n"
-        "Return ONLY valid JSON: {\"issues\": [...], \"issue_map\": {...}}.\n"
-        "Each issue: {\"title\": string, \"why_material\": string, \"initial_evidence_hooks\": [EvidenceRef...], "
-        "\"uncertainty_flags\": [string...] }.\n"
-        "IssueMap: {\"edges\": []} is acceptable.\n"
-        "Use EvidenceRef strings provided; do not invent citations.\n"
-        "Do not include markdown fences."
-    )
-    issue_json, issue_llm_tool_run_id, issue_errs = _llm_structured_sync(
-        prompt_id="orchestrator.issue_surfacing",
-        prompt_version=1,
-        prompt_name="Issue surfacing (spatial strategy)",
-        purpose="Abductively surface material issues under a political framing.",
-        system_template=issue_prompt,
-        user_payload={
-            "scenario": {
-                "title": scenario_title,
-                "summary": scenario_summary,
-                "state_vector": tab.get("state_vector_jsonb") or {},
-            },
-            "framing": framing_obj,
-            "seed_evidence": [
-                {
-                    "evidence_ref": r.get("evidence_ref"),
-                    "document_title": r.get("document_title"),
-                    "page_number": r.get("page_number"),
-                    "snippet": r.get("snippet"),
-                }
-                for r in (seed_evidence or [])[:10]
-                if isinstance(r, dict)
-            ],
-            "max_issues": body.max_issues,
-        },
-        time_budget_seconds=per_call_budget,
-        temperature=0.7,
-        max_tokens=1100,
-        output_schema_ref="schemas/Issue.schema.json",
-    )
-    if issue_llm_tool_run_id:
-        issue_tool_ids.append(issue_llm_tool_run_id)
-        all_tool_runs.append(issue_llm_tool_run_id)
-
-    issues_raw = issue_json.get("issues") if isinstance(issue_json, dict) else None
-    issues: list[dict[str, Any]] = []
-    if isinstance(issues_raw, list):
-        for i in issues_raw[: body.max_issues]:
-            if not isinstance(i, dict):
-                continue
-            title = i.get("title")
-            why = i.get("why_material")
-            hooks = i.get("initial_evidence_hooks")
-            if not isinstance(title, str) or not title.strip():
-                continue
-            if not isinstance(why, str) or not why.strip():
-                why = "Material to the selected framing and scenario."
-            if not isinstance(hooks, list):
-                hooks = []
-            clean_hooks = [h for h in hooks if isinstance(h, str) and "::" in h]
-            if not clean_hooks:
-                clean_hooks = seed_evidence_refs[:2]
-            issues.append(
-                {
-                    "issue_id": str(uuid4()),
-                    "title": title.strip(),
-                    "why_material": why.strip(),
-                    "initial_evidence_hooks": clean_hooks[:8],
-                    "uncertainty_flags": [u for u in (i.get("uncertainty_flags") or []) if isinstance(u, str)][:8]
-                    if isinstance(i.get("uncertainty_flags"), list)
-                    else [],
-                    "related_issues": [],
-                }
-            )
-
-    if not issues:
-        issues = [
-            {
-                "issue_id": str(uuid4()),
-                "title": "Deliverability and infrastructure capacity",
-                "why_material": "Whether the scenario can be delivered within the plan period with credible infrastructure pathways.",
-                "initial_evidence_hooks": seed_evidence_refs[:3],
-                "uncertainty_flags": ["Infrastructure evidence may be incomplete."],
-                "related_issues": [],
-            },
-            {
-                "issue_id": str(uuid4()),
-                "title": "Environmental and flood constraints",
-                "why_material": "Whether growth locations trigger significant environmental constraints and what mitigation would be required.",
-                "initial_evidence_hooks": seed_evidence_refs[1:4],
-                "uncertainty_flags": ["Constraint layers and plan maps not yet ingested."],
-                "related_issues": [],
-            },
-            {
-                "issue_id": str(uuid4()),
-                "title": "Accessibility and transport impacts",
-                "why_material": "Whether the scenario aligns with sustainable transport and avoids severe residual impacts.",
-                "initial_evidence_hooks": seed_evidence_refs[:2],
-                "uncertainty_flags": ["Transport evidence/instruments not yet run."],
-                "related_issues": [],
-            },
-        ]
-
-    issue_map = {"issue_map_id": str(uuid4()), "edges": []}
-
-    issue_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="issue_surfacing",
-        sequence=sequence,
-        status="success" if not issue_errs else "partial",
-        inputs={"framing": framing_obj, "seed_retrieval_tool_run_id": issue_retrieval.get("tool_run_id")},
-        outputs={"issues": issues, "issue_map": issue_map},
-        evidence_refs_considered=seed_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=["Issue surfacing is provisional; may shift after targeted evidence curation."],
-        tool_run_ids=issue_tool_ids,
-    )
-    _link_evidence_to_move(run_id=run_id, move_event_id=issue_move_id, evidence_refs=seed_evidence_refs, role="contextual")
-    sequence += 1
-
-    # --- Move 3: Evidence curation (Context Assembly v1)
-    context_deps = ContextAssemblyDeps(
-        db_fetch_one=_db_fetch_one,
-        db_fetch_all=_db_fetch_all,
-        db_execute=_db_execute,
-        llm_structured_sync=_llm_structured_sync,
-        retrieve_chunks_hybrid_sync=_retrieve_chunks_hybrid_sync,
-        retrieve_policy_clauses_hybrid_sync=_retrieve_policy_clauses_hybrid_sync,
-        utc_now_iso=_utc_now_iso,
-        utc_now=_utc_now,
-    )
-    context_result = assemble_curated_evidence_set_sync(
-        deps=context_deps,
-        run_id=run_id,
-        work_mode="plan_studio",
-        culp_stage_id=tab.get("culp_stage_id"),
-        authority_id=authority_id,
-        plan_cycle_id=plan_cycle_id,
-        scenario={
-            "scenario_id": str(tab["scenario_id"]),
-            "title": scenario_title,
-            "summary": scenario_summary,
-            "state_vector": tab.get("state_vector_jsonb") or {},
-        },
-        framing={
-            "political_framing_id": tab["political_framing_id"],
-            "title": framing_title,
-            "preset": framing_preset or {},
-            "framing": framing_obj,
-        },
-        issues=issues,
-        evidence_per_issue=body.evidence_per_issue,
-        token_budget=body.context_token_budget,
-        time_budget_seconds=body.time_budget_seconds,
-    )
-
-    curated_set = context_result.get("curated_evidence_set") if isinstance(context_result, dict) else None
-    if not isinstance(curated_set, dict):
-        curated_set = {
-            "curated_evidence_set_id": str(uuid4()),
-            "evidence_atoms": [],
-            "evidence_by_issue": [],
-            "deliberate_omissions": [],
-            "tool_requests": [],
-        }
-
-    evidence_atoms = curated_set.get("evidence_atoms") if isinstance(curated_set.get("evidence_atoms"), list) else []
-    curation_tool_run_ids = context_result.get("tool_run_ids") if isinstance(context_result.get("tool_run_ids"), list) else []
-    curation_tool_run_ids = [t for t in curation_tool_run_ids if isinstance(t, str)]
-    all_tool_runs.extend(curation_tool_run_ids)
-
-    curated_evidence_refs = [a.get("evidence_ref") for a in evidence_atoms if isinstance(a, dict)]
-    curated_evidence_refs = [r for r in curated_evidence_refs if isinstance(r, str)]
-
-    curation_errors = context_result.get("selection_errors") if isinstance(context_result, dict) else None
-    curation_errors = curation_errors if isinstance(curation_errors, list) else []
-    curation_status = "success"
-    if not evidence_atoms:
-        curation_status = "error"
-    elif curation_errors:
-        curation_status = "partial"
-
-    curation_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="evidence_curation",
-        sequence=sequence,
-        status=curation_status,
-        inputs={
-            "issues": issues,
-            "retrieval": {"plan_cycle_id": plan_cycle_id, "authority_id": authority_id},
-            "retrieval_frame_id": (context_result.get("retrieval_frame") or {}).get("retrieval_frame_id")
-            if isinstance(context_result, dict) and isinstance(context_result.get("retrieval_frame"), dict)
-            else None,
-        },
-        outputs={
-            "curated_evidence_set": curated_set,
-            "retrieval_frame": context_result.get("retrieval_frame") if isinstance(context_result, dict) else None,
-            "context_assembly_errors": curation_errors[:10],
-        },
-        evidence_refs_considered=curated_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=[
-            "Curated evidence is limited to authority pack PDFs and may omit datasets/appeals.",
-            "Evidence selection is LLM-assisted and normatively framed; planners may disagree about what is countervailing.",
-        ],
-        tool_run_ids=curation_tool_run_ids,
-    )
-    if isinstance(context_result, dict) and isinstance(context_result.get("evidence_roles"), dict):
-        roles = context_result.get("evidence_roles") or {}
-        for role in ("supporting", "countervailing", "contextual"):
-            evs = roles.get(role)
-            if isinstance(evs, list):
-                _link_evidence_to_move(run_id=run_id, move_event_id=curation_move_id, evidence_refs=[e for e in evs if isinstance(e, str)], role=role)
-    else:
-        _link_evidence_to_move(run_id=run_id, move_event_id=curation_move_id, evidence_refs=curated_evidence_refs, role="supporting")
-    sequence += 1
-
-    # Persist ToolRequests so they become executable evidence-gathering (not just JSON in MoveEvent outputs).
-    try:
-        tool_requests_payload = curated_set.get("tool_requests") if isinstance(curated_set, dict) else None
-        tool_requests_payload = tool_requests_payload if isinstance(tool_requests_payload, list) else []
-        persist_tool_requests_for_move(run_id=run_id, move_event_id=curation_move_id, tool_requests=tool_requests_payload)
-    except Exception:  # noqa: BLE001
-        pass
-
-    # --- Move 4: Evidence interpretation (LLM-assisted)
-    interp_prompt = (
-        "You are the Analyst agent for The Planner's Assistant.\n"
-        "Interpret evidence atoms into caveated claims.\n"
-        "Return ONLY valid JSON: {\"interpretations\": [...]}.\n"
-        "Each interpretation: {\"claim\": string, \"evidence_refs\": [EvidenceRef...], \"limitations_text\": string}.\n"
-        "Only use evidence_refs provided; do not invent citations.\n"
-        "Do not include markdown fences."
-    )
-    interp_json, interp_tool_run_id, interp_errs = _llm_structured_sync(
-        prompt_id="orchestrator.evidence_interpretation",
-        prompt_version=1,
-        prompt_name="Evidence interpretation (spatial strategy)",
-        purpose="Turn curated evidence atoms into explicit interpretations with limitations.",
-        system_template=interp_prompt,
-        user_payload={
-            "framing": framing_obj,
-            "issues": [{"issue_id": i["issue_id"], "title": i["title"], "why_material": i["why_material"]} for i in issues],
-            "evidence_atoms": [
-                {
-                    "evidence_ref": a.get("evidence_ref"),
-                    "evidence_type": a.get("evidence_type"),
-                    "title": a.get("title"),
-                    "summary": a.get("summary"),
-                    "excerpt_text": (a.get("metadata") or {}).get("excerpt_text") if isinstance(a.get("metadata"), dict) else None,
-                    "limitations_text": a.get("limitations_text"),
-                }
-                for a in evidence_atoms[:50]
-            ],
-        },
-        time_budget_seconds=per_call_budget,
-        temperature=0.6,
-        max_tokens=1300,
-        output_schema_ref="schemas/Interpretation.schema.json",
-    )
-    if interp_tool_run_id:
-        all_tool_runs.append(interp_tool_run_id)
-
-    interpretations: list[dict[str, Any]] = []
-    interp_raw = interp_json.get("interpretations") if isinstance(interp_json, dict) else None
-    if isinstance(interp_raw, list):
-        for it in interp_raw[:20]:
-            if not isinstance(it, dict):
-                continue
-            claim = it.get("claim")
-            refs = it.get("evidence_refs")
-            if not isinstance(claim, str) or not claim.strip():
-                continue
-            if not isinstance(refs, list):
-                refs = []
-            clean_refs = [r for r in refs if isinstance(r, str) and "::" in r][:10]
-            if not clean_refs:
-                continue
-            interpretations.append(
-                {
-                    "interpretation_id": str(uuid4()),
-                    "claim": claim.strip(),
-                    "evidence_refs": clean_refs,
-                    "assumptions_used": [],
-                    "limitations_text": it.get("limitations_text") if isinstance(it.get("limitations_text"), str) else "",
-                    "confidence": it.get("confidence") if isinstance(it.get("confidence"), (int, float)) else None,
-                }
-            )
-
-    if not interpretations:
-        interpretations = [
-            {
-                "interpretation_id": str(uuid4()),
-                "claim": "Retrieved evidence indicates relevant policy/supporting text exists, but interpretation requires planner review.",
-                "evidence_refs": curated_evidence_refs[:3],
-                "assumptions_used": [],
-                "limitations_text": "Fallback interpretation (LLM unavailable or failed).",
-                "confidence": None,
-            }
-        ]
-
-    interp_evidence_refs = sorted({r for it in interpretations for r in it.get("evidence_refs", []) if isinstance(r, str)})
-    interp_tool_ids = [t for t in [interp_tool_run_id] if isinstance(t, str)]
-    interpretation_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="evidence_interpretation",
-        sequence=sequence,
-        status="success" if not interp_errs else "partial",
-        inputs={"curated_evidence_set_id": curated_set["curated_evidence_set_id"]},
-        outputs={"interpretations": interpretations, "plan_reality_interpretations": [], "reasoning_traces": []},
-        evidence_refs_considered=interp_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=["Interpretations are caveated and may omit spatial/visual evidence (Slice I pending)."],
-        tool_run_ids=interp_tool_ids,
-    )
-    _link_evidence_to_move(run_id=run_id, move_event_id=interpretation_move_id, evidence_refs=interp_evidence_refs, role="supporting")
-    sequence += 1
-
-    # --- Move 5: Considerations formation (LLM-assisted ledger)
-    ledger_prompt = (
-        "You are the Analyst agent for The Planner's Assistant.\n"
-        "Form planner-recognisable considerations suitable for a ledger.\n"
-        "Return ONLY valid JSON: {\"consideration_ledger_entries\": [...]}.\n"
-        "Each entry: {\"statement\": string, \"premises\": [EvidenceRef...], \"mitigation_hooks\": [string...], "
-        "\"uncertainty_list\": [string...] }.\n"
-        "Only use premises from provided evidence_refs.\n"
-        "Do not include markdown fences."
-    )
-    ledger_json, ledger_tool_run_id, ledger_errs = _llm_structured_sync(
-        prompt_id="orchestrator.considerations_formation",
-        prompt_version=1,
-        prompt_name="Considerations formation (ledger)",
-        purpose="Turn interpretations into consideration ledger entries with premises.",
-        system_template=ledger_prompt,
-        user_payload={
-            "framing": framing_obj,
-            "issues": [{"issue_id": i["issue_id"], "title": i["title"]} for i in issues],
-            "interpretations": [{"claim": it["claim"], "evidence_refs": it["evidence_refs"]} for it in interpretations],
-        },
-        time_budget_seconds=per_call_budget,
-        temperature=0.55,
-        max_tokens=1500,
-        output_schema_ref="schemas/ConsiderationLedgerEntry.schema.json",
-    )
-    if ledger_tool_run_id:
-        all_tool_runs.append(ledger_tool_run_id)
-
-    ledger_entries: list[dict[str, Any]] = []
-    ledger_raw = ledger_json.get("consideration_ledger_entries") if isinstance(ledger_json, dict) else None
-    if isinstance(ledger_raw, list):
-        for e in ledger_raw[:30]:
-            if not isinstance(e, dict):
-                continue
-            st = e.get("statement")
-            premises = e.get("premises")
-            if not isinstance(st, str) or not st.strip():
-                continue
-            if not isinstance(premises, list):
-                premises = []
-            clean_premises = [p for p in premises if isinstance(p, str) and "::" in p][:12]
-            if not clean_premises:
-                continue
-            ledger_entries.append(
-                {
-                    "entry_id": str(uuid4()),
-                    "statement": st.strip(),
-                    "policy_clauses": e.get("policy_clauses") if isinstance(e.get("policy_clauses"), list) else [],
-                    "premises": clean_premises,
-                    "assumptions": [],
-                    "mitigation_hooks": e.get("mitigation_hooks") if isinstance(e.get("mitigation_hooks"), list) else [],
-                    "uncertainty_list": e.get("uncertainty_list") if isinstance(e.get("uncertainty_list"), list) else [],
-                }
-            )
-
-    if not ledger_entries:
-        ledger_entries = [
-            {
-                "entry_id": str(uuid4()),
-                "statement": "Consideration: relevance and implications of retrieved policy text must be applied to the scenario.",
-                "policy_clauses": [],
-                "premises": interp_evidence_refs[:3],
-                "assumptions": [],
-                "mitigation_hooks": [],
-                "uncertainty_list": ["Fallback ledger entry (LLM unavailable or failed)."],
-            }
-        ]
-
-    # Optional: material consideration seam table population.
-    for le in ledger_entries:
-        try:
-            _db_execute(
-                """
-                INSERT INTO material_considerations (
-                  id, run_id, move_event_id, consideration_type, statement, evidence_refs_jsonb,
-                  confidence_hint, uncertainty_note, created_at
-                )
-                VALUES (%s, %s::uuid, NULL, %s, %s, %s::jsonb, %s, %s, %s)
-                """,
-                (
-                    str(uuid4()),
-                    run_id,
-                    "other",
-                    le.get("statement"),
-                    json.dumps(le.get("premises") or [], ensure_ascii=False),
-                    None,
-                    None,
-                    _utc_now(),
-                ),
-            )
-        except Exception:  # noqa: BLE001
-            pass
-
-    ledger_evidence_refs = sorted({r for le in ledger_entries for r in le.get("premises", []) if isinstance(r, str)})
-    ledger_tool_ids = [t for t in [ledger_tool_run_id] if isinstance(t, str)]
-    ledger_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="considerations_formation",
-        sequence=sequence,
-        status="success" if not ledger_errs else "partial",
-        inputs={"interpretation_count": len(interpretations)},
-        outputs={"consideration_ledger_entries": ledger_entries},
-        evidence_refs_considered=ledger_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=["PolicyClause parsing is LLM-assisted and non-deterministic; verify clause boundaries and legal weight against the source plan cycle."],
-        tool_run_ids=ledger_tool_ids,
-    )
-    _link_evidence_to_move(run_id=run_id, move_event_id=ledger_move_id, evidence_refs=ledger_evidence_refs, role="supporting")
-    sequence += 1
-
-    # --- Move 6: Weighing & balance (LLM-assisted)
-    weighing_prompt = (
-        "You are the Judge agent for The Planner's Assistant.\n"
-        "Assign qualitative weights to considerations under the framing.\n"
-        "Return ONLY valid JSON: {\"weighing_record\": {...}}.\n"
-        "weighing_record must include: consideration_weights[{entry_id, weight, justification}], trade_offs[string], decisive_factors[entry_id], uncertainty_impact[string].\n"
-        "Do not include markdown fences."
-    )
-    weighing_json, weighing_tool_run_id, weighing_errs = _llm_structured_sync(
-        prompt_id="orchestrator.weighing_and_balance",
-        prompt_version=1,
-        prompt_name="Weighing & balance (qualitative)",
-        purpose="Make trade-offs explicit and assign planner-shaped weight under a framing.",
-        system_template=weighing_prompt,
-        user_payload={
-            "framing": framing_obj,
-            "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
-        },
-        time_budget_seconds=per_call_budget,
-        temperature=0.55,
-        max_tokens=1200,
-        output_schema_ref="schemas/WeighingRecord.schema.json",
-    )
-    if weighing_tool_run_id:
-        all_tool_runs.append(weighing_tool_run_id)
-
-    weighing_record: dict[str, Any] | None = weighing_json.get("weighing_record") if isinstance(weighing_json, dict) else None
-    if not isinstance(weighing_record, dict):
-        weighing_record = None
-
-    if weighing_record is None:
-        weights = []
-        for le in ledger_entries:
-            weights.append({"entry_id": le["entry_id"], "weight": "moderate", "justification": "Fallback weighting."})
-        weighing_record = {
-            "weighing_id": str(uuid4()),
-            "consideration_weights": weights,
-            "trade_offs": [],
-            "decisive_factors": [ledger_entries[0]["entry_id"]] if ledger_entries else [],
-            "uncertainty_impact": "Uncertainty reduces confidence in the balance; further evidence would strengthen the position.",
-        }
-    else:
-        weighing_record["weighing_id"] = str(uuid4())
-
-    weighing_tool_ids = [t for t in [weighing_tool_run_id] if isinstance(t, str)]
-    weighing_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="weighing_and_balance",
-        sequence=sequence,
-        status="success" if not weighing_errs else "partial",
-        inputs={"ledger_entry_count": len(ledger_entries)},
-        outputs={"weighing_record": weighing_record, "reasoning_traces": []},
-        evidence_refs_considered=ledger_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=["Balance is qualitative; planners may reasonably disagree on weight."],
-        tool_run_ids=weighing_tool_ids,
-    )
-    _link_evidence_to_move(run_id=run_id, move_event_id=weighing_move_id, evidence_refs=ledger_evidence_refs, role="contextual")
-    sequence += 1
-
-    # --- Move 7: Negotiation & alteration (LLM-assisted)
-    negotiation_prompt = (
-        "You are the Negotiator agent for The Planner's Assistant.\n"
-        "Propose alterations/mitigations that could improve the balance.\n"
-        "Return ONLY valid JSON: {\"negotiation_moves\": [...]}.\n"
-        "Each move: {\"proposed_alterations\": [string...], \"addressed_considerations\": [entry_id...], \"validation_evidence_needed\": [string...] }.\n"
-        "Do not include markdown fences."
-    )
-    negotiation_json, negotiation_tool_run_id, negotiation_errs = _llm_structured_sync(
-        prompt_id="orchestrator.negotiation_and_alteration",
-        prompt_version=1,
-        prompt_name="Negotiation & alteration",
-        purpose="Generate plausible alterations/mitigations with evidence needs.",
-        system_template=negotiation_prompt,
-        user_payload={
-            "framing": framing_obj,
-            "weighing_record": weighing_record,
-            "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
-        },
-        time_budget_seconds=per_call_budget,
-        temperature=0.6,
-        max_tokens=1100,
-        output_schema_ref="schemas/NegotiationMove.schema.json",
-    )
-    if negotiation_tool_run_id:
-        all_tool_runs.append(negotiation_tool_run_id)
-
-    negotiation_moves: list[dict[str, Any]] = []
-    neg_raw = negotiation_json.get("negotiation_moves") if isinstance(negotiation_json, dict) else None
-    if isinstance(neg_raw, list):
-        for m in neg_raw[:12]:
-            if not isinstance(m, dict):
-                continue
-            alterations = m.get("proposed_alterations")
-            addressed = m.get("addressed_considerations")
-            if not isinstance(alterations, list) or not all(isinstance(x, str) for x in alterations):
-                continue
-            if not isinstance(addressed, list):
-                addressed = []
-            addressed_ids = [x for x in addressed if isinstance(x, str)]
-            negotiation_moves.append(
-                {
-                    "negotiation_id": str(uuid4()),
-                    "proposed_alterations": alterations[:10],
-                    "addressed_considerations": addressed_ids[:20],
-                    "validation_evidence_needed": m.get("validation_evidence_needed")
-                    if isinstance(m.get("validation_evidence_needed"), list)
-                    else [],
-                }
-            )
-
-    if not negotiation_moves:
-        negotiation_moves = [
-            {
-                "negotiation_id": str(uuid4()),
-                "proposed_alterations": [],
-                "addressed_considerations": [],
-                "validation_evidence_needed": [],
-            }
-        ]
-
-    negotiation_tool_ids = [t for t in [negotiation_tool_run_id] if isinstance(t, str)]
-    negotiation_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="negotiation_and_alteration",
-        sequence=sequence,
-        status="success" if not negotiation_errs else "partial",
-        inputs={"weighing_id": weighing_record.get("weighing_id")},
-        outputs={"negotiation_moves": negotiation_moves},
-        evidence_refs_considered=ledger_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=["Negotiation moves are proposals; viability requires evidence and political judgement."],
-        tool_run_ids=negotiation_tool_ids,
-    )
-    sequence += 1
-
-    # --- Move 8: Positioning & narration (LLM-assisted, but deterministic sheet composition)
-    position_prompt = (
-        "You are the Scribe agent for The Planner's Assistant.\n"
-        "Write (1) a conditional position statement and (2) a concise planning balance narrative, both in UK planner tone.\n"
-        "Return ONLY valid JSON: {\"position_statement\": string, \"planning_balance\": string, \"uncertainty_summary\": [string...] }.\n"
-        "The position_statement must start with: \"Under framing ...\".\n"
-        "Do not include markdown fences."
-    )
-    position_json, position_tool_run_id, position_errs = _llm_structured_sync(
-        prompt_id="orchestrator.positioning_and_narration",
-        prompt_version=1,
-        prompt_name="Positioning & narration",
-        purpose="Produce a conditional position and narratable balance statement.",
-        system_template=position_prompt,
-        user_payload={
-            "scenario": {"title": scenario_title, "summary": scenario_summary},
-            "framing": framing_obj,
-            "weighing_record": weighing_record,
-            "negotiation_moves": negotiation_moves,
-        },
-        time_budget_seconds=max(per_call_budget, 10.0),
-        temperature=0.7,
-        max_tokens=1400,
-        output_schema_ref="schemas/Trajectory.schema.json",
-    )
-    if position_tool_run_id:
-        all_tool_runs.append(position_tool_run_id)
-
-    position_statement = (
-        position_json.get("position_statement")
-        if isinstance(position_json, dict) and isinstance(position_json.get("position_statement"), str)
-        else None
-    )
-    planning_balance = (
-        position_json.get("planning_balance")
-        if isinstance(position_json, dict) and isinstance(position_json.get("planning_balance"), str)
-        else None
-    )
-    uncertainty_summary = (
-        position_json.get("uncertainty_summary")
-        if isinstance(position_json, dict) and isinstance(position_json.get("uncertainty_summary"), list)
-        else []
-    )
-    uncertainty_summary = [u for u in uncertainty_summary if isinstance(u, str)][:10]
-
-    if not position_statement:
-        position_statement = f"Under framing {framing_title}, a reasonable position is to treat '{scenario_title}' as a draft starting point, subject to evidence-led refinement."
-    if not planning_balance:
-        planning_balance = "Planning balance narrative is pending (LLM unavailable or failed)."
-
-    evidence_cards = _build_evidence_cards_from_atoms(evidence_atoms, limit=6)
-    sheet = {
-        "title": f"{scenario_title} × {framing_title}",
-        "scenario": {"scenario_id": str(tab["scenario_id"]), "title": scenario_title},
-        "framing": {
-            "framing_id": framing_obj["frame_id"],
-            "political_framing_id": tab["political_framing_id"],
-            "frame_title": framing_obj["frame_title"],
-        },
-        "sections": {
-            "framing_summary": framing_obj.get("purpose") or "",
-            "scenario_summary": scenario_summary,
-            "key_issues": [i["title"] for i in issues][:12],
-            "evidence_cards": evidence_cards,
-            "planning_balance": planning_balance,
-            "conditional_position": position_statement,
-            "uncertainty_summary": uncertainty_summary,
-        },
-    }
-
-    trajectory_id = str(uuid4())
-    trajectory_obj = {
-        "trajectory_id": trajectory_id,
-        "scenario_id": str(tab["scenario_id"]),
-        "framing_id": framing_obj["frame_id"],
-        "position_statement": position_statement,
-        "explicit_assumptions": [],
-        "key_evidence_refs": curated_evidence_refs[:20],
-        "judgement_sheet_data": sheet,
-    }
-
-    # Persist trajectory and update tab.
-    _db_execute(
-        """
-        INSERT INTO trajectories (
-          id, scenario_id, framing_id, position_statement,
-          explicit_assumptions_jsonb, key_evidence_refs_jsonb, judgement_sheet_jsonb, created_at
-        )
-        VALUES (%s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)
-        """,
-        (
-            trajectory_id,
-            str(tab["scenario_id"]),
-            framing_obj["frame_id"],
-            position_statement,
-            json.dumps([], ensure_ascii=False),
-            json.dumps(curated_evidence_refs[:50], ensure_ascii=False),
-            json.dumps(sheet, ensure_ascii=False),
-            _utc_now(),
-        ),
-    )
-
-    _db_execute(
-        """
-        UPDATE scenario_framing_tabs
-        SET framing_id = %s, run_id = %s::uuid, status = %s, trajectory_id = %s::uuid,
-            judgement_sheet_ref = %s, updated_at = %s
-        WHERE id = %s::uuid
-        """,
-        (
-            framing_obj["frame_id"],
-            run_id,
-            "complete" if not position_errs else "partial",
-            trajectory_id,
-            f"trajectory::{trajectory_id}",
-            _utc_now(),
-            str(tab["tab_id"]),
-        ),
-    )
-
-    positioning_tool_ids = [t for t in [position_tool_run_id] if isinstance(t, str)]
-    positioning_move_id = _insert_move_event(
-        run_id=run_id,
-        move_type="positioning_and_narration",
-        sequence=sequence,
-        status="success" if not position_errs else "partial",
-        inputs={"scenario_id": str(tab["scenario_id"]), "political_framing_id": tab["political_framing_id"]},
-        outputs={"trajectory": trajectory_obj, "scenario_judgement_sheet": sheet},
-        evidence_refs_considered=curated_evidence_refs,
-        assumptions_introduced=[],
-        uncertainty_remaining=uncertainty_summary or ["Uncertainty remains; see evidence limitations and missing instruments."],
-        tool_run_ids=positioning_tool_ids,
-    )
-    _link_evidence_to_move(
-        run_id=run_id, move_event_id=positioning_move_id, evidence_refs=curated_evidence_refs[:50], role="supporting"
-    )
-
-    _audit_event(
-        event_type="scenario_tab_run_completed",
-        run_id=run_id,
-        plan_project_id=str(tab["plan_project_id"]),
-        culp_stage_id=tab.get("culp_stage_id"),
-        scenario_id=str(tab["scenario_id"]),
-        payload={"tab_id": str(tab["tab_id"]), "status": "complete" if not position_errs else "partial"},
-    )
-
-    return JSONResponse(
-        content=jsonable_encoder(
-            {
-                "tab_id": str(tab["tab_id"]),
-                "run_id": run_id,
-                "status": "complete" if not position_errs else "partial",
-                "trajectory_id": trajectory_id,
-                "sheet": sheet,
-                "move_event_ids": [
-                    framing_move_id,
-                    issue_move_id,
-                    curation_move_id,
-                    interpretation_move_id,
-                    ledger_move_id,
-                    weighing_move_id,
-                    negotiation_move_id,
-                    positioning_move_id,
-                ],
-            }
-        )
-    )
-
-
-@app.get("/scenario-framing-tabs/{tab_id}/sheet")
-def get_scenario_tab_sheet(tab_id: str) -> JSONResponse:
-    tab = _db_fetch_one(
-        """
-        SELECT id, scenario_id, political_framing_id, framing_id, run_id, status, trajectory_id
-        FROM scenario_framing_tabs
-        WHERE id = %s::uuid
-        """,
-        (tab_id,),
-    )
-    if not tab:
-        raise HTTPException(status_code=404, detail="ScenarioFramingTab not found")
-
-    if not tab.get("trajectory_id"):
-        return JSONResponse(content=jsonable_encoder({"tab_id": tab_id, "status": tab.get("status"), "trajectory": None, "sheet": None}))
-
-    traj = _db_fetch_one(
-        """
-        SELECT id, scenario_id, framing_id, position_statement, explicit_assumptions_jsonb,
-               key_evidence_refs_jsonb, judgement_sheet_jsonb, created_at
-        FROM trajectories
-        WHERE id = %s::uuid
-        """,
-        (str(tab["trajectory_id"]),),
-    )
-    if not traj:
-        raise HTTPException(status_code=404, detail="Trajectory not found")
-
-    trajectory = {
-        "trajectory_id": str(traj["id"]),
-        "scenario_id": str(traj["scenario_id"]),
-        "framing_id": str(traj["framing_id"]),
-        "position_statement": traj["position_statement"],
-        "explicit_assumptions": traj["explicit_assumptions_jsonb"] or [],
-        "key_evidence_refs": traj["key_evidence_refs_jsonb"] or [],
-        "judgement_sheet_data": traj["judgement_sheet_jsonb"] or {},
-    }
-
-    return JSONResponse(content=jsonable_encoder({"tab_id": tab_id, "status": tab.get("status"), "run_id": tab.get("run_id"), "trajectory": trajectory, "sheet": traj["judgement_sheet_jsonb"] or {}}))
-
-
-@app.get("/trace/runs/{run_id}")
-def trace_run(run_id: str, mode: str = "summary") -> JSONResponse:
-    if mode not in {"summary", "inspect", "forensic"}:
-        raise HTTPException(status_code=400, detail="mode must be one of: summary, inspect, forensic")
-
-    run = _db_fetch_one("SELECT id, profile, culp_stage_id, anchors_jsonb, created_at FROM runs WHERE id = %s::uuid", (run_id,))
-    if not run:
-        raise HTTPException(status_code=404, detail="Run not found")
-
-    moves = _db_fetch_all(
-        """
-        SELECT id, move_type, sequence, status, created_at, inputs_jsonb, outputs_jsonb,
-               evidence_refs_considered_jsonb, tool_run_ids_jsonb, uncertainty_remaining_jsonb
-        FROM move_events
-        WHERE run_id = %s::uuid
-        ORDER BY sequence ASC
-        """,
-        (run_id,),
-    )
-
-    audit_rows = _db_fetch_all(
-        """
-        SELECT id, timestamp, event_type, actor_type, actor_id, payload_jsonb
-        FROM audit_events
-        WHERE run_id = %s::uuid
-        ORDER BY timestamp ASC
-        """,
-        (run_id,),
-    )
-
-    move_ids = [str(m["id"]) for m in moves]
-    evidence_links: list[dict[str, Any]] = []
-    if move_ids:
-        evidence_links = _db_fetch_all(
-            """
-            SELECT
-              rel.id AS link_id,
-              rel.move_event_id,
-              rel.role,
-              er.source_type,
-              er.source_id,
-              er.fragment_id
-            FROM reasoning_evidence_links rel
-            JOIN evidence_refs er ON er.id = rel.evidence_ref_id
-            WHERE rel.move_event_id = ANY(%s::uuid[])
-            ORDER BY rel.created_at ASC
-            """,
-            (move_ids,),
-        )
-
-    def evidence_ref_str(row: dict[str, Any]) -> str:
-        return f"{row['source_type']}::{row['source_id']}::{row['fragment_id']}"
-
-    tool_run_ids: list[str] = []
-    for m in moves:
-        ids = m.get("tool_run_ids_jsonb") or []
-        if isinstance(ids, list):
-            tool_run_ids.extend([str(x) for x in ids if isinstance(x, str)])
-    tool_run_ids = sorted(set(tool_run_ids))
-
-    tool_runs: list[dict[str, Any]] = []
-    if tool_run_ids:
-        tool_runs = _db_fetch_all(
-            """
-            SELECT id, tool_name, status, started_at, ended_at, confidence_hint
-            FROM tool_runs
-            WHERE id = ANY(%s::uuid[])
-            ORDER BY started_at ASC NULLS LAST
-            """,
-            (tool_run_ids,),
-        )
-
-    nodes: list[dict[str, Any]] = []
-    edges: list[dict[str, Any]] = []
-
-    run_node_id = f"run::{run_id}"
-    nodes.append(
-        {
-            "node_id": run_node_id,
-            "node_type": "run",
-            "label": f"Run ({run.get('profile')})",
-            "ref": {"run_id": run_id, "culp_stage_id": run.get("culp_stage_id")},
-            "layout": {"x": 0, "y": 0, "group": None},
-            "severity": None,
-        }
-    )
-
-    move_node_ids: dict[str, str] = {}
-    for idx, m in enumerate(moves, start=1):
-        move_id = str(m["id"])
-        node_id = f"move::{move_id}"
-        move_node_ids[move_id] = node_id
-        status = m.get("status")
-        severity = "error" if status == "error" else "warning" if status == "partial" else "info"
-        nodes.append(
-            {
-                "node_id": node_id,
-                "node_type": "move",
-                "label": f"{m.get('sequence')}. {m.get('move_type')}",
-                "ref": {"move_id": move_id, "move_type": m.get("move_type"), "status": status},
-                "layout": {"x": 220, "y": idx * 120, "group": None},
-                "severity": severity,
-            }
-        )
-        edges.append(
-            {
-                "edge_id": f"edge::{uuid4()}",
-                "src_id": run_node_id,
-                "dst_id": node_id,
-                "edge_type": "TRIGGERS",
-                "label": None,
-            }
-        )
-
-    tool_node_ids: dict[str, str] = {}
-    tool_by_id = {str(t["id"]): t for t in tool_runs}
-    for m in moves:
-        move_id = str(m["id"])
-        ids = m.get("tool_run_ids_jsonb") or []
-        if not isinstance(ids, list):
-            continue
-        for j, tr_id in enumerate([x for x in ids if isinstance(x, str)], start=1):
-            tr_id_str = str(tr_id)
-            if tr_id_str not in tool_node_ids:
-                tr = tool_by_id.get(tr_id_str) or {"tool_name": "tool", "status": "unknown"}
-                status = tr.get("status")
-                severity = "error" if status == "error" else "warning" if status == "partial" else "info"
-                tool_node_ids[tr_id_str] = f"tool_run::{tr_id_str}"
-                nodes.append(
-                    {
-                        "node_id": tool_node_ids[tr_id_str],
-                        "node_type": "tool_run",
-                        "label": f"{tr.get('tool_name')} ({status})",
-                        "ref": {"tool_run_id": tr_id_str, "tool_name": tr.get("tool_name")},
-                        "layout": {"x": 520, "y": (m.get("sequence") or 0) * 120 + (j * 18), "group": move_node_ids.get(move_id)},
-                        "severity": severity,
-                    }
-                )
-            edges.append(
-                {
-                    "edge_id": f"edge::{uuid4()}",
-                    "src_id": move_node_ids.get(move_id) or run_node_id,
-                    "dst_id": tool_node_ids[tr_id_str],
-                    "edge_type": "USES",
-                    "label": None,
-                }
-            )
-
-    evidence_node_ids: dict[str, str] = {}
-    for link in evidence_links:
-        move_id = str(link["move_event_id"])
-        ev = evidence_ref_str(link)
-        if ev not in evidence_node_ids:
-            evidence_node_ids[ev] = f"evidence::{ev}"
-            nodes.append(
-                {
-                    "node_id": evidence_node_ids[ev],
-                    "node_type": "evidence",
-                    "label": link.get("source_type") or "evidence",
-                    "ref": {"evidence_ref": ev},
-                    "layout": {"x": 840, "y": 0, "group": move_node_ids.get(move_id)},
-                    "severity": None,
-                }
-            )
-        edges.append(
-            {
-                "edge_id": f"edge::{uuid4()}",
-                "src_id": move_node_ids.get(move_id) or run_node_id,
-                "dst_id": evidence_node_ids[ev],
-                "edge_type": "CITES",
-                "label": link.get("role"),
-            }
-        )
-
-    # Also include audit events linked to the run (selection, completion, etc.)
-    for idx, a in enumerate(audit_rows[:50], start=1):
-        node_id = f"audit::{a['id']}"
-        nodes.append(
-            {
-                "node_id": node_id,
-                "node_type": "audit_event",
-                "label": a.get("event_type") or "audit_event",
-                "ref": {"audit_event_id": str(a["id"]), "timestamp": a.get("timestamp")},
-                "layout": {"x": 0, "y": 120 + idx * 26, "group": None},
-                "severity": None,
-            }
-        )
-        edges.append(
-            {
-                "edge_id": f"edge::{uuid4()}",
-                "src_id": node_id,
-                "dst_id": run_node_id,
-                "edge_type": "TRIGGERS",
-                "label": a.get("actor_type"),
-            }
-        )
-
-    trace = {
-        "trace_graph_id": str(uuid4()),
-        "run_id": run_id,
-        "mode": mode,
-        "nodes": nodes,
-        "edges": edges,
-        "created_at": _utc_now_iso(),
-    }
-    return JSONResponse(content=jsonable_encoder(trace))
 
 
 class PlanCycleInline(BaseModel):
@@ -3453,6 +1515,7 @@ def _run_authority_pack_ingest(
     phased_default = "true" if os.environ.get("TPA_MODEL_SUPERVISOR_URL") else "false"
     phased = os.environ.get("TPA_INGEST_PHASED", phased_default).strip().lower() in {"1", "true", "yes", "y"}
     docs_for_postprocessing: list[dict[str, Any]] = []
+    temp_paths: list[Path] = []
 
     _update_ingest_batch_progress(
         ingest_batch_id=ingest_batch_id,
@@ -3474,23 +1537,100 @@ def _run_authority_pack_ingest(
                 minio_client = None
 
         for doc in documents:
-            rel_path = str(doc.get("file_path") or "")
-            if not rel_path:
+            rel_path = doc.get("file_path")
+            source_url = doc.get("source_url") or doc.get("url")
+            if not source_url and _is_http_url(rel_path):
+                source_url = str(rel_path)
+                rel_path = None
+
+            source_label = source_url or str(rel_path or "")
+            if not source_label:
                 continue
+
             counts["documents_seen"] += 1
-            src_path = (pack_dir / rel_path).resolve()
-            if not src_path.exists():
-                errors.append(f"Missing file: {src_path}")
-                _update_ingest_batch_progress(
+            src_path: Path | None = None
+            source_final_url = source_url
+            content_type: str | None = None
+
+            if source_url:
+                try:
+                    web_timeout = float(os.environ.get("TPA_WEB_AUTOMATION_TIMEOUT_SECONDS", "60"))
+                except Exception:  # noqa: BLE001
+                    web_timeout = 60.0
+                ingest_result = _web_automation_ingest_url(
+                    url=source_url,
                     ingest_batch_id=ingest_batch_id,
-                    status="running",
-                    counts=counts,
-                    errors=errors,
-                    document_ids=document_ids,
-                    plan_cycle_id=plan_cycle_id,
-                    progress={"phase": "running", "current_document": rel_path, "note": "missing_file"},
+                    timeout_seconds=web_timeout,
                 )
-                continue
+                if not ingest_result.get("ok"):
+                    err = ingest_result.get("error") or "web_ingest_failed"
+                    errors.append(f"Web ingest failed for {source_url}: {err}")
+                    _update_ingest_batch_progress(
+                        ingest_batch_id=ingest_batch_id,
+                        status="running",
+                        counts=counts,
+                        errors=errors,
+                        document_ids=document_ids,
+                        plan_cycle_id=plan_cycle_id,
+                        progress={"phase": "running", "current_document": source_label, "note": "web_ingest_failed"},
+                    )
+                    continue
+
+                raw_content_type = str(ingest_result.get("content_type") or "").lower()
+                if "pdf" not in raw_content_type:
+                    errors.append(
+                        f"Web ingest returned unsupported content for {source_url}: {raw_content_type or 'unknown'}"
+                    )
+                    _update_ingest_batch_progress(
+                        ingest_batch_id=ingest_batch_id,
+                        status="running",
+                        counts=counts,
+                        errors=errors,
+                        document_ids=document_ids,
+                        plan_cycle_id=plan_cycle_id,
+                        progress={"phase": "running", "current_document": source_label, "note": "web_ingest_unsupported"},
+                    )
+                    continue
+
+                data_bytes = ingest_result.get("bytes")
+                if not isinstance(data_bytes, (bytes, bytearray)) or not data_bytes:
+                    errors.append(f"Web ingest returned empty payload for {source_url}")
+                    _update_ingest_batch_progress(
+                        ingest_batch_id=ingest_batch_id,
+                        status="running",
+                        counts=counts,
+                        errors=errors,
+                        document_ids=document_ids,
+                        plan_cycle_id=plan_cycle_id,
+                        progress={"phase": "running", "current_document": source_label, "note": "web_ingest_empty"},
+                    )
+                    continue
+
+                source_final_url = ingest_result.get("final_url") or source_url
+                content_type = "application/pdf" if raw_content_type == "pdf" else ingest_result.get("content_type")
+                content_type = content_type or "application/pdf"
+                filename = ingest_result.get("filename") or _derive_filename_for_url(
+                    source_final_url, content_type=content_type
+                )
+                temp_dir = Path(tempfile.mkdtemp(prefix="tpa-web-"))
+                src_path = temp_dir / filename
+                src_path.write_bytes(data_bytes)
+            else:
+                rel_path_str = str(rel_path or "")
+                src_path = (pack_dir / rel_path_str).resolve()
+                if not src_path.exists():
+                    errors.append(f"Missing file: {src_path}")
+                    _update_ingest_batch_progress(
+                        ingest_batch_id=ingest_batch_id,
+                        status="running",
+                        counts=counts,
+                        errors=errors,
+                        document_ids=document_ids,
+                        plan_cycle_id=plan_cycle_id,
+                        progress={"phase": "running", "current_document": rel_path_str, "note": "missing_file"},
+                    )
+                    continue
+                content_type = mimetypes.guess_type(src_path.name)[0] or "application/octet-stream"
 
             _update_ingest_batch_progress(
                 ingest_batch_id=ingest_batch_id,
@@ -3499,11 +1639,18 @@ def _run_authority_pack_ingest(
                 errors=errors,
                 document_ids=document_ids,
                 plan_cycle_id=plan_cycle_id,
-                progress={"phase": "chunking", "current_document": rel_path, "phased": phased},
+                progress={"phase": "chunking", "current_document": source_label, "phased": phased},
             )
 
-            object_name = f"raw/authority_packs/{authority_id}/{src_path.name}"
-            content_type = mimetypes.guess_type(src_path.name)[0] or "application/octet-stream"
+            if not src_path:
+                errors.append(f"Source path unavailable for {source_label}")
+                continue
+
+            object_name = (
+                f"raw/web/{authority_id}/{src_path.name}"
+                if source_url
+                else f"raw/authority_packs/{authority_id}/{src_path.name}"
+            )
 
             blob_path: str
             if minio_client and bucket:
@@ -3519,6 +1666,9 @@ def _run_authority_pack_ingest(
             else:
                 blob_path = str(src_path)
 
+            if source_url and src_path and blob_path != str(src_path):
+                temp_paths.append(src_path)
+
             existing_doc = _db_fetch_one(
                 """
                 SELECT id
@@ -3532,6 +1682,17 @@ def _run_authority_pack_ingest(
             if existing_doc:
                 document_id = str(existing_doc["id"])
             else:
+                doc_title = doc.get("title") or src_path.stem
+                metadata = {
+                    "title": doc_title,
+                    "document_type": doc.get("document_type"),
+                    "source": doc.get("source") or ("web_automation" if source_url else "authority_pack"),
+                    "content_type": content_type,
+                }
+                if source_url:
+                    metadata["source_url"] = source_final_url or source_url
+                    if source_final_url and source_final_url != source_url:
+                        metadata["source_url_original"] = source_url
                 document_id = str(uuid4())
                 _db_execute(
                     """
@@ -3551,15 +1712,7 @@ def _run_authority_pack_ingest(
                         plan_cycle_row.get("weight_hint"),
                         plan_cycle_row.get("effective_from"),
                         plan_cycle_row.get("effective_to"),
-                        json.dumps(
-                            {
-                                "title": doc.get("title") or src_path.stem,
-                                "document_type": doc.get("document_type"),
-                                "source": doc.get("source") or "authority_pack",
-                                "content_type": content_type,
-                            },
-                            ensure_ascii=False,
-                        ),
+                        json.dumps(metadata, ensure_ascii=False),
                         blob_path,
                     ),
                 )
@@ -3570,7 +1723,7 @@ def _run_authority_pack_ingest(
                 {
                     "document_id": document_id,
                     "document_title": doc.get("title") or src_path.stem,
-                    "source_rel_path": rel_path,
+                    "source_rel_path": source_final_url or source_url or str(rel_path or ""),
                     "source_name": src_path.name,
                 }
             )
@@ -4467,6 +2620,16 @@ def _run_authority_pack_ingest(
             "plan_cycle_id": plan_cycle_id,
         }
 
+        for tmp_path in temp_paths:
+            try:
+                tmp_path.unlink()
+            except Exception:  # noqa: BLE001
+                pass
+            try:
+                tmp_path.parent.rmdir()
+            except Exception:  # noqa: BLE001
+                pass
+
         try:
             _db_execute(
                 """
@@ -4531,7 +2694,6 @@ def _run_authority_pack_ingest(
     }
 
 
-@app.post("/ingest/authority-packs/{authority_id}/start")
 def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequest | None = None) -> JSONResponse:
     body = body or AuthorityPackIngestRequest()
 
@@ -4619,7 +2781,6 @@ def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequ
     )
 
 
-@app.post("/ingest/authority-packs/{authority_id}")
 def ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequest | None = None) -> JSONResponse:
     body = body or AuthorityPackIngestRequest()
 
@@ -4653,7 +2814,6 @@ def ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequest | 
     return JSONResponse(content=jsonable_encoder(result))
 
 
-@app.get("/ingest/batches")
 def list_ingest_batches(
     authority_id: str | None = None,
     plan_cycle_id: str | None = None,
@@ -4700,7 +2860,6 @@ def list_ingest_batches(
     return JSONResponse(content=jsonable_encoder({"ingest_batches": items}))
 
 
-@app.get("/ingest/batches/{ingest_batch_id}")
 def get_ingest_batch(ingest_batch_id: str) -> JSONResponse:
     row = _db_fetch_one(
         """
@@ -4755,123 +2914,3 @@ def get_ingest_batch(ingest_batch_id: str) -> JSONResponse:
             }
         )
     )
-
-
-@app.get("/search/chunks")
-def search_chunks(
-    q: str,
-    authority_id: str | None = None,
-    plan_cycle_id: str | None = None,
-    active_only: bool = True,
-    limit: int = 12,
-) -> JSONResponse:
-    query = q.strip()
-    if not query:
-        raise HTTPException(status_code=400, detail="q must not be empty")
-    limit = max(1, min(int(limit), 50))
-
-    like = f"%{query}%"
-    where: list[str] = ["c.text ILIKE %s"]
-    params: list[Any] = [like]
-    if authority_id:
-        where.append("d.authority_id = %s")
-        params.append(authority_id)
-    if plan_cycle_id:
-        where.append("d.plan_cycle_id = %s::uuid")
-        params.append(plan_cycle_id)
-    if active_only:
-        where.append("d.is_active = true")
-
-    rows = _db_fetch_all(
-        f"""
-        SELECT
-          c.id AS chunk_id,
-          c.document_id,
-          c.page_number,
-          LEFT(c.text, 800) AS snippet,
-          er.fragment_id AS fragment_id,
-          d.metadata->>'title' AS document_title,
-          d.blob_path AS blob_path,
-          d.plan_cycle_id AS plan_cycle_id
-        FROM chunks c
-        JOIN documents d ON d.id = c.document_id
-        LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
-        WHERE {" AND ".join(where)}
-        ORDER BY c.page_number NULLS LAST
-        LIMIT %s
-        """,
-        tuple(params + [limit]),
-    )
-
-    results = [
-        {
-            "chunk_id": str(r["chunk_id"]),
-            "document_id": str(r["document_id"]),
-            "page_number": r["page_number"],
-            "evidence_ref": f"chunk::{r['chunk_id']}::{r['fragment_id'] or 'page-unknown'}",
-            "document_title": r["document_title"],
-            "blob_path": r["blob_path"],
-            "plan_cycle_id": str(r["plan_cycle_id"]) if r.get("plan_cycle_id") else None,
-            "snippet": r["snippet"],
-        }
-        for r in rows
-    ]
-    return JSONResponse(content=jsonable_encoder({"results": results}))
-
-
-class RetrieveChunksRequest(BaseModel):
-    query: str
-    authority_id: str | None = None
-    plan_cycle_id: str | None = None
-    limit: int = 12
-    rrf_k: int = 60
-    use_vector: bool = True
-    use_fts: bool = True
-    rerank: bool = True
-    rerank_top_n: int = 20
-
-
-@app.post("/retrieval/chunks")
-def retrieve_chunks(body: RetrieveChunksRequest) -> JSONResponse:
-    out = _retrieve_chunks_hybrid_sync(
-        query=body.query,
-        authority_id=body.authority_id,
-        plan_cycle_id=body.plan_cycle_id,
-        limit=body.limit,
-        rrf_k=body.rrf_k,
-        use_vector=bool(body.use_vector),
-        use_fts=bool(body.use_fts),
-        rerank=bool(body.rerank),
-        rerank_top_n=body.rerank_top_n,
-    )
-    return JSONResponse(content=jsonable_encoder(out))
-
-
-class RetrievePolicyClausesRequest(BaseModel):
-    query: str
-    authority_id: str | None = None
-    plan_cycle_id: str | None = None
-    limit: int = 12
-    rrf_k: int = 60
-    use_vector: bool = True
-    use_fts: bool = True
-    rerank: bool = True
-    rerank_top_n: int = 20
-
-
-@app.post("/retrieval/policy-clauses")
-def retrieve_policy_clauses(body: RetrievePolicyClausesRequest) -> JSONResponse:
-    out = _retrieve_policy_clauses_hybrid_sync(
-        query=body.query,
-        authority_id=body.authority_id,
-        plan_cycle_id=body.plan_cycle_id,
-        limit=body.limit,
-        rrf_k=body.rrf_k,
-        use_vector=bool(body.use_vector),
-        use_fts=bool(body.use_fts),
-        rerank=bool(body.rerank),
-        rerank_top_n=body.rerank_top_n,
-    )
-    return JSONResponse(content=jsonable_encoder(out))
-
-# NOTE: Legacy monolith retained for reference while the API moves to router modules + app factory.

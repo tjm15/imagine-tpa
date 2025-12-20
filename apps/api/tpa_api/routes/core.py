@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
-from ..db import db_ping
+from ..services.core import healthz as service_healthz
+from ..services.core import readyz as service_readyz
 
 
 router = APIRouter(tags=["core"])
@@ -10,11 +11,9 @@ router = APIRouter(tags=["core"])
 
 @router.get("/healthz")
 def healthz() -> dict[str, str]:
-    return {"status": "ok"}
+    return service_healthz()
 
 
 @router.get("/readyz")
 def readyz() -> dict[str, str]:
-    if not db_ping():
-        raise HTTPException(status_code=503, detail={"status": "not_ready", "db": "down"})
-    return {"status": "ready", "db": "ok"}
+    return service_readyz()

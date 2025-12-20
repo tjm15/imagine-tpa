@@ -258,3 +258,45 @@ def _embed_texts_sync(
 
     return None
 
+
+def _generate_completion_sync(
+    *,
+    prompt: str,
+    system: str | None = None,
+    model_id: str | None = None,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    time_budget_seconds: float = 60.0,
+) -> str | None:
+    base_url = _ensure_model_role_sync(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
+    if not base_url:
+        return None
+
+    model_id = model_id or _llm_model_id()
+    timeout = min(max(time_budget_seconds, 2.0), 300.0)
+    url = base_url.rstrip("/") + "/v1/chat/completions"
+
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
+
+    payload = {
+        "model": model_id,
+        "messages": messages,
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, json=payload, headers=_model_supervisor_headers())
+            if resp.status_code >= 400:
+                return None
+            data = resp.json()
+            if isinstance(data, dict) and "choices" in data and len(data["choices"]) > 0:
+                return data["choices"][0]["message"]["content"]
+    except Exception:
+        pass
+    return None
+
