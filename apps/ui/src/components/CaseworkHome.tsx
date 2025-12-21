@@ -4,7 +4,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Logo } from "./Logo";
-import { useProject, AVAILABLE_AUTHORITIES } from '../contexts/AuthorityContext';
+import { useProject } from '../contexts/AuthorityContext';
 
 interface CaseworkHomeProps {
   onOpenCase: (caseId: string) => void;
@@ -12,7 +12,7 @@ interface CaseworkHomeProps {
 }
 
 export function CaseworkHome({ onOpenCase, onSwitchWorkspace }: CaseworkHomeProps) {
-  const { authority, setAuthority } = useProject();
+  const { authority, setAuthority, authorities, loadingAuthorities } = useProject();
 
   if (!authority) {
     return (
@@ -54,13 +54,14 @@ export function CaseworkHome({ onOpenCase, onSwitchWorkspace }: CaseworkHomeProp
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     onChange={(e) => {
-                      const auth = AVAILABLE_AUTHORITIES.find(a => a.id === e.target.value);
+                      const auth = authorities.find(a => a.id === e.target.value);
                       if (auth) setAuthority(auth);
                     }}
                     value=""
+                    disabled={loadingAuthorities}
                   >
                     <option value="" disabled>Select an authority...</option>
-                    {AVAILABLE_AUTHORITIES.map(auth => (
+                    {authorities.map(auth => (
                       <option key={auth.id} value={auth.id}>{auth.name}</option>
                     ))}
                   </select>

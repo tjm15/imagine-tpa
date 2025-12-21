@@ -36,6 +36,32 @@ services:
       start_period: 20s
     <<: *service_defaults
 
+  # --- Schema migrator (idempotent) ---
+  # Runs the canonical DDL against existing databases so new tables are created without a reset.
+  tpa-db-migrate:
+    image: ${TPA_DB_MIGRATE_IMAGE:-postgres:alpine}
+    depends_on:
+      tpa-db:
+        condition: service_healthy
+    environment:
+      PGHOST: ${TPA_POSTGRES_HOST:-tpa-db}
+      PGPORT: ${TPA_POSTGRES_PORT:-5432}
+      PGDATABASE: ${TPA_POSTGRES_DB:-tpa}
+      PGUSER: ${TPA_POSTGRES_USER:-tpa}
+      PGPASSWORD: ${TPA_POSTGRES_PASSWORD:-tpa}
+    volumes:
+      - ../docker/db/init:/migrations:ro
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        until pg_isready -h "$${PGHOST}" -p "$${PGPORT}" -U "$${PGUSER}" -d "$${PGDATABASE}"; do
+          sleep 1
+        done
+        echo "Applying DDL to $${PGDATABASE}@$${PGHOST}:$${PGPORT}"
+        psql -v ON_ERROR_STOP=1 -h "$${PGHOST}" -p "$${PGPORT}" -U "$${PGUSER}" -d "$${PGDATABASE}" -f /migrations/02_schema.sql
+    <<: *service_defaults
+
   tpa-minio:
     image: ${TPA_MINIO_IMAGE:-minio/minio:latest}
     command: server /data --console-address ":9001"
@@ -160,8 +186,57 @@ services:
       dockerfile: apps/docparse/Dockerfile
     environment:
       TPA_DOCPARSE_MAX_BYTES: ${TPA_DOCPARSE_MAX_BYTES:-50000000}
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
+      TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
+      TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
+      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
+      TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
+      TPA_DOCPARSE_MAX_VISUALS: ${TPA_DOCPARSE_MAX_VISUALS:-120}
+      TPA_DOCPARSE_MAX_PAGES: ${TPA_DOCPARSE_MAX_PAGES:-800}
     ports:
       - "${TPA_DOCPARSE_PORT:-8084}:8084"
+    <<: *service_defaults
+
+  tpa-ingest-worker:
+    build:
+      context: ../
+      dockerfile: apps/api/Dockerfile
+    environment:
+      TPA_PROFILE: oss
+      TPA_SPEC_ROOT: /app/spec
+      TPA_DB_DSN: "postgresql://${TPA_POSTGRES_USER:-tpa}:${TPA_POSTGRES_PASSWORD:-tpa}@${TPA_POSTGRES_HOST:-tpa-db}:${TPA_POSTGRES_PORT:-5432}/${TPA_POSTGRES_DB:-tpa}"
+      TPA_REDIS_URL: ${TPA_REDIS_URL:-redis://tpa-redis:6379/0}
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
+      TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
+      TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
+      TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
+      TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
+      TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
+      TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
+      TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
+      TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
+      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
+    volumes:
+      - ../authority_packs:${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}:ro
+    depends_on:
+      tpa-db:
+        condition: service_healthy
+      tpa-minio-init:
+        condition: service_completed_successfully
+      tpa-redis:
+        condition: service_started
+      tpa-docparse:
+        condition: service_started
+    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO
     <<: *service_defaults
 
   tpa-ui:

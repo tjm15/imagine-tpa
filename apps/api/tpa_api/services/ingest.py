@@ -7,7 +7,6 @@ import mimetypes
 import os
 import re
 import tempfile
-import threading
 from datetime import date, datetime
 from pathlib import Path
 from typing import Any
@@ -993,8 +992,9 @@ def _extract_pdf_pages_text(*, path: Path) -> tuple[list[str], str, list[dict[st
             if isinstance(data, dict):
                 if isinstance(data.get("page_texts"), list):
                     page_texts = [str(x) if isinstance(x, str) else "" for x in data["page_texts"]]
-                elif isinstance(data.get("pages"), list):
-                    for item in data["pages"]:
+                pages_items = data.get("pages")
+                if not page_texts and isinstance(pages_items, list):
+                    for item in pages_items:
                         if isinstance(item, dict) and isinstance(item.get("text"), str):
                             page_texts.append(item["text"])
                 raw_chunks = data.get("chunks")
@@ -1307,7 +1307,7 @@ def _normalize_authority_pack_documents(manifest: dict[str, Any]) -> list[dict[s
             if not title_hint:
                 if source_url:
                     title_hint = Path(urlparse(str(source_url)).path).stem or "document"
-                elif fp:
+                if not title_hint and fp:
                     title_hint = Path(str(fp)).stem
             out.append(
                 {
@@ -2694,6 +2694,50 @@ def _run_authority_pack_ingest(
     }
 
 
+def _create_ingest_job(
+    *,
+    authority_id: str,
+    plan_cycle_id: str,
+    ingest_batch_id: str,
+    job_type: str,
+    inputs: dict[str, Any],
+) -> str:
+    job_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO ingest_jobs (
+          id, ingest_batch_id, authority_id, plan_cycle_id, job_type, status,
+          inputs_jsonb, outputs_jsonb, created_at
+        )
+        VALUES (%s, %s::uuid, %s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s)
+        """,
+        (
+            job_id,
+            ingest_batch_id,
+            authority_id,
+            plan_cycle_id,
+            job_type,
+            "pending",
+            json.dumps(inputs, ensure_ascii=False),
+            json.dumps({}, ensure_ascii=False),
+            _utc_now(),
+        ),
+    )
+    return job_id
+
+
+def _enqueue_ingest_job(job_id: str) -> tuple[bool, str | None]:
+    try:
+        from ..ingest_worker import celery_app  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        return False, f"celery_import_failed:{exc}"
+    try:
+        celery_app.send_task("tpa_api.ingest_worker.process_ingest_job", args=[job_id])
+    except Exception as exc:  # noqa: BLE001
+        return False, f"celery_enqueue_failed:{exc}"
+    return True, None
+
+
 def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequest | None = None) -> JSONResponse:
     body = body or AuthorityPackIngestRequest()
 
@@ -2742,29 +2786,32 @@ def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequ
         manifest=manifest,
         document_count=len(documents),
     )
+    ingest_job_id = _create_ingest_job(
+        authority_id=authority_id,
+        plan_cycle_id=plan_cycle_id,
+        ingest_batch_id=ingest_batch_id,
+        job_type="authority_pack",
+        inputs={
+            "authority_id": authority_id,
+            "plan_cycle_id": plan_cycle_id,
+            "pack_dir": str(pack_dir),
+            "documents": documents,
+            "manifest": {"id": manifest.get("id"), "name": manifest.get("name")},
+        },
+    )
+    enqueued, enqueue_error = _enqueue_ingest_job(ingest_job_id)
+    if not enqueued:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue ingest job: {enqueue_error}")
 
-    def _runner() -> None:
-        try:
-            _run_authority_pack_ingest(
-                authority_id=authority_id,
-                pack_dir=pack_dir,
-                manifest=manifest,
-                documents=documents,
-                plan_cycle_row=plan_cycle_row,
-                plan_cycle_id=plan_cycle_id,
-                ingest_batch_id=ingest_batch_id,
-                tool_run_id=tool_run_id,
-                started_at=started_at,
-            )
-        except Exception:  # noqa: BLE001
-            # Errors are persisted into ingest_batches/tool_runs; avoid crashing the API worker.
-            pass
-
-    threading.Thread(target=_runner, daemon=True).start()
     _audit_event(
-        event_type="authority_pack_ingest_started",
+        event_type="authority_pack_ingest_queued",
         actor_type="system",
-        payload={"authority_id": authority_id, "plan_cycle_id": plan_cycle_id, "ingest_batch_id": ingest_batch_id},
+        payload={
+            "authority_id": authority_id,
+            "plan_cycle_id": plan_cycle_id,
+            "ingest_batch_id": ingest_batch_id,
+            "ingest_job_id": ingest_job_id,
+        },
     )
 
     return JSONResponse(
@@ -2774,8 +2821,10 @@ def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequ
                 "authority_id": authority_id,
                 "plan_cycle_id": plan_cycle_id,
                 "ingest_batch_id": ingest_batch_id,
+                "ingest_job_id": ingest_job_id,
                 "tool_run_id": tool_run_id,
-                "status": "running",
+                "status": "queued",
+                "message": "Ingest job queued.",
             }
         ),
     )
@@ -2783,35 +2832,7 @@ def start_ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequ
 
 def ingest_authority_pack(authority_id: str, body: AuthorityPackIngestRequest | None = None) -> JSONResponse:
     body = body or AuthorityPackIngestRequest()
-
-    pack_dir = _authority_packs_root() / authority_id
-    if not pack_dir.exists():
-        raise HTTPException(status_code=404, detail=f"Authority pack not found: {authority_id}")
-
-    manifest = _load_authority_pack_manifest(authority_id)
-    documents = _normalize_authority_pack_documents(manifest)
-    if not documents:
-        raise HTTPException(status_code=400, detail=f"No documents listed in authority pack manifest for '{authority_id}'")
-
-    plan_cycle_row, plan_cycle_id, ingest_batch_id, tool_run_id, started_at = _prepare_authority_pack_ingest(
-        authority_id=authority_id,
-        body=body,
-        manifest=manifest,
-        document_count=len(documents),
-    )
-
-    result = _run_authority_pack_ingest(
-        authority_id=authority_id,
-        pack_dir=pack_dir,
-        manifest=manifest,
-        documents=documents,
-        plan_cycle_row=plan_cycle_row,
-        plan_cycle_id=plan_cycle_id,
-        ingest_batch_id=ingest_batch_id,
-        tool_run_id=tool_run_id,
-        started_at=started_at,
-    )
-    return JSONResponse(content=jsonable_encoder(result))
+    return start_ingest_authority_pack(authority_id, body)
 
 
 def list_ingest_batches(
@@ -2858,6 +2879,92 @@ def list_ingest_batches(
         for r in rows
     ]
     return JSONResponse(content=jsonable_encoder({"ingest_batches": items}))
+
+
+def list_ingest_jobs(
+    authority_id: str | None = None,
+    plan_cycle_id: str | None = None,
+    status: str | None = None,
+    limit: int = 50,
+) -> JSONResponse:
+    limit = max(1, min(int(limit), 200))
+    where: list[str] = []
+    params: list[Any] = []
+    if authority_id:
+        where.append("authority_id = %s")
+        params.append(authority_id)
+    if plan_cycle_id:
+        where.append("plan_cycle_id = %s::uuid")
+        params.append(plan_cycle_id)
+    if status:
+        where.append("status = %s")
+        params.append(status)
+    where_sql = ("WHERE " + " AND ".join(where)) if where else ""
+
+    rows = _db_fetch_all(
+        f"""
+        SELECT id, ingest_batch_id, authority_id, plan_cycle_id, job_type, status,
+               inputs_jsonb, outputs_jsonb, created_at, started_at, completed_at, error_text
+        FROM ingest_jobs
+        {where_sql}
+        ORDER BY created_at DESC
+        LIMIT %s
+        """,
+        tuple(params + [limit]),
+    )
+    jobs = [
+        {
+            "ingest_job_id": str(r["id"]),
+            "ingest_batch_id": str(r["ingest_batch_id"]) if r.get("ingest_batch_id") else None,
+            "authority_id": r.get("authority_id"),
+            "plan_cycle_id": str(r["plan_cycle_id"]) if r.get("plan_cycle_id") else None,
+            "job_type": r.get("job_type"),
+            "status": r.get("status"),
+            "inputs": r.get("inputs_jsonb") or {},
+            "outputs": r.get("outputs_jsonb") or {},
+            "created_at": r.get("created_at"),
+            "started_at": r.get("started_at"),
+            "completed_at": r.get("completed_at"),
+            "error_text": r.get("error_text"),
+        }
+        for r in rows
+    ]
+    return JSONResponse(content=jsonable_encoder({"ingest_jobs": jobs}))
+
+
+def get_ingest_job(ingest_job_id: str) -> JSONResponse:
+    row = _db_fetch_one(
+        """
+        SELECT id, ingest_batch_id, authority_id, plan_cycle_id, job_type, status,
+               inputs_jsonb, outputs_jsonb, created_at, started_at, completed_at, error_text
+        FROM ingest_jobs
+        WHERE id = %s::uuid
+        """,
+        (ingest_job_id,),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Ingest job not found")
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "ingest_job": {
+                    "ingest_job_id": str(row["id"]),
+                    "ingest_batch_id": str(row["ingest_batch_id"]) if row.get("ingest_batch_id") else None,
+                    "authority_id": row.get("authority_id"),
+                    "plan_cycle_id": str(row["plan_cycle_id"]) if row.get("plan_cycle_id") else None,
+                    "job_type": row.get("job_type"),
+                    "status": row.get("status"),
+                    "inputs": row.get("inputs_jsonb") or {},
+                    "outputs": row.get("outputs_jsonb") or {},
+                    "created_at": row.get("created_at"),
+                    "started_at": row.get("started_at"),
+                    "completed_at": row.get("completed_at"),
+                    "error_text": row.get("error_text"),
+                }
+            }
+        )
+    )
 
 
 def get_ingest_batch(ingest_batch_id: str) -> JSONResponse:

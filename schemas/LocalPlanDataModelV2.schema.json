@@ -1,0 +1,218 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Local Plan Data Model v2",
+  "type": "object",
+  "description": "Canonical specification v2 for Local Plan domain objects.",
+  "definitions": {
+    "Scope": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "geography_refs": {"type": "array", "items": {"type": "string"}},
+        "development_types": {"type": "array", "items": {"type": "string"}},
+        "use_classes": {"type": "array", "items": {"type": "string"}},
+        "use_class_regime": {"type": "string"},
+        "temporal_scope": {
+          "type": "object",
+          "properties": {
+            "start_date": {"type": ["string", "null"], "format": "date"},
+            "end_date": {"type": ["string", "null"], "format": "date"},
+            "phasing_stage": {"type": ["string", "null"]}
+          }
+        },
+        "conditions": {"type": "array", "items": {"type": "string"}}
+      },
+      "required": ["id", "geography_refs", "development_types", "use_classes", "use_class_regime"]
+    },
+    "EvidenceRefObject": {
+      "type": "object",
+      "properties": {
+        "source_doc_id": {"type": "string"},
+        "section_ref": {"type": "string"},
+        "page_number": {"type": "integer"},
+        "snippet_text": {"type": ["string", "null"]},
+        "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+        "image_ref": {"type": ["string", "null"]}
+      },
+      "required": ["source_doc_id", "section_ref", "page_number"]
+    },
+    "Policy": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "code": {"type": "string"},
+        "title": {"type": "string"},
+        "status": {"type": "string"},
+        "weight": {"type": "string"},
+        "adoption_date": {"type": ["string", "null"], "format": "date"},
+        "type": {"type": "string"},
+        "tests": {"type": "array", "items": {"$ref": "#/definitions/PolicyTest"}},
+        "triggers": {"type": "array", "items": {"$ref": "#/definitions/PolicyTrigger"}},
+        "exceptions": {"type": "array", "items": {"type": "object"}},
+        "outcomes": {"type": "array", "items": {"type": "object"}},
+        "visual_constraints": {"type": "array", "items": {"$ref": "#/definitions/VisualConstraint"}},
+        "nppf_conformity": {"type": "array", "items": {"$ref": "#/definitions/ConformityHook"}}
+      },
+      "required": ["id", "code", "title", "status", "weight", "type"]
+    },
+    "PolicyTest": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"},
+        "operator": {"type": "string"}
+      },
+      "required": ["text", "operator"]
+    },
+    "PolicyTrigger": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": "string"},
+        "operator": {"type": "string"},
+        "value": {"type": ["number", "string"]}
+      },
+      "required": ["metric", "operator", "value"]
+    },
+    "StandardMatrix": {
+      "type": "object",
+      "properties": {
+        "inputs": {"type": "array", "items": {"type": "string"}},
+        "outputs": {"type": "array", "items": {"type": "string"}},
+        "logic_type": {"type": "string"},
+        "evidence_ref": {"type": ["string", "null"]}
+      },
+      "required": ["inputs", "outputs", "logic_type"]
+    },
+    "GeoLayerRef": {
+      "type": "object",
+      "properties": {
+        "source_uri": {"type": "string"},
+        "crs": {"type": "string"}
+      },
+      "required": ["source_uri", "crs"]
+    },
+    "DesignationType": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "name": {"type": "string"},
+        "description": {"type": ["string", "null"]}
+      },
+      "required": ["id", "name"]
+    },
+    "DesignationInstance": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "designation_type_id": {"type": "string"},
+        "geometry": {"type": "object"},
+        "layer_ref": {"$ref": "#/definitions/GeoLayerRef"}
+      },
+      "required": ["id", "designation_type_id", "geometry"]
+    },
+    "SpatialStrategyElement": {
+      "type": "object",
+      "properties": {
+        "id": {"type": "string"},
+        "representation": {"type": "string"},
+        "approximate_geometry": {"type": ["object", "null"]},
+        "concept": {"type": "string"}
+      },
+      "required": ["id", "representation", "concept"]
+    },
+    "VisualConstraint": {
+      "type": "object",
+      "properties": {
+        "type": {"type": "string"},
+        "image_ref": {"type": "string"},
+        "extracted_metrics": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "label": {"type": "string"},
+              "value": {"type": "number"},
+              "unit": {"type": "string"}
+            },
+            "required": ["label", "value", "unit"]
+          }
+        }
+      },
+      "required": ["type", "image_ref"]
+    },
+    "DesignExemplar": {
+      "type": "object",
+      "properties": {
+        "image_ref": {"type": "string"},
+        "judgment": {"type": "string"},
+        "description": {"type": ["string", "null"]}
+      },
+      "required": ["image_ref", "judgment"]
+    },
+    "AllocationSite": {
+      "type": "object",
+      "properties": {
+        "site_code": {"type": "string"},
+        "red_line_boundary": {"type": "object"},
+        "gross_area_ha": {"type": "number"},
+        "capacity": {"type": ["number", "null"]},
+        "proposed_use": {"type": "string"}
+      },
+      "required": ["site_code", "red_line_boundary", "gross_area_ha", "proposed_use"]
+    },
+    "AllocationRequirement": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"}
+      },
+      "required": ["text"]
+    },
+    "AllocationConstraint": {
+      "type": "object",
+      "properties": {
+        "text": {"type": "string"}
+      },
+      "required": ["text"]
+    },
+    "InfrastructureItem": {
+      "type": "object",
+      "properties": {
+        "name": {"type": "string"},
+        "description": {"type": ["string", "null"]}
+      },
+      "required": ["name"]
+    },
+    "Target": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": "string"},
+        "value": {"type": ["number", "string"]}
+      },
+      "required": ["metric", "value"]
+    },
+    "MonitoringIndicator": {
+      "type": "object",
+      "properties": {
+        "metric": {"type": "string"},
+        "description": {"type": ["string", "null"]}
+      },
+      "required": ["metric"]
+    },
+    "ConformityHook": {
+      "type": "object",
+      "properties": {
+        "nppf_ref": {"type": "string"},
+        "note": {"type": ["string", "null"]}
+      },
+      "required": ["nppf_ref"]
+    }
+  },
+  "properties": {
+    "scope": {"$ref": "#/definitions/Scope"},
+    "policy": {"$ref": "#/definitions/Policy"},
+    "standard_matrix": {"$ref": "#/definitions/StandardMatrix"},
+    "designation_instance": {"$ref": "#/definitions/DesignationInstance"},
+    "visual_constraint": {"$ref": "#/definitions/VisualConstraint"},
+    "design_exemplar": {"$ref": "#/definitions/DesignExemplar"},
+    "allocation_site": {"$ref": "#/definitions/AllocationSite"}
+  }
+}

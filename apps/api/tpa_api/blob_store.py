@@ -37,6 +37,20 @@ def read_blob_bytes(blob_path: str) -> tuple[bytes | None, str | None, str | Non
     if not blob_path:
         return None, None, "empty_blob_path"
 
+    if blob_path.startswith("http://") or blob_path.startswith("https://"):
+        try:
+            import httpx
+        except Exception:  # noqa: BLE001
+            return None, None, "httpx_unavailable"
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                resp = client.get(blob_path)
+                resp.raise_for_status()
+                content_type = resp.headers.get("content-type") or "application/octet-stream"
+                return resp.content, content_type, None
+        except Exception as exc:  # noqa: BLE001
+            return None, None, f"http_fetch_failed: {exc}"
+
     local = Path(blob_path)
     if local.exists() and local.is_file():
         try:
@@ -68,4 +82,3 @@ def to_data_url(data: bytes, content_type: str) -> str:
     b64 = base64.b64encode(data).decode("ascii")
     ct = content_type or "application/octet-stream"
     return f"data:{ct};base64,{b64}"
-

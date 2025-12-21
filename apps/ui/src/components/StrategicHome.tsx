@@ -5,7 +5,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
 import { Logo } from "./Logo";
-import { useProject, AVAILABLE_AUTHORITIES } from '../contexts/AuthorityContext';
+import { useProject } from '../contexts/AuthorityContext';
 
 interface StrategicHomeProps {
   onOpenProject: (projectId: string) => void;
@@ -33,7 +33,7 @@ const defaultStages: StageStatus[] = [
 ];
 
 export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHomeProps) {
-  const { authority, setAuthority } = useProject();
+  const { authority, setAuthority, authorities, loadingAuthorities } = useProject();
 
   // 1. Empty/Onboarding View (No Authority Selected)
   if (!authority) {
@@ -68,13 +68,14 @@ export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHom
                   <select
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                     onChange={(e) => {
-                      const auth = AVAILABLE_AUTHORITIES.find(a => a.id === e.target.value);
+                      const auth = authorities.find(a => a.id === e.target.value);
                       if (auth) setAuthority(auth);
                     }}
                     value=""
+                    disabled={loadingAuthorities}
                   >
                     <option value="" disabled>Select an authority...</option>
-                    {AVAILABLE_AUTHORITIES.map(auth => (
+                    {authorities.map(auth => (
                       <option key={auth.id} value={auth.id}>{auth.name}</option>
                     ))}
                   </select>

@@ -1,0 +1,268 @@
+rule_pack_id: england_new_plan_v1
+name: England new plan-making system (draft 2025-11-27)
+jurisdiction: England
+system: new_local_plan_system
+version: "2025-11-27"
+effective_from: "2025-11-27"
+effective_to: null
+process_model_id: culp_30_month_v1
+description: >
+  Draft workflow rules aligned to MHCLG 27 Nov 2025 guidance for the new plan-making system.
+  This pack defines lifecycle states, transitions, and hard checks used to gate workflow changes.
+
+lifecycle_states:
+  - id: PREPARATION_PRE_NOTICE
+    title: Preparation (pre-notice)
+    culp_stage_id: timetable
+  - id: NOTICE_PUBLISHED
+    title: Notice published
+    culp_stage_id: notice_of_plan_making
+  - id: SCOPING_CONSULTATION_OPEN
+    title: Scoping consultation open
+    culp_stage_id: scoping_consultation
+  - id: SCOPING_CONSULTATION_CLOSED
+    title: Scoping consultation closed
+    culp_stage_id: scoping_consultation
+  - id: SCOPING_SUMMARY_PUBLISHED
+    title: Scoping summary published
+    culp_stage_id: publish_scoping_summary
+  - id: GATEWAY_1_PUBLISHED
+    title: Gateway 1 published
+    culp_stage_id: gateway_1
+  - id: MONTHS_1_TO_23_IN_PROGRESS
+    title: Months 1-23 in progress
+    culp_stage_id: null
+  - id: CONTENT_EVIDENCE_CONSULTATION_OPEN
+    title: Content and evidence consultation open
+    culp_stage_id: consult_on_proposed_content_and_evidence
+  - id: CONTENT_EVIDENCE_CONSULTATION_CLOSED
+    title: Content and evidence consultation closed
+    culp_stage_id: consult_on_proposed_content_and_evidence
+  - id: CONTENT_EVIDENCE_SUMMARY_PUBLISHED
+    title: Content and evidence summary published
+    culp_stage_id: consult_on_proposed_content_and_evidence
+  - id: GATEWAY_2_IN_PROGRESS
+    title: Gateway 2 in progress
+    culp_stage_id: gateway_2
+  - id: GATEWAY_2_PUBLISHED
+    title: Gateway 2 published
+    culp_stage_id: gateway_2
+  - id: PROPOSED_PLAN_CONSULTATION_OPEN
+    title: Proposed plan consultation open
+    culp_stage_id: consult_on_proposed_local_plan
+  - id: PROPOSED_PLAN_CONSULTATION_CLOSED
+    title: Proposed plan consultation closed
+    culp_stage_id: consult_on_proposed_local_plan
+  - id: PROPOSED_PLAN_SUMMARY_PUBLISHED
+    title: Proposed plan summary published
+    culp_stage_id: consult_on_proposed_local_plan
+  - id: GATEWAY_3_IN_PROGRESS
+    title: Gateway 3 in progress
+    culp_stage_id: gateway_3
+  - id: GATEWAY_3_COMPLETED
+    title: Gateway 3 completed
+    culp_stage_id: gateway_3
+  - id: SUBMITTED_FOR_EXAMINATION
+    title: Submitted for examination
+    culp_stage_id: submit_for_examination
+  - id: EXAMINATION_IN_PROGRESS
+    title: Examination in progress
+    culp_stage_id: examination
+  - id: EXAMINATION_PAUSED
+    title: Examination paused
+    culp_stage_id: examination
+  - id: EXAMINATION_REPORT_PUBLISHED
+    title: Examination report published
+    culp_stage_id: examination
+  - id: ADOPTED
+    title: Adopted
+    culp_stage_id: adoption_and_publication
+  - id: WITHDRAWN_OR_REVOKED
+    title: Withdrawn or revoked
+    culp_stage_id: null
+
+transitions:
+  - from: PREPARATION_PRE_NOTICE
+    to: NOTICE_PUBLISHED
+    checks:
+      - check_key: timetable_published
+        type: timetable_published
+        params: {}
+      - check_key: notice_artefacts_published
+        type: artefacts_published
+        params:
+          artefact_keys: [notice_html, boundary_map, geometry_download]
+
+  - from: NOTICE_PUBLISHED
+    to: SCOPING_CONSULTATION_OPEN
+    checks:
+      - check_key: scoping_consultation_open
+        type: consultation_status
+        params:
+          consultation_type: SCOPING
+          status: open
+
+  - from: SCOPING_CONSULTATION_OPEN
+    to: SCOPING_CONSULTATION_CLOSED
+    checks:
+      - check_key: scoping_consultation_closed
+        type: consultation_status
+        params:
+          consultation_type: SCOPING
+          status: closed
+
+  - from: SCOPING_CONSULTATION_CLOSED
+    to: SCOPING_SUMMARY_PUBLISHED
+    checks:
+      - check_key: scoping_summary_published
+        type: consultation_summary_published
+        params:
+          consultation_type: SCOPING
+
+  - from: SCOPING_SUMMARY_PUBLISHED
+    to: GATEWAY_1_PUBLISHED
+    checks:
+      - check_key: notice_min_4_months_before_g1
+        type: min_days_between_states
+        params:
+          from_state_id: NOTICE_PUBLISHED
+          min_days: 120
+      - check_key: gateway1_self_assessment_published
+        type: artefacts_published
+        params:
+          artefact_keys: [self_assessment_summary]
+      - check_key: timetable_published_g1
+        type: timetable_published
+        params: {}
+
+  - from: GATEWAY_1_PUBLISHED
+    to: MONTHS_1_TO_23_IN_PROGRESS
+    checks: []
+
+  - from: MONTHS_1_TO_23_IN_PROGRESS
+    to: CONTENT_EVIDENCE_CONSULTATION_OPEN
+    checks:
+      - check_key: content_evidence_consultation_open
+        type: consultation_status
+        params:
+          consultation_type: CONTENT_AND_EVIDENCE
+          status: open
+
+  - from: CONTENT_EVIDENCE_CONSULTATION_OPEN
+    to: CONTENT_EVIDENCE_CONSULTATION_CLOSED
+    checks:
+      - check_key: content_evidence_consultation_min_duration
+        type: consultation_min_duration
+        params:
+          consultation_type: CONTENT_AND_EVIDENCE
+          min_days: 42
+      - check_key: content_evidence_consultation_closed
+        type: consultation_status
+        params:
+          consultation_type: CONTENT_AND_EVIDENCE
+          status: closed
+
+  - from: CONTENT_EVIDENCE_CONSULTATION_CLOSED
+    to: CONTENT_EVIDENCE_SUMMARY_PUBLISHED
+    checks:
+      - check_key: content_evidence_summary_published
+        type: consultation_summary_published
+        params:
+          consultation_type: CONTENT_AND_EVIDENCE
+
+  - from: CONTENT_EVIDENCE_SUMMARY_PUBLISHED
+    to: GATEWAY_2_IN_PROGRESS
+    checks: []
+
+  - from: GATEWAY_2_IN_PROGRESS
+    to: GATEWAY_2_PUBLISHED
+    checks:
+      - check_key: gateway2_outcome_published
+        type: gateway_outcome_published
+        params:
+          gateway_type: G2
+
+  - from: GATEWAY_2_PUBLISHED
+    to: PROPOSED_PLAN_CONSULTATION_OPEN
+    checks:
+      - check_key: proposed_plan_consultation_open
+        type: consultation_status
+        params:
+          consultation_type: PROPOSED_PLAN
+          status: open
+
+  - from: PROPOSED_PLAN_CONSULTATION_OPEN
+    to: PROPOSED_PLAN_CONSULTATION_CLOSED
+    checks:
+      - check_key: proposed_plan_consultation_min_duration
+        type: consultation_min_duration
+        params:
+          consultation_type: PROPOSED_PLAN
+          min_days: 56
+      - check_key: proposed_plan_consultation_closed
+        type: consultation_status
+        params:
+          consultation_type: PROPOSED_PLAN
+          status: closed
+
+  - from: PROPOSED_PLAN_CONSULTATION_CLOSED
+    to: PROPOSED_PLAN_SUMMARY_PUBLISHED
+    checks:
+      - check_key: proposed_plan_summary_published
+        type: consultation_summary_published
+        params:
+          consultation_type: PROPOSED_PLAN
+
+  - from: PROPOSED_PLAN_SUMMARY_PUBLISHED
+    to: GATEWAY_3_IN_PROGRESS
+    checks: []
+
+  - from: GATEWAY_3_IN_PROGRESS
+    to: GATEWAY_3_COMPLETED
+    checks:
+      - check_key: gateway3_outcome_published
+        type: gateway_outcome_published
+        params:
+          gateway_type: G3
+
+  - from: GATEWAY_3_COMPLETED
+    to: SUBMITTED_FOR_EXAMINATION
+    checks:
+      - check_key: submission_bundle_published
+        type: artefacts_published
+        params:
+          artefact_keys: [submission_bundle]
+
+  - from: SUBMITTED_FOR_EXAMINATION
+    to: EXAMINATION_IN_PROGRESS
+    checks: []
+
+  - from: EXAMINATION_IN_PROGRESS
+    to: EXAMINATION_PAUSED
+    checks: []
+
+  - from: EXAMINATION_PAUSED
+    to: EXAMINATION_IN_PROGRESS
+    checks:
+      - check_key: examination_pause_max_6_months
+        type: max_days_in_state
+        params:
+          state_id: EXAMINATION_PAUSED
+          max_days: 183
+
+  - from: EXAMINATION_IN_PROGRESS
+    to: EXAMINATION_REPORT_PUBLISHED
+    checks:
+      - check_key: examination_report_published
+        type: artefacts_published
+        params:
+          artefact_keys: [inspectors_questions_log]
+
+  - from: EXAMINATION_REPORT_PUBLISHED
+    to: ADOPTED
+    checks:
+      - check_key: adoption_statement_published
+        type: artefacts_published
+        params:
+          artefact_keys: [adoption_statement, adopted_local_plan]
+

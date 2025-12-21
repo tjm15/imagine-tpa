@@ -9,6 +9,7 @@ export default defineConfig({
   server: {
     host: true,
     port: Number(process.env.PORT) || 5173,
+    allowedHosts: ["tim-desktop"],
     proxy: {
       "/api": {
         target: apiProxyTarget,
@@ -18,4 +19,3 @@ export default defineConfig({
     },
   },
 });
-

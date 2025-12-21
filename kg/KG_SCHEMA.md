@@ -5,6 +5,21 @@
 * `Policy`, `PolicyClause`, `PolicyMapZone`
 * `Site`, `Area`
 * `VisualAsset`, `VisualFeature`, `SegmentationMask`
+* `Scope`
+* `StandardMatrix`
+* `VisualConstraint`
+* `DesignExemplar`
+* `GeoLayerRef`
+* `DesignationType`
+* `DesignationInstance`
+* `SpatialStrategyElement`
+* `AllocationSite`
+* `AllocationRequirement`
+* `AllocationConstraint`
+* `InfrastructureItem`
+* `Target`
+* `MonitoringIndicator`
+* `ConformityHook`
 * `Frame`, `Transform`, `ControlPoint`, `ProjectionArtifact`
 * `MoveEvent`, `Assumption`, `Issue`
 * `Interpretation`, `ConsiderationLedgerEntry`, `Trajectory`
@@ -22,6 +37,20 @@
 * `MENTIONS`: Chunk -> Site
 * `INTERSECTS`: Site -> SpatialFeature
 * `HAS_VISUAL_EVIDENCE`: Site -> VisualAsset
+* `SUPPORTED_BY`: Policy -> JustificationBlock
+* `ENFORCES`: Policy -> StandardMatrix
+* `HAS_VISUAL_CONSTRAINT`: Policy -> VisualConstraint
+* `ILLUSTRATED_BY`: Policy -> DesignExemplar
+* `IMPLEMENTS`: Policy -> ConformityHook
+* `APPLIES_IN`: Policy -> Scope
+* `DEFINED_BY`: Scope -> DesignationInstance
+* `INSTANCE_OF`: DesignationInstance -> DesignationType
+* `REPRESENTED_BY`: DesignationInstance -> GeoLayerRef
+* `VISUALISED_ON`: SpatialStrategyElement -> VisualAsset
+* `BOUNDED_BY`: AllocationSite -> SpatialFeature
+* `GOVERNED_BY`: AllocationSite -> Policy
+* `REQUIRES`: AllocationSite -> InfrastructureItem
+* `OVERLAPS`: AllocationSite -> DesignationInstance
 * `REGISTERED_TO`: VisualAsset -> Transform
 * `DERIVES_OVERLAY`: Transform -> ProjectionArtifact
 * `HAS_MASK`: VisualAsset -> SegmentationMask

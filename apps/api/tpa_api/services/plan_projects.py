@@ -9,21 +9,38 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..audit import _audit_event
+from ..spec_io import _read_yaml, _spec_root
+from .culp_artefacts import ensure_culp_artefacts
 from ..db import _db_execute_returning, _db_fetch_all
 from ..time_utils import _utc_now
 
 
 class PlanProjectCreate(BaseModel):
     authority_id: str
-    process_model_id: str
+    process_model_id: str = Field(default="culp_30_month_v1")
     title: str
     status: str = Field(default="draft")
     current_stage_id: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
+def _default_culp_stage(process_model_id: str) -> str | None:
+    root = _spec_root()
+    model = _read_yaml(root / "culp" / "PROCESS_MODEL.yaml")
+    if not isinstance(model, dict) or model.get("process_id") != process_model_id:
+        return None
+    stages = model.get("stages")
+    if not isinstance(stages, list) or not stages:
+        return None
+    first = stages[0]
+    if isinstance(first, dict):
+        return first.get("id")
+    return None
+
+
 def create_plan_project(body: PlanProjectCreate) -> JSONResponse:
     now = _utc_now()
+    current_stage_id = body.current_stage_id or _default_culp_stage(body.process_model_id)
     row = _db_execute_returning(
         """
         INSERT INTO plan_projects (
@@ -39,12 +56,13 @@ def create_plan_project(body: PlanProjectCreate) -> JSONResponse:
             body.process_model_id,
             body.title,
             body.status,
-            body.current_stage_id,
+            current_stage_id,
             json.dumps(body.metadata, ensure_ascii=False),
             now,
             now,
         ),
     )
+    ensure_culp_artefacts(str(row["id"]), body.process_model_id)
     _audit_event(
         event_type="plan_project_created",
         plan_project_id=str(row["id"]),

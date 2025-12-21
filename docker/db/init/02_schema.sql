@@ -54,6 +54,27 @@ CREATE TABLE IF NOT EXISTS ingest_batches (
 CREATE INDEX IF NOT EXISTS ingest_batches_authority_started_idx
   ON ingest_batches (authority_id, started_at DESC);
 
+CREATE TABLE IF NOT EXISTS ingest_jobs (
+  id uuid PRIMARY KEY,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  authority_id text NOT NULL,
+  plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL,
+  job_type text NOT NULL,
+  status text NOT NULL,
+  inputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  outputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  started_at timestamptz,
+  completed_at timestamptz,
+  error_text text
+);
+
+CREATE INDEX IF NOT EXISTS ingest_jobs_status_idx
+  ON ingest_jobs (status, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS ingest_jobs_authority_idx
+  ON ingest_jobs (authority_id, created_at DESC);
+
 -- ---------------------------------------------------------------------------
 -- Provenance tables (needed by many FK references)
 -- ---------------------------------------------------------------------------
@@ -167,6 +188,21 @@ CREATE TABLE IF NOT EXISTS visual_assets (
   blob_path text NOT NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+CREATE TABLE IF NOT EXISTS parse_bundles (
+  id uuid PRIMARY KEY,
+  ingest_job_id uuid REFERENCES ingest_jobs (id) ON DELETE SET NULL,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  document_id uuid REFERENCES documents (id) ON DELETE SET NULL,
+  schema_version text NOT NULL,
+  blob_path text NOT NULL,
+  status text NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS parse_bundles_document_idx
+  ON parse_bundles (document_id);
 
 CREATE INDEX IF NOT EXISTS visual_assets_document_id_idx
   ON visual_assets (document_id);
@@ -345,6 +381,436 @@ CREATE TABLE IF NOT EXISTS plan_projects (
   updated_at timestamptz NOT NULL
 );
 
+-- ---------------------------------------------------------------------------
+-- Rule packs + workflow state (plan-making FSM + checks)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rule_packs (
+  id uuid PRIMARY KEY,
+  pack_key text NOT NULL UNIQUE,
+  name text NOT NULL,
+  jurisdiction text NOT NULL,
+  system text NOT NULL,
+  current_version_id uuid,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rule_pack_versions (
+  id uuid PRIMARY KEY,
+  rule_pack_id uuid NOT NULL REFERENCES rule_packs (id) ON DELETE CASCADE,
+  version text NOT NULL,
+  effective_from date NOT NULL,
+  effective_to date,
+  content_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS rule_pack_versions_unique
+  ON rule_pack_versions (rule_pack_id, version);
+
+CREATE TABLE IF NOT EXISTS rule_requirements (
+  id uuid PRIMARY KEY,
+  rule_pack_version_id uuid NOT NULL REFERENCES rule_pack_versions (id) ON DELETE CASCADE,
+  requirement_key text NOT NULL,
+  requirement_type text NOT NULL,
+  culp_stage_id text,
+  lifecycle_state_id text,
+  params_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  severity text NOT NULL DEFAULT 'hard',
+  created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS rule_requirements_pack_idx
+  ON rule_requirements (rule_pack_version_id);
+
+CREATE TABLE IF NOT EXISTS rule_checks (
+  id uuid PRIMARY KEY,
+  rule_pack_version_id uuid NOT NULL REFERENCES rule_pack_versions (id) ON DELETE CASCADE,
+  check_key text NOT NULL,
+  check_type text NOT NULL,
+  from_state_id text,
+  to_state_id text,
+  params_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  severity text NOT NULL DEFAULT 'hard',
+  created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS rule_checks_pack_idx
+  ON rule_checks (rule_pack_version_id);
+
+CREATE TABLE IF NOT EXISTS plan_workflow_states (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  rule_pack_version_id uuid NOT NULL REFERENCES rule_pack_versions (id) ON DELETE CASCADE,
+  state_id text NOT NULL,
+  state_started_at timestamptz NOT NULL,
+  state_updated_at timestamptz NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS plan_workflow_states_unique
+  ON plan_workflow_states (plan_project_id);
+
+CREATE TABLE IF NOT EXISTS workflow_checklists (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  rule_pack_version_id uuid NOT NULL REFERENCES rule_pack_versions (id) ON DELETE CASCADE,
+  state_id text NOT NULL,
+  checklist_key text NOT NULL,
+  status text NOT NULL,
+  completed_at timestamptz,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS workflow_checklists_plan_idx
+  ON workflow_checklists (plan_project_id, state_id);
+
+CREATE TABLE IF NOT EXISTS workflow_transitions (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  rule_pack_version_id uuid NOT NULL REFERENCES rule_pack_versions (id) ON DELETE CASCADE,
+  from_state_id text NOT NULL,
+  to_state_id text NOT NULL,
+  transitioned_at timestamptz NOT NULL,
+  actor_type text NOT NULL,
+  actor_id text,
+  notes text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS workflow_transitions_plan_idx
+  ON workflow_transitions (plan_project_id, transitioned_at DESC);
+
+-- ---------------------------------------------------------------------------
+-- Timetable + milestones
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS timetables (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  status text NOT NULL,
+  public_title text NOT NULL,
+  plain_summary text,
+  data_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS timetables_plan_unique
+  ON timetables (plan_project_id);
+
+CREATE TABLE IF NOT EXISTS milestones (
+  id uuid PRIMARY KEY,
+  timetable_id uuid NOT NULL REFERENCES timetables (id) ON DELETE CASCADE,
+  milestone_key text NOT NULL,
+  title text NOT NULL,
+  due_date date,
+  status text NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS milestones_timetable_idx
+  ON milestones (timetable_id, due_date);
+
+CREATE TABLE IF NOT EXISTS timetable_reviews (
+  id uuid PRIMARY KEY,
+  timetable_id uuid NOT NULL REFERENCES timetables (id) ON DELETE CASCADE,
+  review_status text NOT NULL,
+  reviewed_at timestamptz NOT NULL,
+  reviewer text,
+  notes text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+-- ---------------------------------------------------------------------------
+-- Consultation subsystem
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS consultations (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  consultation_type text NOT NULL,
+  title text NOT NULL,
+  status text NOT NULL,
+  open_at timestamptz,
+  close_at timestamptz,
+  channels_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  documents_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS consultations_plan_idx
+  ON consultations (plan_project_id, consultation_type);
+
+CREATE TABLE IF NOT EXISTS invitees (
+  id uuid PRIMARY KEY,
+  consultation_id uuid NOT NULL REFERENCES consultations (id) ON DELETE CASCADE,
+  category text NOT NULL,
+  name text NOT NULL,
+  contact_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  invited_at timestamptz,
+  method text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX IF NOT EXISTS invitees_consultation_idx
+  ON invitees (consultation_id);
+
+CREATE TABLE IF NOT EXISTS representations (
+  id uuid PRIMARY KEY,
+  consultation_id uuid NOT NULL REFERENCES consultations (id) ON DELETE CASCADE,
+  submitter_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  content_text text,
+  tags_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  site_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  policy_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  files_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  submitted_at timestamptz,
+  public_redacted_text text,
+  status text NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS representations_consultation_idx
+  ON representations (consultation_id, submitted_at DESC);
+
+CREATE TABLE IF NOT EXISTS issue_clusters (
+  id uuid PRIMARY KEY,
+  consultation_id uuid NOT NULL REFERENCES consultations (id) ON DELETE CASCADE,
+  title text NOT NULL,
+  summary text,
+  tags_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  representation_ids_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS consultation_summaries (
+  id uuid PRIMARY KEY,
+  consultation_id uuid NOT NULL REFERENCES consultations (id) ON DELETE CASCADE,
+  summary_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- Evidence graph + traceability
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS evidence_items (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  title text NOT NULL,
+  evidence_type text NOT NULL,
+  publisher text,
+  published_date date,
+  geography text,
+  plan_period text,
+  status text NOT NULL,
+  source_url text,
+  file_hash text,
+  storage_path text,
+  methodology_summary text,
+  quality_flags_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  dependencies_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS evidence_items_plan_idx
+  ON evidence_items (plan_project_id, evidence_type);
+
+CREATE TABLE IF NOT EXISTS evidence_gaps (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  gap_type text NOT NULL,
+  triggered_by text,
+  owner text,
+  due_date date,
+  risk_level text,
+  resolution_evidence_item_id uuid REFERENCES evidence_items (id) ON DELETE SET NULL,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS trace_links (
+  id uuid PRIMARY KEY,
+  from_type text NOT NULL,
+  from_id text NOT NULL,
+  to_type text NOT NULL,
+  to_id text NOT NULL,
+  link_type text NOT NULL,
+  confidence text,
+  notes text,
+  created_by text NOT NULL,
+  created_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS trace_links_from_idx
+  ON trace_links (from_type, from_id);
+
+CREATE INDEX IF NOT EXISTS trace_links_to_idx
+  ON trace_links (to_type, to_id);
+
+-- ---------------------------------------------------------------------------
+-- Site selection (Stages 1-4)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS site_categories (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  name text NOT NULL,
+  description text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS site_assessments (
+  id uuid PRIMARY KEY,
+  site_id uuid NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  stage text NOT NULL,
+  suitability text,
+  availability text,
+  achievability text,
+  notes text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS site_assessments_plan_idx
+  ON site_assessments (plan_project_id, stage);
+
+CREATE TABLE IF NOT EXISTS site_scores (
+  id uuid PRIMARY KEY,
+  site_assessment_id uuid NOT NULL REFERENCES site_assessments (id) ON DELETE CASCADE,
+  dimension text NOT NULL,
+  rag text NOT NULL,
+  rationale text,
+  evidence_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS mitigations (
+  id uuid PRIMARY KEY,
+  site_assessment_id uuid NOT NULL REFERENCES site_assessments (id) ON DELETE CASCADE,
+  description text NOT NULL,
+  status text NOT NULL,
+  evidence_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS allocation_decisions (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  site_id uuid NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+  decision_status text NOT NULL,
+  reason text,
+  evidence_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS decision_logs (
+  id uuid PRIMARY KEY,
+  allocation_decision_id uuid NOT NULL REFERENCES allocation_decisions (id) ON DELETE CASCADE,
+  stage text NOT NULL,
+  changed_at timestamptz NOT NULL,
+  summary text NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS stage4_summary_rows (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  site_id uuid NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+  category text NOT NULL,
+  capacity integer,
+  phasing text,
+  rag_overall text,
+  rag_suitability text,
+  rag_availability text,
+  rag_achievability text,
+  justification text,
+  deliverable_status text,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- Gateways + examination + adoption
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS gateway_submissions (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  gateway_type text NOT NULL,
+  status text NOT NULL,
+  submitted_at timestamptz,
+  pack_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS gateway_outcomes (
+  id uuid PRIMARY KEY,
+  gateway_submission_id uuid NOT NULL REFERENCES gateway_submissions (id) ON DELETE CASCADE,
+  outcome text NOT NULL,
+  findings_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS statement_compliance (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  gateway_submission_id uuid REFERENCES gateway_submissions (id) ON DELETE SET NULL,
+  statement_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS statement_soundness (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  gateway_submission_id uuid REFERENCES gateway_submissions (id) ON DELETE SET NULL,
+  statement_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS readiness_for_exam (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  gateway_submission_id uuid REFERENCES gateway_submissions (id) ON DELETE SET NULL,
+  statement_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS examination_events (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  event_type text NOT NULL,
+  event_date date NOT NULL,
+  details_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS adoption_statements (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  statement_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  published_at timestamptz,
+  created_at timestamptz NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS authored_artefacts (
   id uuid PRIMARY KEY,
   workspace text NOT NULL,
@@ -361,6 +827,37 @@ CREATE TABLE IF NOT EXISTS authored_artefacts (
   created_by text NOT NULL,
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
+);
+
+-- ---------------------------------------------------------------------------
+-- Publication index (public portal surface)
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS publications (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  artefact_key text NOT NULL,
+  authored_artefact_id uuid REFERENCES authored_artefacts (id) ON DELETE SET NULL,
+  artifact_path text,
+  title text NOT NULL,
+  status text NOT NULL,
+  publish_target text NOT NULL,
+  is_immutable boolean NOT NULL DEFAULT false,
+  published_at timestamptz,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS publications_plan_idx
+  ON publications (plan_project_id, status);
+
+CREATE TABLE IF NOT EXISTS publication_assets (
+  id uuid PRIMARY KEY,
+  publication_id uuid NOT NULL REFERENCES publications (id) ON DELETE CASCADE,
+  asset_path text NOT NULL,
+  content_type text NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS runs (
@@ -466,8 +963,16 @@ CREATE TABLE IF NOT EXISTS applications (
   site_geometry geometry,
   proposal_metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   status text NOT NULL,
-  received_at timestamptz
+  received_at timestamptz,
+  plan_project_id uuid REFERENCES plan_projects (id) ON DELETE SET NULL,
+  plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL
 );
+
+ALTER TABLE applications
+  ADD COLUMN IF NOT EXISTS plan_project_id uuid REFERENCES plan_projects (id) ON DELETE SET NULL;
+
+ALTER TABLE applications
+  ADD COLUMN IF NOT EXISTS plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL;
 
 CREATE TABLE IF NOT EXISTS pre_applications (
   id uuid PRIMARY KEY,
@@ -510,6 +1015,12 @@ CREATE TABLE IF NOT EXISTS decisions (
   decision_date date,
   officer_report_document_id uuid REFERENCES documents (id) ON DELETE SET NULL
 );
+
+CREATE INDEX IF NOT EXISTS applications_plan_project_idx
+  ON applications (plan_project_id);
+
+CREATE INDEX IF NOT EXISTS applications_plan_cycle_idx
+  ON applications (plan_cycle_id);
 
 -- ---------------------------------------------------------------------------
 -- Monitoring & delivery tables

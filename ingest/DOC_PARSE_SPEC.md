@@ -1,31 +1,93 @@
-# Document Parsing Specification
+# Document Parsing Specification (ParseBundle v2)
 
 ## Strategy
-* **Azure Profile**: Use Azure Document Intelligence (Foundry).
-* **OSS Profile**: Use `Docling` (IBM).
+* **OSS Profile**: Docparse emits a ParseBundle v2, using Docling/PyPDF plus LLM/VLM assistance.
+* **Azure Profile**: (Not implemented yet; keep the same output contract.)
 
-## Schema Standardization
-Output must be normalized to:
+## Output Contract
+Docparse outputs a versioned ParseBundle (schema: `schemas/ParseBundle.schema.json`). This bundle is the only
+payload persisted by the ingest worker; it is **provider-agnostic** and carries provenance for replayability.
+
+Minimum fields:
 ```json
 {
-  "provider": "docling|azure_document_intelligence|...",
+  "schema_version": "2.0",
+  "bundle_id": "uuid",
+  "document": {
+    "document_id": "uuid",
+    "authority_id": "string",
+    "plan_cycle_id": "uuid|null",
+    "title": "string",
+    "source_url": "string|null",
+    "page_count": 12,
+    "content_bytes": 1234567
+  },
   "pages": [{ "page_number": 1, "text": "..." }],
-  "page_texts": ["..."],
-  "markdown": "...",
-  "chunks": [
+  "layout_blocks": [
     {
+      "block_id": "b-001",
+      "type": "heading|paragraph|bullets|table|caption|other",
       "text": "...",
-      "type": "heading|paragraph|bullets|table|image|other",
-      "section_path": "Chapter 4 > Policy H1",
       "page_number": 1,
-      "bbox": { "...": "..." }
+      "section_path": "Chapter 4 > Policy H1",
+      "bbox": [x0, y0, x1, y1],
+      "evidence_ref": "doc::...::p1-b001"
     }
   ],
-  "tables": [ "markdown_representation" ]
+  "tables": [
+    {
+      "table_id": "t-001",
+      "page_number": 8,
+      "rows": [["Bedrooms", "Spaces"], ["1", "1"]]
+    }
+  ],
+  "visual_assets": [
+    {
+      "asset_id": "va-001",
+      "page_number": 12,
+      "asset_type": "map|diagram|photo|render|decorative",
+      "role": "governance|context|exemplar",
+      "blob_path": "visual_assets/.../va-001.png",
+      "bbox": [x0, y0, x1, y1],
+      "caption": "Good example of active frontage",
+      "classification": {"confidence": "medium"},
+      "metrics": [{"label": "height", "value": 21, "unit": "m"}]
+    }
+  ],
+  "vector_paths": [
+    { "path_id": "vp-001", "page_number": 12, "path_type": "map_layer", "geometry": {"type": "MultiLineString"} }
+  ],
+  "evidence_refs": [
+    {
+      "source_doc_id": "uuid",
+      "section_ref": "Para 5.12",
+      "page_number": 5,
+      "snippet_text": "Policy H1 requires...",
+      "bbox": [x0, y0, x1, y1],
+      "image_ref": "visual_assets/.../va-001.png"
+    }
+  ],
+  "semantic": {
+    "policy_headings": [],
+    "standard_matrices": [],
+    "scope_candidates": [],
+    "visual_constraints": [],
+    "design_exemplars": []
+  },
+  "tool_runs": [],
+  "limitations": []
 }
 ```
-Regardless of the provider, the system digests this format.
 
-Notes:
-* `markdown` is optional but preferred when available; it is used as an additional structure signal for chunking.
-* `bbox` and `page_number` are best-effort and may be omitted/null depending on provider/version/config.
+## Visual Governance Classification
+Every visual is classified into one of three governance classes:
+1. **Governing Geometry** (maps, red-line boundaries) -> DesignationInstance / AllocationSite candidates.
+2. **Governing Logic** (diagrams with metrics) -> VisualConstraint / StandardMatrix candidates.
+3. **Context & Strategy** (photos/renders, key diagrams) -> DesignExemplar / SpatialStrategyElement candidates.
+
+Exemplars are a **subcategory of photos/renders**, not a separate asset type.
+
+## Notes
+* ParseBundle is stored in blob storage; only derived assets and bundles are uploaded (no original PDFs).
+* `bbox` is best-effort and may be null depending on the source/PDF structure.
+* The ingest worker is responsible for persistence, KG wiring, and provenance logging.

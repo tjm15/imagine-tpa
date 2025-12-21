@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { WorkbenchShell } from './components/WorkbenchShell';
 import { StrategicHome } from './components/StrategicHome';
 import { CaseworkHome } from './components/CaseworkHome';
+import { DebugDisabled, DebugView } from './components/DebugView';
 import { ProjectProvider, useProject } from './contexts/AuthorityContext';
 
 export type WorkspaceMode = 'plan' | 'casework';
@@ -11,6 +12,12 @@ function AppContent() {
     const [workspace, setWorkspace] = useState<WorkspaceMode>('plan');
     const [activeView, setActiveView] = useState<ViewMode | null>(null);
     const { projectId, setProjectId, authority } = useProject();
+    const debugEnabled = import.meta.env.DEV;
+    const isDebugRoute = typeof window !== 'undefined' && window.location.pathname.startsWith('/debug');
+
+    if (isDebugRoute) {
+        return debugEnabled ? <DebugView /> : <DebugDisabled />;
+    }
 
     const handleOpenProject = (projectId: string) => {
         setProjectId(projectId);

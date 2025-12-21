@@ -26,6 +26,7 @@ COPY integration /app/spec/integration
 COPY capabilities /app/spec/capabilities
 COPY authorities /app/spec/authorities
 COPY framing /app/spec/framing
+COPY rulepacks /app/spec/rulepacks
 
 EXPOSE 8000
 

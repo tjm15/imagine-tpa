@@ -2,3 +2,7 @@ fastapi>=0.125.0
 uvicorn[standard]>=0.38.0
 python-multipart>=0.0.9
 docling
+httpx>=0.28.0
+minio>=7.2.0
+pypdf>=5.0.0
+pillow>=10.4.0

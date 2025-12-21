@@ -1,0 +1,197 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ParseBundle",
+  "type": "object",
+  "description": "DocParse output bundle (v2) for downstream ingestion and KG wiring.",
+  "properties": {
+    "schema_version": {"type": "string"},
+    "bundle_id": {"type": "string", "format": "uuid"},
+    "document": {
+      "type": "object",
+      "properties": {
+        "document_id": {"type": "string", "format": "uuid"},
+        "authority_id": {"type": "string"},
+        "plan_cycle_id": {"type": ["string", "null"], "format": "uuid"},
+        "title": {"type": "string"},
+        "source_url": {"type": ["string", "null"]},
+        "page_count": {"type": "integer"},
+        "content_bytes": {"type": "integer"}
+      },
+      "required": ["document_id", "authority_id", "title"]
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "page_number": {"type": "integer"},
+          "text": {"type": "string"}
+        },
+        "required": ["page_number", "text"]
+      }
+    },
+    "layout_blocks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "block_id": {"type": "string"},
+          "type": {"type": "string"},
+          "text": {"type": "string"},
+          "page_number": {"type": "integer"},
+          "section_path": {"type": ["string", "null"]},
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "evidence_ref": {"type": ["string", "null"]}
+        },
+        "required": ["block_id", "type", "text", "page_number"]
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "table_id": {"type": "string"},
+          "page_number": {"type": "integer"},
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
+        },
+        "required": ["table_id", "page_number", "rows"]
+      }
+    },
+    "visual_assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "asset_id": {"type": "string"},
+          "page_number": {"type": "integer"},
+          "asset_type": {"type": "string"},
+          "role": {"type": "string"},
+          "blob_path": {"type": "string"},
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "caption": {"type": ["string", "null"]},
+          "classification": {"type": "object"},
+          "metrics": {"type": "array", "items": {"type": "object"}},
+          "width": {"type": ["integer", "null"]},
+          "height": {"type": ["integer", "null"]}
+        },
+        "required": ["asset_id", "page_number", "asset_type", "blob_path"]
+      }
+    },
+    "vector_paths": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "path_id": {"type": "string"},
+          "page_number": {"type": "integer"},
+          "path_type": {"type": "string"},
+          "geometry": {"type": ["object", "null"]},
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4}
+        },
+        "required": ["path_id", "page_number", "path_type"]
+      }
+    },
+    "evidence_refs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_doc_id": {"type": "string"},
+          "section_ref": {"type": "string"},
+          "page_number": {"type": "integer"},
+          "snippet_text": {"type": ["string", "null"]},
+          "bbox": {
+            "type": ["array", "null"],
+            "items": {"type": "number"},
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "image_ref": {"type": ["string", "null"]}
+        },
+        "required": ["source_doc_id", "section_ref", "page_number"]
+      }
+    },
+    "semantic": {
+      "type": "object",
+      "properties": {
+        "policy_headings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "block_id": {"type": "string"},
+              "policy_code": {"type": "string"},
+              "policy_title": {"type": ["string", "null"]},
+              "confidence_hint": {"type": ["string", "null"]},
+              "uncertainty_note": {"type": ["string", "null"]},
+              "evidence_ref": {"type": ["string", "null"]}
+            },
+            "required": ["block_id", "policy_code"]
+          }
+        },
+        "standard_matrices": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "matrix_id": {"type": "string"},
+              "inputs": {"type": "array", "items": {"type": "string"}},
+              "outputs": {"type": "array", "items": {"type": "string"}},
+              "logic_type": {"type": "string"},
+              "evidence_ref": {"type": ["string", "null"]}
+            },
+            "required": ["matrix_id", "inputs", "outputs", "logic_type"]
+          }
+        },
+        "scope_candidates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {"type": "string"},
+              "geography_refs": {"type": "array", "items": {"type": "string"}},
+              "development_types": {"type": "array", "items": {"type": "string"}},
+              "use_classes": {"type": "array", "items": {"type": "string"}},
+              "use_class_regime": {"type": "string"},
+              "temporal_scope": {"type": "object"},
+              "conditions": {"type": "array", "items": {"type": "string"}},
+              "evidence_ref": {"type": ["string", "null"]}
+            },
+            "required": ["id", "geography_refs", "development_types", "use_classes", "use_class_regime"]
+          }
+        },
+        "visual_constraints": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "type": {"type": "string"},
+              "image_ref": {"type": "string"},
+              "extracted_metrics": {"type": "array", "items": {"type": "object"}},
+              "evidence_ref": {"type": ["string", "null"]}
+            },
+            "required": ["type", "image_ref"]
+          }
+        },
+        "design_exemplars": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "image_ref": {"type": "string"},
+              "judgment": {"type": "string"},
+              "description": {"type": ["string", "null"]},
+              "evidence_ref": {"type": ["string", "null"]}
+            },
+            "required": ["image_ref", "judgment"]
+          }
+        }
+      }
+    },
+    "tool_runs": {"type": "array", "items": {"type": "object"}},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  },
+  "required": ["schema_version", "bundle_id", "document", "pages", "layout_blocks", "visual_assets"]
+}
