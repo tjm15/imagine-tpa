@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from ..services.ingest import AuthorityPackIngestRequest
 from ..services.ingest import get_ingest_batch as service_get_ingest_batch
+from ..services.ingest import get_document_coverage as service_get_document_coverage
 from ..services.ingest import get_ingest_job as service_get_ingest_job
 from ..services.ingest import ingest_authority_pack as service_ingest_authority_pack
 from ..services.ingest import list_ingest_batches as service_list_ingest_batches
@@ -48,3 +49,8 @@ def get_ingest_job(ingest_job_id: str) -> JSONResponse:
 @router.get("/ingest/batches/{ingest_batch_id}")
 def get_ingest_batch(ingest_batch_id: str) -> JSONResponse:
     return service_get_ingest_batch(ingest_batch_id)
+
+
+@router.get("/ingest/documents/{document_id}/coverage")
+def get_document_coverage(document_id: str, run_id: str | None = None, alias: str | None = None) -> JSONResponse:
+    return service_get_document_coverage(document_id=document_id, run_id=run_id, alias=alias)

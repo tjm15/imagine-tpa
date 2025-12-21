@@ -187,7 +187,6 @@ services:
       context: ../
       dockerfile: apps/docparse/Dockerfile
     environment:
-      TPA_DOCPARSE_MAX_BYTES: ${TPA_DOCPARSE_MAX_BYTES:-50000000}
       TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
       TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
       TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
@@ -198,8 +197,6 @@ services:
       TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
-      TPA_DOCPARSE_MAX_VISUALS: ${TPA_DOCPARSE_MAX_VISUALS:-120}
-      TPA_DOCPARSE_MAX_PAGES: ${TPA_DOCPARSE_MAX_PAGES:-2000}
     ports:
       - "${TPA_DOCPARSE_PORT:-8084}:8084"
     <<: *service_defaults
@@ -398,10 +395,6 @@ services:
         PLAYWRIGHT_IMAGE: ${TPA_PLAYWRIGHT_IMAGE:-mcr.microsoft.com/playwright:latest}
     environment:
       PORT: "8085"
-      MAX_HTML_BYTES: ${TPA_WEB_MAX_HTML_BYTES:-4000000}
-      MAX_SCREENSHOT_BYTES: ${TPA_WEB_MAX_SCREENSHOT_BYTES:-6000000}
-      MAX_FETCH_BYTES: ${TPA_WEB_MAX_FETCH_BYTES:-12000000}
-      DEFAULT_TIMEOUT_MS: ${TPA_WEB_DEFAULT_TIMEOUT_MS:-30000}
       GOOGLE_CSE_API_KEY: ${GOOGLE_CSE_API_KEY:-}
       GOOGLE_CSE_CX: ${GOOGLE_CSE_CX:-}
       GOOGLE_CSE_ENDPOINT: ${GOOGLE_CSE_ENDPOINT:-}

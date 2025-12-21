@@ -23,12 +23,29 @@
         "properties": {
           "source_clause_id": { "type": "string" },
           "mention_text": { "type": "string" },
-          "mention_type": { "type": "string", "enum": ["place", "designation", "constraint", "other"] },
+          "mention_kind": { "type": "string", "enum": ["place", "constraint", "designation", "policy_ref", "defined_term", "metric", "other"] },
           "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
         },
-        "required": ["source_clause_id", "mention_text", "mention_type"]
+        "required": ["source_clause_id", "mention_text", "mention_kind"]
+      }
+    },
+    "conditions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_clause_id": { "type": "string" },
+          "trigger_text": { "type": "string" },
+          "operator": { "type": "string", "enum": ["EXCEPTION", "QUALIFICATION", "DEPENDENCY", "DISCRETION_GATE", "PRIORITY_OVERRIDE"] },
+          "testable": { "type": "boolean" },
+          "requires": { "type": "array", "items": { "type": "string" } },
+          "severity": { "type": "string", "enum": ["hard", "soft", "discretionary"] },
+          "test_type": { "type": "string", "enum": ["binary", "graded", "narrative"] },
+          "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+        },
+        "required": ["source_clause_id", "trigger_text", "operator"]
       }
     }
   },
-  "required": ["citations", "mentions"]
+  "required": ["citations", "mentions", "conditions"]
 }

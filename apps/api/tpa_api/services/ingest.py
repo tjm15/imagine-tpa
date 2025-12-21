@@ -111,13 +111,11 @@ def _web_automation_ingest_url(
 
     payload = {
         "url": url,
-        "timeout_ms": int(timeout_seconds * 1000),
-        "max_bytes": int(os.environ.get("TPA_WEB_MAX_FETCH_BYTES", "12000000")),
         "screenshot": False,
     }
 
     try:
-        with httpx.Client(timeout=timeout_seconds + 5.0) as client:
+        with httpx.Client(timeout=None) as client:
             resp = client.post(base_url.rstrip("/") + "/ingest", json=payload)
             resp.raise_for_status()
             data = resp.json()
@@ -784,6 +782,282 @@ def get_ingest_batch(ingest_batch_id: str) -> JSONResponse:
                         for t in tool_runs
                     ],
                 }
+            }
+        )
+    )
+
+
+def get_document_coverage(document_id: str, run_id: str | None = None, alias: str | None = None) -> JSONResponse:
+    document_id = _validate_uuid_or_400(document_id, field_name="document_id")
+    if run_id:
+        run_id = _validate_uuid_or_400(run_id, field_name="run_id")
+
+    doc_row = _db_fetch_one(
+        """
+        SELECT id, authority_id, plan_cycle_id, metadata, raw_blob_path, raw_sha256, raw_bytes, raw_source_uri
+        FROM documents
+        WHERE id = %s::uuid
+        """,
+        (document_id,),
+    )
+    if not doc_row:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    if not run_id and alias:
+        alias_row = _db_fetch_one(
+            """
+            SELECT run_id
+            FROM ingest_run_aliases
+            WHERE scope_type = %s AND scope_key = %s AND alias = %s
+            """,
+            ("document", document_id, alias),
+        )
+        if alias_row and alias_row.get("run_id"):
+            run_id = str(alias_row["run_id"])
+
+    if not run_id and alias:
+        scope_key = str(doc_row.get("plan_cycle_id") or doc_row.get("authority_id") or "")
+        scope_type = "plan_cycle" if doc_row.get("plan_cycle_id") else "authority"
+        if scope_key:
+            alias_row = _db_fetch_one(
+                """
+                SELECT run_id
+                FROM ingest_run_aliases
+                WHERE scope_type = %s AND scope_key = %s AND alias = %s
+                """,
+                (scope_type, scope_key, alias),
+            )
+            if alias_row and alias_row.get("run_id"):
+                run_id = str(alias_row["run_id"])
+
+    if not run_id:
+        bundle_row = _db_fetch_one(
+            """
+            SELECT run_id
+            FROM parse_bundles
+            WHERE document_id = %s::uuid
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (document_id,),
+        )
+        if bundle_row and bundle_row.get("run_id"):
+            run_id = str(bundle_row["run_id"])
+
+    if not run_id:
+        return JSONResponse(status_code=404, content=jsonable_encoder({"document_id": document_id, "error": "run_id_unavailable"}))
+
+    bundle_meta = _db_fetch_one(
+        """
+        SELECT id, schema_version, metadata_jsonb, created_at
+        FROM parse_bundles
+        WHERE document_id = %s::uuid AND run_id = %s::uuid
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (document_id, run_id),
+    )
+
+    run_row = _db_fetch_one(
+        """
+        SELECT id, status, pipeline_version, started_at, completed_at
+        FROM ingest_runs
+        WHERE id = %s::uuid
+        """,
+        (run_id,),
+    )
+
+    def _count(sql: str, params: tuple[Any, ...]) -> int:
+        row = _db_fetch_one(sql, params)
+        if not row:
+            return 0
+        return int(row.get("count") or 0)
+
+    counts = {
+        "pages": _count(
+            "SELECT COUNT(*) AS count FROM pages WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "layout_blocks": _count(
+            "SELECT COUNT(*) AS count FROM layout_blocks WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "tables": _count(
+            "SELECT COUNT(*) AS count FROM document_tables WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "vector_paths": _count(
+            "SELECT COUNT(*) AS count FROM vector_paths WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "chunks": _count(
+            "SELECT COUNT(*) AS count FROM chunks WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "visual_assets": _count(
+            "SELECT COUNT(*) AS count FROM visual_assets WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "segmentation_masks": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM segmentation_masks sm
+            JOIN visual_assets va ON va.id = sm.visual_asset_id
+            WHERE va.document_id = %s::uuid AND sm.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "visual_asset_regions": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM visual_asset_regions vr
+            JOIN visual_assets va ON va.id = vr.visual_asset_id
+            WHERE va.document_id = %s::uuid AND vr.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "visual_asset_links": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM visual_asset_links vl
+            JOIN visual_assets va ON va.id = vl.visual_asset_id
+            WHERE va.document_id = %s::uuid AND vl.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "policy_sections": _count(
+            "SELECT COUNT(*) AS count FROM policy_sections WHERE document_id = %s::uuid AND run_id = %s::uuid",
+            (document_id, run_id),
+        ),
+        "policy_clauses": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM policy_clauses pc
+            JOIN policy_sections ps ON ps.id = pc.policy_section_id
+            WHERE ps.document_id = %s::uuid AND pc.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "definitions": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM policy_definitions pd
+            JOIN policy_sections ps ON ps.id = pd.policy_section_id
+            WHERE ps.document_id = %s::uuid AND pd.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "targets": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM policy_targets pt
+            JOIN policy_sections ps ON ps.id = pt.policy_section_id
+            WHERE ps.document_id = %s::uuid AND pt.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "monitoring": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM policy_monitoring_hooks pm
+            JOIN policy_sections ps ON ps.id = pm.policy_section_id
+            WHERE ps.document_id = %s::uuid AND pm.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "unit_embeddings_chunk": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM unit_embeddings ue
+            JOIN chunks c ON c.id = ue.unit_id
+            WHERE ue.unit_type = 'chunk' AND c.document_id = %s::uuid AND ue.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "unit_embeddings_policy_section": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM unit_embeddings ue
+            JOIN policy_sections ps ON ps.id = ue.unit_id
+            WHERE ue.unit_type = 'policy_section' AND ps.document_id = %s::uuid AND ue.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "unit_embeddings_policy_clause": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM unit_embeddings ue
+            JOIN policy_clauses pc ON pc.id = ue.unit_id
+            JOIN policy_sections ps ON ps.id = pc.policy_section_id
+            WHERE ue.unit_type = 'policy_clause' AND ps.document_id = %s::uuid AND ue.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+        "unit_embeddings_visual": _count(
+            """
+            SELECT COUNT(*) AS count
+            FROM unit_embeddings ue
+            JOIN visual_assets va ON va.id = ue.unit_id
+            WHERE ue.unit_type = 'visual_asset' AND va.document_id = %s::uuid AND ue.run_id = %s::uuid
+            """,
+            (document_id, run_id),
+        ),
+    }
+
+    assertions = [
+        {
+            "check": "raw_artifact",
+            "ok": bool(doc_row.get("raw_blob_path") and doc_row.get("raw_sha256")),
+            "detail": "Raw PDF persisted with hash.",
+        },
+        {
+            "check": "layout_blocks_present",
+            "ok": counts["layout_blocks"] > 0,
+            "detail": "Layout blocks extracted.",
+        },
+        {
+            "check": "policy_structure_present",
+            "ok": counts["policy_sections"] > 0 and counts["policy_clauses"] > 0,
+            "detail": "Policy sections and clauses extracted.",
+        },
+        {
+            "check": "embeddings_present",
+            "ok": counts["unit_embeddings_chunk"] > 0,
+            "detail": "Text embeddings exist.",
+        },
+    ]
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "document_id": document_id,
+                "run_id": run_id,
+                "authority_id": doc_row.get("authority_id"),
+                "plan_cycle_id": str(doc_row.get("plan_cycle_id")) if doc_row.get("plan_cycle_id") else None,
+                "document_metadata": doc_row.get("metadata") or {},
+                "raw": {
+                    "raw_blob_path": doc_row.get("raw_blob_path"),
+                    "raw_sha256": doc_row.get("raw_sha256"),
+                    "raw_bytes": doc_row.get("raw_bytes"),
+                    "raw_source_uri": doc_row.get("raw_source_uri"),
+                },
+                "parse_bundle": {
+                    "parse_bundle_id": str(bundle_meta["id"]) if bundle_meta else None,
+                    "schema_version": bundle_meta.get("schema_version") if bundle_meta else None,
+                    "created_at": bundle_meta.get("created_at") if bundle_meta else None,
+                    "parse_flags": (bundle_meta.get("metadata_jsonb") or {}).get("parse_flags") if bundle_meta else [],
+                    "tables_unimplemented": bool((bundle_meta.get("metadata_jsonb") or {}).get("tables_unimplemented"))
+                    if bundle_meta
+                    else False,
+                },
+                "run": {
+                    "status": run_row.get("status") if run_row else None,
+                    "pipeline_version": run_row.get("pipeline_version") if run_row else None,
+                    "started_at": run_row.get("started_at") if run_row else None,
+                    "completed_at": run_row.get("completed_at") if run_row else None,
+                },
+                "counts": counts,
+                "assertions": assertions,
             }
         )
     )

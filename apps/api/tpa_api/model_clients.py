@@ -28,7 +28,7 @@ def _ensure_model_role_sync(*, role: str, timeout_seconds: float = 180.0) -> str
         return None
 
     url = supervisor.rstrip("/") + "/ensure"
-    timeout = min(max(timeout_seconds, 2.0), 600.0)
+    timeout = None
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, json={"role": role}, headers=_model_supervisor_headers())
@@ -49,7 +49,7 @@ async def _ensure_model_role(*, role: str, timeout_seconds: float = 180.0) -> st
         return None
 
     url = supervisor.rstrip("/") + "/ensure"
-    timeout = min(max(timeout_seconds, 2.0), 600.0)
+    timeout = None
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             resp = await client.post(url, json={"role": role}, headers=_model_supervisor_headers())
@@ -76,7 +76,7 @@ def _rerank_texts_sync(
         return None
 
     model_id = model_id or os.environ.get("TPA_RERANKER_MODEL_ID", "Qwen/Qwen3-Reranker-4B")
-    timeout = min(max(time_budget_seconds, 2.0), 180.0)
+    timeout = None
     url_base = base_url.rstrip("/")
 
     docs = [{"id": str(i), "text": t} for i, t in enumerate(texts)]
@@ -149,7 +149,7 @@ async def _embed_texts(
         return None
 
     model_id = model_id or os.environ.get("TPA_EMBEDDINGS_MODEL_ID", "Qwen/Qwen3-Embedding-8B")
-    timeout = min(max(time_budget_seconds, 2.0), 120.0)
+    timeout = None
     url_base = base_url.rstrip("/")
 
     candidates: list[tuple[str, dict[str, Any]]] = [
@@ -205,7 +205,7 @@ def _embed_texts_sync(
         return None
 
     model_id = model_id or os.environ.get("TPA_EMBEDDINGS_MODEL_ID", "Qwen/Qwen3-Embedding-8B")
-    timeout = min(max(time_budget_seconds, 2.0), 120.0)
+    timeout = None
     url_base = base_url.rstrip("/")
 
     candidates: list[tuple[str, dict[str, Any]]] = [
@@ -272,7 +272,7 @@ def _embed_multimodal_sync(
         return None
 
     model_id = model_id or os.environ.get("TPA_EMBEDDINGS_MM_MODEL_ID", "nomic-ai/colnomic-embed-multimodal-7b")
-    timeout = min(max(time_budget_seconds, 2.0), 180.0)
+    timeout = None
     url_base = base_url.rstrip("/")
 
     data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
@@ -327,7 +327,7 @@ def _generate_completion_sync(
         return None
 
     model_id = model_id or _llm_model_id()
-    timeout = min(max(time_budget_seconds, 2.0), 300.0)
+    timeout = None
     url = base_url.rstrip("/") + "/v1/chat/completions"
 
     messages = []

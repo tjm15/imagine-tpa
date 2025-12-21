@@ -3,10 +3,10 @@ import { URL } from "node:url";
 import { buildAuthorityDocumentQuery, googleCustomSearch } from "./google_custom_search.mjs";
 
 const port = Number(process.env.PORT || "8085");
-const maxHtmlBytes = Number(process.env.MAX_HTML_BYTES || "4000000");
-const maxScreenshotBytes = Number(process.env.MAX_SCREENSHOT_BYTES || "6000000");
-const maxFetchBytes = Number(process.env.MAX_FETCH_BYTES || "12000000");
-const defaultTimeoutMs = Number(process.env.DEFAULT_TIMEOUT_MS || "30000");
+const maxHtmlBytes = process.env.MAX_HTML_BYTES ? Number(process.env.MAX_HTML_BYTES) : null;
+const maxScreenshotBytes = process.env.MAX_SCREENSHOT_BYTES ? Number(process.env.MAX_SCREENSHOT_BYTES) : null;
+const maxFetchBytes = process.env.MAX_FETCH_BYTES ? Number(process.env.MAX_FETCH_BYTES) : null;
+const defaultTimeoutMs = process.env.DEFAULT_TIMEOUT_MS ? Number(process.env.DEFAULT_TIMEOUT_MS) : null;
 const defaultUserAgent =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -50,10 +50,12 @@ function filenameFromUrl(value, fallback) {
 
 async function headUrl(url, timeoutMs) {
   try {
+    const options = { method: "HEAD", redirect: "follow" };
+    if (typeof timeoutMs === "number") {
+      options.signal = AbortSignal.timeout(timeoutMs);
+    }
     const res = await fetch(url, {
-      method: "HEAD",
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs),
+      ...options,
     });
     return {
       ok: true,
@@ -68,14 +70,16 @@ async function headUrl(url, timeoutMs) {
 
 async function fetchBytesWithLimit(url, timeoutMs, maxBytes) {
   try {
+    const options = { method: "GET", redirect: "follow" };
+    if (typeof timeoutMs === "number") {
+      options.signal = AbortSignal.timeout(timeoutMs);
+    }
     const res = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      signal: AbortSignal.timeout(timeoutMs),
+      ...options,
     });
     const contentType = res.headers.get("content-type") || "";
     const contentLength = Number(res.headers.get("content-length") || "0");
-    if (contentLength && contentLength > maxBytes) {
+    if (typeof maxBytes === "number" && contentLength && contentLength > maxBytes) {
       return {
         status: 413,
         error: "Body too large",
@@ -92,7 +96,7 @@ async function fetchBytesWithLimit(url, timeoutMs, maxBytes) {
     const chunks = [];
     for await (const chunk of res.body) {
       size += chunk.length;
-      if (size > maxBytes) {
+      if (typeof maxBytes === "number" && size > maxBytes) {
         return {
           status: 413,
           error: "Body too large",
@@ -169,7 +173,7 @@ async function renderPage({
     const page = await context.newPage();
     let resp;
     try {
-      resp = await page.goto(url, { waitUntil, timeout: timeoutMs });
+      resp = await page.goto(url, { waitUntil, ...(typeof timeoutMs === "number" ? { timeout: timeoutMs } : {}) });
     } catch (e) {
       return { status: 502, error: "Navigation failed", detail: String(e?.message || e) };
     }
@@ -180,7 +184,7 @@ async function renderPage({
 
     const html = await page.content();
     const htmlBytes = Buffer.byteLength(html, "utf-8");
-    if (htmlBytes > maxHtmlBytes) {
+    if (typeof maxHtmlBytes === "number" && htmlBytes > maxHtmlBytes) {
       return {
         status: 413,
         error: "Rendered HTML too large",
@@ -193,7 +197,7 @@ async function renderPage({
     let screenshotBase64 = null;
     if (screenshot) {
       const shot = await page.screenshot({ type: "png", fullPage: true });
-      if (shot.length > maxScreenshotBytes) {
+      if (typeof maxScreenshotBytes === "number" && shot.length > maxScreenshotBytes) {
         return {
           status: 413,
           error: "Screenshot too large",
@@ -226,7 +230,8 @@ async function handleRender(body) {
   }
 
   const waitUntil = body?.wait_until || "load";
-  const timeoutMs = Number(body?.timeout_ms || defaultTimeoutMs);
+  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
+  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
   const screenshot = body?.screenshot !== false;
   const viewport = body?.viewport || { width: 1280, height: 720 };
   const dismissCookies = body?.dismiss_cookies !== false;
@@ -267,8 +272,10 @@ async function handleFetch(body) {
     return { status: 400, json: { error: "Missing required field: url" } };
   }
 
-  const timeoutMs = Number(body?.timeout_ms || defaultTimeoutMs);
-  const maxBytes = Number(body?.max_bytes || maxFetchBytes);
+  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
+  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
+  const maxBytesRaw = body?.max_bytes ?? maxFetchBytes;
+  const maxBytes = maxBytesRaw == null ? null : Number(maxBytesRaw);
   const out = await fetchBytesWithLimit(url, timeoutMs, maxBytes);
 
   if (out.error) {
@@ -394,14 +401,17 @@ async function handleIngest(body) {
     return { status: 400, json: { error: "Missing required field: url" } };
   }
 
-  const timeoutMs = Number(body?.timeout_ms || defaultTimeoutMs);
+  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
+  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
   const head = await headUrl(url, timeoutMs);
   const contentType = head.ok ? String(head.content_type || "").toLowerCase() : "";
   const urlLower = url.toLowerCase();
   const isPdf = contentType.includes("application/pdf") || urlLower.endsWith(".pdf");
 
   if (isPdf) {
-    const fetched = await fetchBytesWithLimit(url, timeoutMs, Number(body?.max_bytes || maxFetchBytes));
+    const maxBytesRaw = body?.max_bytes ?? maxFetchBytes;
+    const maxBytes = maxBytesRaw == null ? null : Number(maxBytesRaw);
+    const fetched = await fetchBytesWithLimit(url, timeoutMs, maxBytes);
     if (fetched.error) {
       return { status: fetched.status || 500, json: { ...fetched, requested_url: url } };
     }

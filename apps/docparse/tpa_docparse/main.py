@@ -97,15 +97,13 @@ def _call_llm_json(*, prompt: str, model_id: str | None, time_budget_seconds: fl
     if not base_url:
         return None, ["llm_unconfigured"]
     model = model_id or os.environ.get("TPA_LLM_MODEL_ID") or "openai/gpt-oss-20b"
-    timeout = min(max(time_budget_seconds, 2.0), 180.0)
+    timeout = None
     payload = {
         "model": model,
         "messages": [
             {"role": "system", "content": "Return ONLY valid JSON."},
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.4,
-        "max_tokens": 1400,
     }
     url = base_url.rstrip("/") + "/chat/completions"
     try:
@@ -130,7 +128,7 @@ def _call_vlm_json(*, prompt: str, image_bytes: bytes, model_id: str | None, tim
     if not base_url:
         return None, ["vlm_unconfigured"]
     model = model_id or os.environ.get("TPA_VLM_MODEL_ID") or "nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8"
-    timeout = min(max(time_budget_seconds, 2.0), 240.0)
+    timeout = None
     data_url = _as_data_url(image_bytes, "image/png")
     payload = {
         "model": model,
@@ -143,8 +141,6 @@ def _call_vlm_json(*, prompt: str, image_bytes: bytes, model_id: str | None, tim
                 ],
             }
         ],
-        "temperature": 0.2,
-        "max_tokens": 800,
     }
     url = base_url.rstrip("/") + "/chat/completions"
     try:
@@ -416,7 +412,7 @@ def _docling_parse_pdf(
     *,
     file_bytes: bytes,
     filename: str,
-    max_pages: int,
+    max_pages: int | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
     try:
         from docling.document_converter import DocumentConverter  # type: ignore[import-not-found]
@@ -444,7 +440,7 @@ def _docling_parse_pdf(
             pages_raw = data.get("pages")
             if isinstance(pages_raw, list):
                 for idx, page in enumerate(pages_raw, start=1):
-                    if idx > max_pages:
+                    if max_pages is not None and idx > max_pages:
                         break
                     page_number = page.get("page_number") or page.get("page") or idx
                     text = page.get("text") or page.get("content") or ""
@@ -461,7 +457,7 @@ def _docling_parse_pdf(
             pages_raw = _get_attr(doc, "pages")
             if isinstance(pages_raw, list):
                 for idx, page in enumerate(pages_raw, start=1):
-                    if idx > max_pages:
+                    if max_pages is not None and idx > max_pages:
                         break
                     text = _get_attr(page, "text", "text_content", "content") or ""
                     page_number = _get_attr(page, "page_number", "page", "number") or idx
@@ -500,10 +496,10 @@ def _docling_parse_pdf(
     return pages, blocks, tables, tool_runs, errors
 
 
-def _extract_page_texts(reader: PdfReader, *, max_pages: int) -> list[dict[str, Any]]:
+def _extract_page_texts(reader: PdfReader, *, max_pages: int | None) -> list[dict[str, Any]]:
     pages: list[dict[str, Any]] = []
     for idx, page in enumerate(reader.pages, start=1):
-        if idx > max_pages:
+        if max_pages is not None and idx > max_pages:
             break
         try:
             text = page.extract_text() or ""
@@ -513,15 +509,15 @@ def _extract_page_texts(reader: PdfReader, *, max_pages: int) -> list[dict[str, 
     return pages
 
 
-def _extract_images(reader: PdfReader, *, max_pages: int, max_visuals: int) -> list[dict[str, Any]]:
+def _extract_images(reader: PdfReader, *, max_pages: int | None, max_visuals: int | None) -> list[dict[str, Any]]:
     visuals: list[dict[str, Any]] = []
     for idx, page in enumerate(reader.pages, start=1):
-        if idx > max_pages:
+        if max_pages is not None and idx > max_pages:
             break
         if not getattr(page, "images", None):
             continue
         for image in page.images:
-            if len(visuals) >= max_visuals:
+            if max_visuals is not None and len(visuals) >= max_visuals:
                 break
             raw = getattr(image, "data", None)
             if raw is None:
@@ -817,7 +813,7 @@ def _classify_visuals(
     visuals: list[dict[str, Any]],
     *,
     vlm_model_id: str | None,
-    max_visuals: int,
+    max_visuals: int | None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     classified: list[dict[str, Any]] = []
     tool_runs: list[dict[str, Any]] = []
@@ -833,7 +829,8 @@ def _classify_visuals(
         "\"asset_type\":..., \"role\":..., \"judgment\":..., \"description\":..., "
         "\"constraint_type\":..., \"extracted_metrics\": [...], \"caption_hint\":...}."
     )
-    for idx, item in enumerate(visuals[:max_visuals], start=1):
+    iterable = visuals if max_visuals is None else visuals[:max_visuals]
+    for idx, item in enumerate(iterable, start=1):
         data = item.get("bytes")
         if not isinstance(data, (bytes, bytearray)):
             continue
@@ -860,7 +857,7 @@ def _call_vectorize(*, image_bytes: bytes, time_budget_seconds: float) -> tuple[
     base_url = os.environ.get("TPA_VECTORIZE_BASE_URL")
     if not base_url:
         return [], ["vectorize_unconfigured"]
-    timeout = min(max(time_budget_seconds, 2.0), 120.0)
+    timeout = None
     url = base_url.rstrip("/") + "/vectorize"
     files = {"file": ("image.png", io.BytesIO(image_bytes), "image/png")}
     try:
@@ -928,28 +925,23 @@ async def parse_bundle(
     job_id = str(meta_obj.get("job_id") or uuid4())
     source_url = meta_obj.get("source_url") if isinstance(meta_obj.get("source_url"), str) else None
 
-    max_bytes = int(os.environ.get("TPA_DOCPARSE_MAX_BYTES", "50000000"))
     data = await file.read()
-    if len(data) > max_bytes:
-        raise HTTPException(status_code=413, detail=f"File too large (>{max_bytes} bytes)")
 
     reader = PdfReader(io.BytesIO(data))
-    max_pages = int(os.environ.get("TPA_DOCPARSE_MAX_PAGES", "2000"))
 
     docling_pages, docling_blocks, docling_tables, docling_runs, docling_errors = _docling_parse_pdf(
         file_bytes=data,
         filename=file.filename or "document.pdf",
-        max_pages=max_pages,
+        max_pages=None,
     )
     docling_used = bool(docling_pages or docling_blocks)
 
     if docling_pages:
         page_texts = docling_pages
     else:
-        page_texts = _extract_page_texts(reader, max_pages=max_pages)
+        page_texts = _extract_page_texts(reader, max_pages=None)
 
-    max_visuals = int(os.environ.get("TPA_DOCPARSE_MAX_VISUALS", "120"))
-    visuals = _extract_images(reader, max_pages=max_pages, max_visuals=max_visuals)
+    visuals = _extract_images(reader, max_pages=None, max_visuals=None)
     visuals_by_page: dict[int, int] = {}
     for asset in visuals:
         page_number = int(asset.get("page_number") or 0)
@@ -1003,7 +995,7 @@ async def parse_bundle(
             page.update(render)
 
     vlm_model_id = os.environ.get("TPA_VLM_MODEL_ID")
-    classified_visuals, vlm_runs = _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=max_visuals)
+    classified_visuals, vlm_runs = _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
 
     vector_paths: list[dict[str, Any]] = []
     vector_tool_runs: list[dict[str, Any]] = []
@@ -1185,16 +1177,15 @@ async def parse_pdf(file: UploadFile) -> JSONResponse:
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
     reader = PdfReader(io.BytesIO(data))
-    max_pages = int(os.environ.get("TPA_DOCPARSE_MAX_PAGES", "2000"))
     docling_pages, docling_blocks, _, _, docling_errors = _docling_parse_pdf(
         file_bytes=data,
         filename=file.filename or "document.pdf",
-        max_pages=max_pages,
+        max_pages=None,
     )
     if docling_pages:
         page_texts = docling_pages
     else:
-        page_texts = _extract_page_texts(reader, max_pages=max_pages)
+        page_texts = _extract_page_texts(reader, max_pages=None)
     blocks = docling_blocks if docling_blocks else _lines_to_blocks(page_texts)
     provider = "docling" if docling_pages and not docling_errors else "pypdf"
     return JSONResponse(

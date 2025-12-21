@@ -636,6 +636,7 @@ CREATE TABLE IF NOT EXISTS policy_clauses (
   span_end integer,
   span_quality text,
   speech_act_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  conditions_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
   subject text,
   object text,
   evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
@@ -645,6 +646,24 @@ CREATE TABLE IF NOT EXISTS policy_clauses (
 
 CREATE INDEX IF NOT EXISTS policy_clauses_section_idx
   ON policy_clauses (policy_section_id);
+
+CREATE TABLE IF NOT EXISTS policy_clause_mentions (
+  id uuid PRIMARY KEY,
+  policy_clause_id uuid NOT NULL REFERENCES policy_clauses (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  mention_text text NOT NULL,
+  mention_kind text NOT NULL,
+  evidence_refs_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  resolved_entity_type text,
+  resolved_entity_id text,
+  resolution_confidence text,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS policy_clause_mentions_clause_idx
+  ON policy_clause_mentions (policy_clause_id);
 
 CREATE TABLE IF NOT EXISTS policy_definitions (
   id uuid PRIMARY KEY,
@@ -1707,6 +1726,9 @@ ALTER TABLE unit_embeddings
 
 ALTER TABLE policy_sections
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_clauses
+  ADD COLUMN IF NOT EXISTS conditions_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb;
 
 ALTER TABLE policy_clauses
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;

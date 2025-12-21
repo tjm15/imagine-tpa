@@ -55,8 +55,8 @@ def _llm_structured_sync(
     system_template: str,
     user_payload: dict[str, Any],
     time_budget_seconds: float,
-    temperature: float = 0.6,
-    max_tokens: int = 1200,
+    temperature: float | None = None,
+    max_tokens: int | None = None,
     model_id: str | None = None,
     output_schema_ref: str | None = None,
     ingest_batch_id: str | None = None,
@@ -72,7 +72,7 @@ def _llm_structured_sync(
         return None, None, ["llm_unconfigured"]
 
     model_id = model_id or _llm_model_id()
-    timeout = min(max(time_budget_seconds, 2.0), 300.0)
+    timeout = None
 
     _prompt_upsert(
         prompt_id=prompt_id,
@@ -97,9 +97,11 @@ def _llm_structured_sync(
             {"role": "system", "content": system_template},
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
         ],
-        "temperature": float(temperature),
-        "max_tokens": int(max_tokens),
     }
+    if temperature is not None:
+        payload["temperature"] = float(temperature)
+    if max_tokens is not None:
+        payload["max_tokens"] = int(max_tokens)
 
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -114,6 +116,20 @@ def _llm_structured_sync(
         errors.append(f"llm_call_failed: {exc}")
 
     ended_at = _utc_now()
+    inputs_logged = {
+        "prompt_id": prompt_id,
+        "prompt_version": prompt_version,
+        "prompt_name": prompt_name,
+        "purpose": purpose,
+        "model_id": model_id,
+        "output_schema_ref": output_schema_ref,
+        "messages": payload.get("messages"),
+    }
+    if temperature is not None:
+        inputs_logged["temperature"] = temperature
+    if max_tokens is not None:
+        inputs_logged["max_tokens"] = max_tokens
+
     _db_execute(
         """
         INSERT INTO tool_runs (
@@ -126,20 +142,7 @@ def _llm_structured_sync(
             ingest_batch_id,
             run_id,
             "llm_generate_structured",
-            json.dumps(
-                {
-                    "prompt_id": prompt_id,
-                    "prompt_version": prompt_version,
-                    "prompt_name": prompt_name,
-                    "purpose": purpose,
-                    "model_id": model_id,
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                    "output_schema_ref": output_schema_ref,
-                    "messages": payload.get("messages"),
-                },
-                ensure_ascii=False,
-            ),
+            json.dumps(inputs_logged, ensure_ascii=False),
             json.dumps(
                 {
                     "ok": obj is not None,

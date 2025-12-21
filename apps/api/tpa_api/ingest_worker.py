@@ -178,6 +178,27 @@ def _finish_ingest_run(
         ),
     )
 
+
+def _set_ingest_run_alias(
+    *,
+    scope_type: str,
+    scope_key: str,
+    alias: str,
+    run_id: str,
+    notes: str | None = None,
+) -> None:
+    _db_execute(
+        """
+        INSERT INTO ingest_run_aliases (
+          id, scope_type, scope_key, alias, run_id, set_at, set_by, notes
+        )
+        VALUES (%s, %s, %s, %s, %s::uuid, %s, %s, %s)
+        ON CONFLICT (scope_type, scope_key, alias)
+        DO UPDATE SET run_id = EXCLUDED.run_id, set_at = EXCLUDED.set_at, set_by = EXCLUDED.set_by, notes = EXCLUDED.notes
+        """,
+        (str(uuid4()), scope_type, scope_key, alias, run_id, _utc_now(), "system", notes),
+    )
+
 def _update_job_status(
     *,
     ingest_job_id: str,
@@ -229,7 +250,7 @@ def _call_docparse_bundle(*, file_bytes: bytes, filename: str, metadata: dict[st
     url = base_url.rstrip("/") + "/parse/bundle"
     files = {"file": (filename, io.BytesIO(file_bytes), "application/pdf")}
     data = {"metadata": json.dumps(metadata, ensure_ascii=False)}
-    timeout = float(os.environ.get("TPA_DOCPARSE_TIMEOUT_SECONDS", "300"))
+    timeout = None
     with httpx.Client(timeout=timeout) as client:
         resp = client.post(url, files=files, data=data)
         resp.raise_for_status()
@@ -914,7 +935,7 @@ def _segment_visual_assets(
     base_url = os.environ.get("TPA_SEGMENTATION_BASE_URL")
     if not base_url:
         raise RuntimeError("segmentation_unconfigured")
-    timeout = float(os.environ.get("TPA_SEGMENTATION_TIMEOUT_SECONDS", "180"))
+    timeout = None
     prefix = f"docparse/{authority_id}/{plan_cycle_id or 'none'}/{document_id}"
 
     mask_total = 0
@@ -1142,8 +1163,6 @@ def _link_visual_assets_to_policies(
             system_template=system_template,
             user_payload=payload,
             time_budget_seconds=60.0,
-            temperature=0.2,
-            max_tokens=600,
             output_schema_ref="schemas/VisualAssetLinkParseResult.schema.json",
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -1500,8 +1519,6 @@ def _llm_extract_policy_structure(
             system_template=system_template,
             user_payload=payload,
             time_budget_seconds=120.0,
-            temperature=0.3,
-            max_tokens=1600,
             output_schema_ref="schemas/PolicyStructureParseResult.schema.json",
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -1556,6 +1573,8 @@ def _insert_kg_edge(
     dst_id: str,
     edge_type: str,
     run_id: str | None,
+    edge_class: str | None = None,
+    resolve_method: str | None = None,
     props: dict[str, Any] | None = None,
     evidence_ref_id: str | None = None,
     tool_run_id: str | None = None,
@@ -1563,16 +1582,18 @@ def _insert_kg_edge(
     _db_execute(
         """
         INSERT INTO kg_edge (
-          edge_id, src_id, dst_id, edge_type, props_jsonb,
+          edge_id, src_id, dst_id, edge_type, edge_class, resolve_method, props_jsonb,
           evidence_ref_id, tool_run_id, run_id
         )
-        VALUES (%s, %s, %s, %s, %s::jsonb, %s::uuid, %s::uuid, %s::uuid)
+        VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::uuid, %s::uuid, %s::uuid)
         """,
         (
             str(uuid4()),
             src_id,
             dst_id,
             edge_type,
+            edge_class,
+            resolve_method,
             json.dumps(props or {}, ensure_ascii=False),
             evidence_ref_id,
             tool_run_id,
@@ -1688,10 +1709,10 @@ def _persist_policy_structure(
                 """
                 INSERT INTO policy_clauses (
                   id, policy_section_id, run_id, clause_ref, text, page_number,
-                  span_start, span_end, span_quality, speech_act_jsonb,
+                  span_start, span_end, span_quality, speech_act_jsonb, conditions_jsonb,
                   subject, object, evidence_ref_id, source_artifact_id, metadata_jsonb
                 )
-                VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s::jsonb, %s, %s, %s::uuid, %s::uuid, %s::jsonb)
+                VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::uuid, %s::uuid, %s::jsonb)
                 """,
                 (
                     clause_id,
@@ -1704,6 +1725,7 @@ def _persist_policy_structure(
                     clause_span_end,
                     clause_span_quality,
                     json.dumps(speech_act, ensure_ascii=False),
+                    json.dumps([], ensure_ascii=False),
                     clause.get("subject"),
                     clause.get("object"),
                     clause_evidence_ref_id,
@@ -1865,9 +1887,9 @@ def _llm_extract_edges(
     run_id: str | None,
     policy_clauses: list[dict[str, Any]],
     policy_codes: list[str],
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str], list[str]]:
     if not policy_clauses:
-        return [], [], [], ["no_clauses"]
+        return [], [], [], [], ["no_clauses"]
     prompt_id = "policy_edge_parse_v1"
     system_template = (
         "You are extracting citations and mentions from planning policy clauses.\n"
@@ -1877,18 +1899,23 @@ def _llm_extract_edges(
         '    {"source_clause_id": "uuid", "target_policy_code": "string", "confidence": "low|medium|high"}\n'
         "  ],\n"
         '  "mentions": [\n'
-        '    {"source_clause_id": "uuid", "mention_text": "string", "mention_type": "place|designation|constraint|other", "confidence": "low|medium|high"}\n'
+        '    {"source_clause_id": "uuid", "mention_text": "string", "mention_kind": "place|constraint|designation|policy_ref|defined_term|metric|other", "confidence": "low|medium|high"}\n'
+        "  ],\n"
+        '  "conditions": [\n'
+        '    {"source_clause_id": "uuid", "trigger_text": "string", "operator": "EXCEPTION|QUALIFICATION|DEPENDENCY|DISCRETION_GATE|PRIORITY_OVERRIDE", "testable": true, "requires": [], "severity": "hard|soft|discretionary", "test_type": "binary|graded|narrative", "confidence": "low|medium|high"}\n'
         "  ]\n"
         "}\n"
         "Rules:\n"
         "- Only cite policy codes that appear in the provided policy_codes list.\n"
-        "- Use mention_type based on context; do not invent entities.\n"
+        "- Use mention_kind based on context; do not invent entities.\n"
+        "- Conditions must quote the trigger text (unless/subject to/where appropriate).\n"
     )
 
     tool_run_ids: list[str] = []
     errors: list[str] = []
     citations: list[dict[str, Any]] = []
     mentions: list[dict[str, Any]] = []
+    conditions: list[dict[str, Any]] = []
 
     batch_size = 30
     for i in range(0, len(policy_clauses), batch_size):
@@ -1901,12 +1928,10 @@ def _llm_extract_edges(
             prompt_id=prompt_id,
             prompt_version=1,
             prompt_name="Policy edge parser",
-            purpose="Extract policy citations and place/constraint mentions from clauses.",
+            purpose="Extract policy citations, clause mentions, and clause conditions from clauses.",
             system_template=system_template,
             user_payload=payload,
             time_budget_seconds=90.0,
-            temperature=0.2,
-            max_tokens=1200,
             output_schema_ref="schemas/PolicyEdgeParseResult.schema.json",
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -1920,8 +1945,10 @@ def _llm_extract_edges(
             citations.extend([c for c in obj["citations"] if isinstance(c, dict)])
         if isinstance(obj.get("mentions"), list):
             mentions.extend([m for m in obj["mentions"] if isinstance(m, dict)])
+        if isinstance(obj.get("conditions"), list):
+            conditions.extend([c for c in obj["conditions"] if isinstance(c, dict)])
 
-    return citations, mentions, tool_run_ids, errors
+    return citations, mentions, conditions, tool_run_ids, errors
 
 
 def _persist_policy_edges(
@@ -1933,6 +1960,7 @@ def _persist_policy_edges(
     monitoring: list[dict[str, Any]],
     citations: list[dict[str, Any]],
     mentions: list[dict[str, Any]],
+    conditions: list[dict[str, Any]],
     tool_run_ids: list[str],
     run_id: str | None,
 ) -> None:
@@ -1954,6 +1982,8 @@ def _persist_policy_edges(
             dst_id=f"definition::{definition_id}",
             edge_type="DEFINES",
             run_id=run_id,
+            edge_class="llm",
+            resolve_method="llm_policy_structure_v1",
             props={"term": definition.get("term")},
             evidence_ref_id=definition.get("evidence_ref_id"),
             tool_run_id=tool_run_id,
@@ -1969,6 +1999,8 @@ def _persist_policy_edges(
             dst_id=f"target::{target_id}",
             edge_type="TARGET_OF",
             run_id=run_id,
+            edge_class="llm",
+            resolve_method="llm_policy_structure_v1",
             props={},
             evidence_ref_id=target.get("evidence_ref_id"),
             tool_run_id=tool_run_id,
@@ -1984,6 +2016,8 @@ def _persist_policy_edges(
             dst_id=f"monitoring::{hook_id}",
             edge_type="MONITORS",
             run_id=run_id,
+            edge_class="llm",
+            resolve_method="llm_policy_structure_v1",
             props={},
             evidence_ref_id=hook.get("evidence_ref_id"),
             tool_run_id=tool_run_id,
@@ -2006,33 +2040,111 @@ def _persist_policy_edges(
             dst_id=dst_id,
             edge_type="CITES",
             run_id=run_id,
+            edge_class="llm",
+            resolve_method="llm_policy_edge_parse_v1",
             props={"confidence": cite.get("confidence")},
             evidence_ref_id=src.get("evidence_ref_id") if src else None,
             tool_run_id=tool_run_id,
         )
 
+    if mentions:
+        _persist_policy_clause_mentions(
+            mentions=mentions,
+            clause_ref_map=clause_ref_map,
+            tool_run_id=tool_run_id,
+            run_id=run_id,
+        )
+
+    if conditions:
+        _apply_clause_conditions(
+            conditions=conditions,
+            clause_ref_map=clause_ref_map,
+            run_id=run_id,
+        )
+
+
+def _persist_policy_clause_mentions(
+    *,
+    mentions: list[dict[str, Any]],
+    clause_ref_map: dict[str, dict[str, Any]],
+    tool_run_id: str | None,
+    run_id: str | None,
+) -> None:
     for mention in mentions:
         source_clause_id = mention.get("source_clause_id")
         mention_text = mention.get("mention_text")
-        if not source_clause_id or not mention_text:
+        mention_kind = mention.get("mention_kind")
+        if not source_clause_id or not mention_text or not mention_kind:
             continue
-        slug = _slugify(str(mention_text))
-        node_id = f"mention::{slug}"
-        _ensure_kg_node(
-            node_id=node_id,
-            node_type="Mention",
-            canonical_fk=None,
-            props={"mention_text": mention_text, "mention_type": mention.get("mention_type")},
+        clause = clause_ref_map.get(source_clause_id)
+        evidence_ref_id = clause.get("evidence_ref_id") if clause else None
+        _db_execute(
+            """
+            INSERT INTO policy_clause_mentions (
+              id, policy_clause_id, run_id, mention_text, mention_kind, evidence_refs_jsonb,
+              resolved_entity_type, resolved_entity_id, resolution_confidence, tool_run_id, metadata_jsonb, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s::jsonb, %s, %s, %s, %s::uuid, %s::jsonb, %s)
+            """,
+            (
+                str(uuid4()),
+                source_clause_id,
+                run_id,
+                mention_text,
+                mention_kind,
+                json.dumps([evidence_ref_id] if evidence_ref_id else [], ensure_ascii=False),
+                None,
+                None,
+                None,
+                tool_run_id,
+                json.dumps({"confidence": mention.get("confidence")}, ensure_ascii=False),
+                _utc_now(),
+            ),
         )
-        src = clause_ref_map.get(source_clause_id)
-        _insert_kg_edge(
-            src_id=f"policy_clause::{source_clause_id}",
-            dst_id=node_id,
-            edge_type="MENTIONS",
-            run_id=run_id,
-            props={"confidence": mention.get("confidence")},
-            evidence_ref_id=src.get("evidence_ref_id") if src else None,
-            tool_run_id=tool_run_id,
+
+
+def _apply_clause_conditions(
+    *,
+    conditions: list[dict[str, Any]],
+    clause_ref_map: dict[str, dict[str, Any]],
+    run_id: str | None,
+) -> None:
+    by_clause: dict[str, list[dict[str, Any]]] = {}
+    allowed_ops = {"EXCEPTION", "QUALIFICATION", "DEPENDENCY", "DISCRETION_GATE", "PRIORITY_OVERRIDE"}
+    allowed_severity = {"hard", "soft", "discretionary"}
+    allowed_test_type = {"binary", "graded", "narrative"}
+    for cond in conditions:
+        source_clause_id = cond.get("source_clause_id")
+        trigger_text = cond.get("trigger_text")
+        operator = cond.get("operator")
+        if not source_clause_id or not trigger_text or not operator:
+            continue
+        if operator not in allowed_ops:
+            continue
+        clause = clause_ref_map.get(source_clause_id)
+        evidence_ref_id = clause.get("evidence_ref_id") if clause else None
+        cond_key = f"{source_clause_id}|{operator}|{trigger_text}"
+        condition_id = hashlib.sha1(cond_key.encode("utf-8")).hexdigest()
+        item = {
+            "condition_id": condition_id,
+            "operator": operator,
+            "trigger_text": trigger_text,
+            "testable": bool(cond.get("testable")),
+            "requires": cond.get("requires") if isinstance(cond.get("requires"), list) else [],
+            "severity": cond.get("severity") if cond.get("severity") in allowed_severity else None,
+            "test_type": cond.get("test_type") if cond.get("test_type") in allowed_test_type else None,
+            "span_evidence_refs": [evidence_ref_id] if evidence_ref_id else [],
+        }
+        by_clause.setdefault(source_clause_id, []).append(item)
+
+    for clause_id, items in by_clause.items():
+        _db_execute(
+            """
+            UPDATE policy_clauses
+            SET conditions_jsonb = %s::jsonb
+            WHERE id = %s::uuid
+            """,
+            (json.dumps(items, ensure_ascii=False), clause_id),
         )
 
 
@@ -2462,7 +2574,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             step_counts["structural_llm"] = step_counts.get("structural_llm", 0) + 1
 
             policy_codes = [s.get("policy_code") for s in policy_sections if s.get("policy_code")]
-            citations, mentions, edge_tool_run_ids, edge_errors = _llm_extract_edges(
+            citations, mentions, conditions, edge_tool_run_ids, edge_errors = _llm_extract_edges(
                 ingest_batch_id=ingest_batch_id,
                 run_id=run_id,
                 policy_clauses=policy_clauses,
@@ -2478,6 +2590,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 monitoring=monitoring,
                 citations=citations,
                 mentions=mentions,
+                conditions=conditions,
                 tool_run_ids=edge_tool_run_ids,
                 run_id=run_id,
             )
@@ -2639,12 +2752,23 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 },
             )
         outputs = {"counts": counts, "errors": errors[:20]}
+        run_status = "success" if not errors else "partial"
         if run_id:
             _finish_ingest_run(
                 run_id=run_id,
-                status="success" if not errors else "partial",
+                status=run_status,
                 outputs=outputs,
             )
+            scope_key = plan_cycle_id or authority_id
+            if scope_key and run_status == "success":
+                scope_type = "plan_cycle" if plan_cycle_id else "authority"
+                _set_ingest_run_alias(
+                    scope_type=scope_type,
+                    scope_key=str(scope_key),
+                    alias="latest_good",
+                    run_id=run_id,
+                    notes="Auto-set on successful ingest run.",
+                )
         _update_job_status(ingest_job_id=ingest_job_id, status="success" if not errors else "partial", outputs=outputs, completed_at=completed)
         if ingest_batch_id:
             _update_ingest_batch_progress(
