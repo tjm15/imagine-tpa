@@ -1236,7 +1236,7 @@ def assemble_curated_evidence_set_sync(
             evidence_type = "policy_clause"
             metadata: dict[str, Any] = {
                 "policy_clause_id": cand.get("policy_clause_id"),
-                "policy_id": cand.get("policy_id"),
+                "policy_section_id": cand.get("policy_section_id"),
                 "clause_ref": cand.get("clause_ref"),
                 "policy_ref": cand.get("policy_ref"),
                 "policy_title": cand.get("policy_title"),
@@ -1309,14 +1309,18 @@ def assemble_curated_evidence_set_sync(
                     """
                     SELECT
                       pc.text AS clause_text,
-                      p.policy_status,
-                      p.policy_weight_hint,
-                      p.effective_from,
-                      p.effective_to,
-                      p.uncertainty_note,
-                      p.confidence_hint
+                      pc.speech_act_jsonb AS speech_act,
+                      ps.policy_code,
+                      ps.title AS policy_title,
+                      d.document_status,
+                      d.weight_hint,
+                      d.effective_from,
+                      d.effective_to,
+                      d.uncertainty_note,
+                      d.confidence_hint
                     FROM policy_clauses pc
-                    JOIN policies p ON p.id = pc.policy_id
+                    JOIN policy_sections ps ON ps.id = pc.policy_section_id
+                    JOIN documents d ON d.id = ps.document_id
                     WHERE pc.id = %s::uuid
                     """,
                     (cand.get("policy_clause_id"),),
@@ -1326,8 +1330,11 @@ def assemble_curated_evidence_set_sync(
                     if isinstance(clause_text, str) and clause_text.strip():
                         metadata["excerpt_text"] = _trim_text(clause_text, max_chars=5000)
                         metadata["excerpt_source"] = "policy_clauses.text"
-                    metadata["policy_status"] = row.get("policy_status")
-                    metadata["policy_weight_hint"] = row.get("policy_weight_hint")
+                    metadata["policy_code"] = row.get("policy_code")
+                    metadata["policy_title"] = row.get("policy_title")
+                    metadata["speech_act"] = row.get("speech_act")
+                    metadata["document_status"] = row.get("document_status")
+                    metadata["document_weight_hint"] = row.get("weight_hint")
                     metadata["effective_from"] = row.get("effective_from")
                     metadata["effective_to"] = row.get("effective_to")
                     metadata["confidence_hint"] = row.get("confidence_hint")

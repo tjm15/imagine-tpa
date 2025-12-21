@@ -22,7 +22,21 @@ Minimum fields:
     "page_count": 12,
     "content_bytes": 1234567
   },
-  "pages": [{ "page_number": 1, "text": "..." }],
+  "pages": [
+    {
+      "page_number": 1,
+      "text": "...",
+      "width": 595,
+      "height": 842,
+      "render_blob_path": "page_renders/.../p0001-full.png",
+      "render_format": "png",
+      "render_dpi": 300,
+      "render_width": 2480,
+      "render_height": 3508,
+      "render_tier": "full",
+      "render_reason": "full_res_only"
+    }
+  ],
   "layout_blocks": [
     {
       "block_id": "b-001",
@@ -31,6 +45,7 @@ Minimum fields:
       "page_number": 1,
       "section_path": "Chapter 4 > Policy H1",
       "bbox": [x0, y0, x1, y1],
+      "bbox_quality": "exact|approx|none",
       "evidence_ref": "doc::...::p1-b001"
     }
   ],
@@ -38,6 +53,8 @@ Minimum fields:
     {
       "table_id": "t-001",
       "page_number": 8,
+      "bbox": [x0, y0, x1, y1],
+      "bbox_quality": "exact|approx|none",
       "rows": [["Bedrooms", "Spaces"], ["1", "1"]]
     }
   ],
@@ -55,7 +72,7 @@ Minimum fields:
     }
   ],
   "vector_paths": [
-    { "path_id": "vp-001", "page_number": 12, "path_type": "map_layer", "geometry": {"type": "MultiLineString"} }
+    { "path_id": "vp-001", "page_number": 12, "path_type": "map_layer", "geometry": {"type": "MultiLineString"}, "bbox_quality": "approx" }
   ],
   "evidence_refs": [
     {
@@ -75,7 +92,9 @@ Minimum fields:
     "design_exemplars": []
   },
   "tool_runs": [],
-  "limitations": []
+  "limitations": [],
+  "tables_unimplemented": false,
+  "parse_flags": ["docling_fallback"]
 }
 ```
 
@@ -90,4 +109,6 @@ Exemplars are a **subcategory of photos/renders**, not a separate asset type.
 ## Notes
 * ParseBundle is stored in blob storage; only derived assets and bundles are uploaded (no original PDFs).
 * `bbox` is best-effort and may be null depending on the source/PDF structure.
+* `parse_flags` must include explicit fallback markers (e.g., `docling_fallback`, `docling_errors`) when Docling cannot be used.
 * The ingest worker is responsible for persistence, KG wiring, and provenance logging.
+* Page renders are always full-resolution (default `TPA_DOCPARSE_RENDER_DPI=300`, `TPA_DOCPARSE_RENDER_FORMAT=png`) and stored in blob storage for explainability overlays.

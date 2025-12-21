@@ -6,8 +6,11 @@ import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
 
+import { ExplainabilityLevel } from '../../contexts/ExplainabilityContext';
+
 interface DocumentViewProps {
   workspace: WorkspaceMode;
+  explainabilityLevel?: ExplainabilityLevel;
 }
 
 export function DocumentView({ workspace }: DocumentViewProps) {

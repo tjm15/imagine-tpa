@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import os
+import threading
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -11,15 +13,153 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from ..audit import _audit_event
+from ..cache import cache_get_json, cache_key, cache_set_json
 from ..context_assembly import ContextAssemblyDeps, assemble_curated_evidence_set_sync
 from ..db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one
 from ..evidence import _ensure_evidence_ref_row
+from ..hash_utils import stable_hash
 from ..prompting import _llm_structured_sync
 from ..retrieval import _retrieve_chunks_hybrid_sync, _retrieve_policy_clauses_hybrid_sync
 from ..spec_io import _read_yaml, _spec_root
 from ..time_utils import _utc_now, _utc_now_iso
-from ..tool_requests import persist_tool_requests_for_move
+from ..tool_requests import persist_tool_requests_for_move, _run_render_simple_chart_sync
 
+
+_SCENARIO_CACHE_TTL_SECONDS = int(os.environ.get("TPA_SCENARIO_CACHE_TTL_SECONDS", "900"))
+_SCENARIO_CACHE_SOFT_TTL_SECONDS = int(os.environ.get("TPA_SCENARIO_CACHE_SOFT_TTL_SECONDS", "120"))
+
+
+def _iso(value: Any | None) -> str | None:
+    if value is None:
+        return None
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _fetch_max_timestamp(sql: str, params: tuple[Any, ...]) -> str | None:
+    row = _db_fetch_one(sql, params)
+    if not row:
+        return None
+    value = next(iter(row.values())) if row else None
+    return _iso(value)
+
+
+def _scenario_dependency_snapshot(tab: dict[str, Any]) -> dict[str, Any]:
+    scenario_state = tab.get("state_vector_jsonb") if isinstance(tab.get("state_vector_jsonb"), dict) else {}
+    plan_project_id = tab.get("plan_project_id")
+    authority_id = tab.get("authority_id")
+    plan_cycle_id = tab.get("plan_cycle_id")
+
+    site_updates = _fetch_max_timestamp(
+        "SELECT MAX(updated_at) FROM site_assessments WHERE plan_project_id = %s::uuid",
+        (plan_project_id,),
+    )
+    allocation_updates = _fetch_max_timestamp(
+        "SELECT MAX(updated_at) FROM allocation_decisions WHERE plan_project_id = %s::uuid",
+        (plan_project_id,),
+    )
+    stage4_updates = _fetch_max_timestamp(
+        "SELECT MAX(updated_at) FROM stage4_summary_rows WHERE plan_project_id = %s::uuid",
+        (plan_project_id,),
+    )
+    evidence_updates = _fetch_max_timestamp(
+        "SELECT MAX(updated_at) FROM evidence_items WHERE plan_project_id = %s::uuid",
+        (plan_project_id,),
+    )
+    gap_updates = _fetch_max_timestamp(
+        "SELECT MAX(updated_at) FROM evidence_gaps WHERE plan_project_id = %s::uuid",
+        (plan_project_id,),
+    )
+    trace_updates = _fetch_max_timestamp(
+        "SELECT MAX(created_at) FROM trace_links",
+        (),
+    )
+    policy_counts = _db_fetch_one(
+        """
+        SELECT COUNT(*) AS policy_count
+        FROM policy_sections ps
+        JOIN documents d ON d.id = ps.document_id
+        WHERE (%s IS NULL OR d.authority_id = %s)
+          AND (%s IS NULL OR d.plan_cycle_id = %s::uuid)
+        """,
+        (authority_id, authority_id, plan_cycle_id, plan_cycle_id),
+    )
+    clause_counts = _db_fetch_one(
+        """
+        SELECT COUNT(*) AS clause_count
+        FROM policy_clauses pc
+        JOIN policy_sections ps ON ps.id = pc.policy_section_id
+        JOIN documents d ON d.id = ps.document_id
+        WHERE (%s IS NULL OR d.authority_id = %s)
+          AND (%s IS NULL OR d.plan_cycle_id = %s::uuid)
+        """,
+        (authority_id, authority_id, plan_cycle_id, plan_cycle_id),
+    )
+    visual_counts = _db_fetch_one(
+        """
+        SELECT COUNT(*) AS visual_count
+        FROM visual_assets va
+        LEFT JOIN documents d ON d.id = va.document_id
+        WHERE (%s IS NULL OR d.authority_id = %s OR va.metadata->>'authority_id' = %s)
+          AND (%s IS NULL OR d.plan_cycle_id = %s::uuid OR va.metadata->>'plan_cycle_id' = %s)
+          AND (%s IS NULL OR va.metadata->>'plan_project_id' = %s)
+        """,
+        (
+            authority_id,
+            authority_id,
+            authority_id,
+            plan_cycle_id,
+            plan_cycle_id,
+            plan_cycle_id,
+            plan_project_id,
+            plan_project_id,
+        ),
+    )
+    ingest_updates = _fetch_max_timestamp(
+        """
+        SELECT MAX(completed_at) FROM ingest_batches
+        WHERE (%s IS NULL OR authority_id = %s)
+          AND (%s IS NULL OR plan_cycle_id = %s::uuid)
+        """,
+        (authority_id, authority_id, plan_cycle_id, plan_cycle_id),
+    )
+
+    return {
+        "scenario_state_hash": stable_hash(scenario_state),
+        "scenario_updated_at": _iso(tab.get("scenario_updated_at")),
+        "plan_project_updated_at": _iso(tab.get("plan_project_updated_at")),
+        "site_updates_at": site_updates,
+        "allocation_updates_at": allocation_updates,
+        "stage4_updates_at": stage4_updates,
+        "evidence_updates_at": evidence_updates,
+        "evidence_gap_updates_at": gap_updates,
+        "trace_updates_at": trace_updates,
+        "policy_clause_count": clause_counts.get("clause_count") if clause_counts else 0,
+        "policy_count": policy_counts.get("policy_count") if policy_counts else 0,
+        "visual_asset_count": visual_counts.get("visual_count") if visual_counts else 0,
+        "ingest_updates_at": ingest_updates,
+    }
+
+
+def _schedule_tab_refresh(tab_id: str) -> None:
+    now = _utc_now()
+    try:
+        _db_execute(
+            "UPDATE scenario_framing_tabs SET status = %s, updated_at = %s WHERE id = %s::uuid",
+            ("queued", now, tab_id),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+    def _runner() -> None:
+        try:
+            run_scenario_framing_tab(tab_id)
+        except Exception:
+            return
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
 
 
 
@@ -176,6 +316,14 @@ class ScenarioSetCreate(BaseModel):
     political_framing_ids: list[str]
 
 
+class ScenarioSetAutoCreate(BaseModel):
+    plan_project_id: str
+    culp_stage_id: str
+    scenario_count: int = Field(default=2, ge=1, le=4)
+    political_framing_ids: list[str] | None = None
+    prompt: str | None = None
+
+
 def create_scenario_set(body: ScenarioSetCreate) -> JSONResponse:
     if not body.scenario_ids:
         raise HTTPException(status_code=400, detail="scenario_ids must not be empty")
@@ -233,6 +381,142 @@ def create_scenario_set(body: ScenarioSetCreate) -> JSONResponse:
     return get_scenario_set(scenario_set_id)
 
 
+def create_scenario_set_auto(body: ScenarioSetAutoCreate) -> JSONResponse:
+    plan_project = _db_fetch_one(
+        """
+        SELECT id, authority_id, title, status, current_stage_id, metadata_jsonb
+        FROM plan_projects
+        WHERE id = %s::uuid
+        """,
+        (body.plan_project_id,),
+    )
+    if not plan_project:
+        raise HTTPException(status_code=404, detail="Plan project not found")
+
+    political_pack = _read_yaml(_spec_root() / "framing" / "POLITICAL_FRAMINGS.yaml")
+    framings = political_pack.get("political_framings") if isinstance(political_pack, dict) else []
+    available_ids = [f.get("political_framing_id") for f in framings if isinstance(f, dict) and f.get("political_framing_id")]
+    if body.political_framing_ids:
+        framing_ids = [fid for fid in body.political_framing_ids if fid in available_ids]
+    else:
+        max_framings = max(1, min(int(os.environ.get("TPA_SCENARIO_MAX_FRAMINGS", "3")), 6))
+        framing_ids = available_ids[:max_framings]
+
+    if not framing_ids:
+        raise HTTPException(status_code=400, detail="No political framing ids available for scenario set")
+
+    counts = {
+        "evidence_items": _db_fetch_one(
+            "SELECT COUNT(*) AS count FROM evidence_items WHERE plan_project_id = %s::uuid",
+            (body.plan_project_id,),
+        ),
+        "sites_confirmed": _db_fetch_one(
+            "SELECT COUNT(*) AS count FROM sites WHERE metadata->>'plan_project_id' = %s",
+            (body.plan_project_id,),
+        ),
+        "visual_assets": _db_fetch_one(
+            """
+            SELECT COUNT(*) AS count
+            FROM visual_assets va
+            LEFT JOIN documents d ON d.id = va.document_id
+            WHERE va.metadata->>'plan_project_id' = %s
+               OR d.authority_id = %s
+            """,
+            (body.plan_project_id, plan_project["authority_id"]),
+        ),
+    }
+    count_payload = {k: (v.get("count") if isinstance(v, dict) else 0) for k, v in counts.items()}
+
+    scenario_prompt = (
+        "You are generating spatial strategy scenarios for a local plan. Return ONLY JSON.\n"
+        "Output shape:\n"
+        "{ \"scenarios\": [ { \"title\": string, \"summary\": string, \"state_vector\": object } ] }\n"
+        "Generate 1-4 distinct scenarios with clear differentiators in the state_vector.\n"
+    )
+    user_payload = {
+        "plan_project": {
+            "plan_project_id": str(plan_project["id"]),
+            "authority_id": plan_project["authority_id"],
+            "title": plan_project["title"],
+            "current_stage_id": plan_project.get("current_stage_id"),
+        },
+        "counts": count_payload,
+        "prompt": body.prompt or "",
+        "scenario_count": body.scenario_count,
+    }
+
+    scenarios_obj, tool_run_id, errs = _llm_structured_sync(
+        prompt_id="scenario_auto_builder_v1",
+        prompt_version=1,
+        prompt_name="Scenario Auto Builder",
+        purpose="Generate initial spatial strategy scenario options.",
+        system_template=scenario_prompt,
+        user_payload=user_payload,
+        time_budget_seconds=60.0,
+        temperature=0.6,
+        max_tokens=1600,
+        output_schema_ref="schemas/ScenarioAutoSet.schema.json",
+    )
+
+    scenarios_list = []
+    if isinstance(scenarios_obj, dict):
+        raw = scenarios_obj.get("scenarios")
+        if isinstance(raw, list):
+            scenarios_list = raw
+
+    if not scenarios_list:
+        scenarios_list = [
+            {"title": "Baseline", "summary": "Baseline spatial strategy informed by existing evidence.", "state_vector": {}}
+        ]
+
+    scenario_ids: list[str] = []
+    now = _utc_now()
+    for item in scenarios_list[: body.scenario_count]:
+        title = item.get("title") if isinstance(item, dict) and isinstance(item.get("title"), str) else "Scenario"
+        summary = item.get("summary") if isinstance(item, dict) and isinstance(item.get("summary"), str) else ""
+        state_vector = item.get("state_vector") if isinstance(item, dict) and isinstance(item.get("state_vector"), dict) else {}
+        scenario_id = str(uuid4())
+        scenario_ids.append(scenario_id)
+        _db_execute(
+            """
+            INSERT INTO scenarios (
+              id, plan_project_id, culp_stage_id, title, summary,
+              state_vector_jsonb, parent_scenario_id, status, created_by,
+              created_at, updated_at
+            )
+            VALUES (%s, %s::uuid, %s, %s, %s, %s::jsonb, NULL, %s, %s, %s, %s)
+            """,
+            (
+                scenario_id,
+                body.plan_project_id,
+                body.culp_stage_id,
+                title,
+                summary,
+                json.dumps(state_vector, ensure_ascii=False),
+                "draft",
+                "system",
+                now,
+                now,
+            ),
+        )
+
+    _audit_event(
+        event_type="scenario_auto_generated",
+        plan_project_id=body.plan_project_id,
+        culp_stage_id=body.culp_stage_id,
+        payload={"scenario_ids": scenario_ids, "tool_run_id": tool_run_id, "errors": errs[:5]},
+    )
+
+    return create_scenario_set(
+        ScenarioSetCreate(
+            plan_project_id=body.plan_project_id,
+            culp_stage_id=body.culp_stage_id,
+            scenario_ids=scenario_ids,
+            political_framing_ids=framing_ids,
+        )
+    )
+
+
 def get_scenario_set(scenario_set_id: str) -> JSONResponse:
     row = _db_fetch_one(
         """
@@ -248,11 +532,13 @@ def get_scenario_set(scenario_set_id: str) -> JSONResponse:
 
     tabs = _db_fetch_all(
         """
-        SELECT id, scenario_set_id, scenario_id, political_framing_id, framing_id, run_id, status,
-               trajectory_id, judgement_sheet_ref, updated_at
-        FROM scenario_framing_tabs
-        WHERE scenario_set_id = %s
-        ORDER BY updated_at DESC
+        SELECT t.id, t.scenario_set_id, t.scenario_id, t.political_framing_id, t.framing_id, t.run_id, t.status,
+               t.trajectory_id, t.judgement_sheet_ref, t.updated_at,
+               s.title AS scenario_title, s.summary AS scenario_summary
+        FROM scenario_framing_tabs t
+        JOIN scenarios s ON s.id = t.scenario_id
+        WHERE t.scenario_set_id = %s
+        ORDER BY t.updated_at DESC
         """,
         (scenario_set_id,),
     )
@@ -283,6 +569,8 @@ def get_scenario_set(scenario_set_id: str) -> JSONResponse:
                         "trajectory_id": t["trajectory_id"],
                         "judgement_sheet_ref": t["judgement_sheet_ref"],
                         "last_updated_at": t["updated_at"],
+                        "scenario_title": t.get("scenario_title"),
+                        "scenario_summary": t.get("scenario_summary") or "",
                     }
                     for t in tabs
                 ],
@@ -441,8 +729,10 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
           s.title AS scenario_title,
           s.summary AS scenario_summary,
           s.state_vector_jsonb,
+          s.updated_at AS scenario_updated_at,
           pp.authority_id,
-          pp.metadata_jsonb->>'plan_cycle_id' AS plan_cycle_id
+          pp.metadata_jsonb->>'plan_cycle_id' AS plan_cycle_id,
+          pp.updated_at AS plan_project_updated_at
         FROM scenario_framing_tabs t
         JOIN scenario_sets ss ON ss.id = t.scenario_set_id
         JOIN scenarios s ON s.id = t.scenario_id
@@ -504,6 +794,14 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         culp_stage_id=tab.get("culp_stage_id"),
         scenario_id=str(tab["scenario_id"]),
         payload={"tab_id": str(tab["tab_id"]), "political_framing_id": tab["political_framing_id"]},
+    )
+    _db_execute(
+        """
+        UPDATE scenario_framing_tabs
+        SET status = %s, last_run_started_at = %s, updated_at = %s
+        WHERE id = %s::uuid
+        """,
+        ("running", now, now, str(tab["tab_id"])),
     )
 
     sequence = 1
@@ -1192,6 +1490,67 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         planning_balance = "Planning balance narrative is pending (LLM unavailable or failed)."
 
     evidence_cards = _build_evidence_cards_from_atoms(evidence_atoms, limit=6)
+    figure_spec = None
+    figure_tool_run_id = None
+    figure_errors: list[str] = []
+    figure_payload = {
+        "scenario_title": scenario_title,
+        "framing_title": framing_title,
+        "issues": [{"title": i.get("title"), "why_material": i.get("why_material")} for i in issues[:6]],
+        "evidence_atoms": [
+            {
+                "title": atom.get("title"),
+                "summary": atom.get("summary"),
+                "candidate_type": atom.get("candidate_type"),
+                "metrics": atom.get("metrics"),
+                "fingerprint": atom.get("fingerprint"),
+                "instrument_output": atom.get("instrument_output"),
+            }
+            for atom in evidence_atoms[:6]
+        ],
+    }
+    figure_prompt = (
+        "You are generating a single planner-facing chart spec for a Scenario Judgement Sheet.\n"
+        "Return ONLY JSON that matches FigureSpec.\n"
+        "Use a simple bar chart with 3-6 bars and numeric values drawn from the evidence payload.\n"
+        "If evidence lacks numbers, return an empty object {}.\n"
+    )
+    figure_spec, figure_tool_run_id, figure_errors = _llm_structured_sync(
+        prompt_id="scenario_figure_spec_v1",
+        prompt_version=1,
+        prompt_name="Scenario Figure Spec",
+        purpose="Generate a structured FigureSpec for a judgement sheet chart.",
+        system_template=figure_prompt,
+        user_payload=figure_payload,
+        time_budget_seconds=25.0,
+        temperature=0.2,
+        max_tokens=600,
+        output_schema_ref="schemas/FigureSpec.schema.json",
+    )
+    if figure_tool_run_id:
+        all_tool_runs.append(figure_tool_run_id)
+    if isinstance(figure_spec, dict) and figure_spec.get("series"):
+        chart_obj, chart_tool_run_id, chart_errs = _run_render_simple_chart_sync(
+            run_id=run_id,
+            figure_spec=figure_spec,
+            plan_project_id=str(tab["plan_project_id"]),
+            scenario_id=str(tab["scenario_id"]),
+        )
+        figure_errors.extend(chart_errs)
+        if chart_tool_run_id:
+            all_tool_runs.append(chart_tool_run_id)
+        if isinstance(chart_obj, dict) and chart_obj.get("artifact_path") and chart_obj.get("evidence_ref"):
+            evidence_cards.append(
+                {
+                    "card_id": str(uuid4()),
+                    "card_type": "chart",
+                    "title": figure_spec.get("title") if isinstance(figure_spec.get("title"), str) else "Chart",
+                    "summary": "Rendered chart from structured scenario evidence.",
+                    "evidence_refs": [chart_obj["evidence_ref"]],
+                    "artifact_ref": chart_obj["artifact_path"],
+                    "limitations_text": "Chart values are derived from available evidence; verify source tables.",
+                }
+            )
     sheet = {
         "title": f"{scenario_title} × {framing_title}",
         "scenario": {"scenario_id": str(tab["scenario_id"]), "title": scenario_title},
@@ -1223,6 +1582,9 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     }
 
     # Persist trajectory and update tab.
+    dependency_snapshot = _scenario_dependency_snapshot(tab)
+    dependency_hash = stable_hash(dependency_snapshot)
+    cache_expires_at = _utc_now() + timedelta(seconds=_SCENARIO_CACHE_TTL_SECONDS)
     _db_execute(
         """
         INSERT INTO trajectories (
@@ -1242,12 +1604,24 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             _utc_now(),
         ),
     )
+    cache_set_json(
+        cache_key("scenario_sheet", str(tab["tab_id"]), dependency_hash),
+        {
+            "tab_id": str(tab["tab_id"]),
+            "run_id": run_id,
+            "status": "complete" if not position_errs else "partial",
+            "trajectory": trajectory_obj,
+            "sheet": sheet,
+        },
+        ttl_seconds=_SCENARIO_CACHE_TTL_SECONDS,
+    )
 
     _db_execute(
         """
         UPDATE scenario_framing_tabs
         SET framing_id = %s, run_id = %s::uuid, status = %s, trajectory_id = %s::uuid,
-            judgement_sheet_ref = %s, updated_at = %s
+            judgement_sheet_ref = %s, updated_at = %s, dependency_hash = %s,
+            dependency_snapshot_jsonb = %s::jsonb, cache_expires_at = %s, last_run_completed_at = %s
         WHERE id = %s::uuid
         """,
         (
@@ -1256,6 +1630,10 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "complete" if not position_errs else "partial",
             trajectory_id,
             f"trajectory::{trajectory_id}",
+            _utc_now(),
+            dependency_hash,
+            json.dumps(dependency_snapshot, ensure_ascii=False),
+            cache_expires_at,
             _utc_now(),
             str(tab["tab_id"]),
         ),
@@ -1308,20 +1686,75 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     )
 
 
-def get_scenario_tab_sheet(tab_id: str) -> JSONResponse:
+def get_scenario_tab_sheet(tab_id: str, auto_refresh: bool = True, prefer_async: bool = True) -> JSONResponse:
     tab = _db_fetch_one(
         """
-        SELECT id, scenario_id, political_framing_id, framing_id, run_id, status, trajectory_id
-        FROM scenario_framing_tabs
-        WHERE id = %s::uuid
+        SELECT
+          t.id, t.scenario_id, t.political_framing_id, t.framing_id, t.run_id, t.status,
+          t.trajectory_id, t.dependency_hash, t.dependency_snapshot_jsonb, t.cache_expires_at, t.last_run_completed_at,
+          s.state_vector_jsonb, s.updated_at AS scenario_updated_at,
+          ss.plan_project_id, ss.culp_stage_id,
+          pp.authority_id, pp.metadata_jsonb->>'plan_cycle_id' AS plan_cycle_id,
+          pp.updated_at AS plan_project_updated_at
+        FROM scenario_framing_tabs t
+        JOIN scenario_sets ss ON ss.id = t.scenario_set_id
+        JOIN scenarios s ON s.id = t.scenario_id
+        JOIN plan_projects pp ON pp.id = ss.plan_project_id
+        WHERE t.id = %s::uuid
         """,
         (tab_id,),
     )
     if not tab:
         raise HTTPException(status_code=404, detail="ScenarioFramingTab not found")
 
+    dependency_snapshot = _scenario_dependency_snapshot(tab)
+    dependency_hash = stable_hash(dependency_snapshot)
+    cache_expires_at = tab.get("cache_expires_at")
+    is_expired = bool(cache_expires_at and cache_expires_at < _utc_now())
+    is_stale = dependency_hash != (tab.get("dependency_hash") or "") or is_expired
+
     if not tab.get("trajectory_id"):
-        return JSONResponse(content=jsonable_encoder({"tab_id": tab_id, "status": tab.get("status"), "trajectory": None, "sheet": None}))
+        if auto_refresh and tab.get("status") not in ("running", "queued"):
+            if prefer_async:
+                _schedule_tab_refresh(tab_id)
+            else:
+                return run_scenario_framing_tab(tab_id)
+        return JSONResponse(
+            content=jsonable_encoder(
+                {
+                    "tab_id": tab_id,
+                    "status": tab.get("status"),
+                    "trajectory": None,
+                    "sheet": None,
+                    "freshness": {
+                        "dependency_hash": dependency_hash,
+                        "is_stale": True,
+                    "cache_expires_at": cache_expires_at,
+                    "last_run_completed_at": tab.get("last_run_completed_at"),
+                    "dependency_snapshot": tab.get("dependency_snapshot_jsonb") or {},
+                    },
+                }
+            )
+        )
+
+    if is_stale and auto_refresh and tab.get("status") not in ("running", "queued"):
+        if prefer_async:
+            _schedule_tab_refresh(tab_id)
+        else:
+            return run_scenario_framing_tab(tab_id)
+
+    if not is_stale:
+        cached = cache_get_json(cache_key("scenario_sheet", tab_id, dependency_hash))
+        if cached:
+            cached["freshness"] = {
+                "dependency_hash": dependency_hash,
+                "is_stale": False,
+                "cache_expires_at": cache_expires_at,
+                "last_run_completed_at": tab.get("last_run_completed_at"),
+                "dependency_snapshot": tab.get("dependency_snapshot_jsonb") or {},
+            }
+            cached["cached"] = True
+            return JSONResponse(content=jsonable_encoder(cached))
 
     traj = _db_fetch_one(
         """
@@ -1345,4 +1778,24 @@ def get_scenario_tab_sheet(tab_id: str) -> JSONResponse:
         "judgement_sheet_data": traj["judgement_sheet_jsonb"] or {},
     }
 
-    return JSONResponse(content=jsonable_encoder({"tab_id": tab_id, "status": tab.get("status"), "run_id": tab.get("run_id"), "trajectory": trajectory, "sheet": traj["judgement_sheet_jsonb"] or {}}))
+    response = {
+        "tab_id": tab_id,
+        "status": tab.get("status"),
+        "run_id": tab.get("run_id"),
+        "trajectory": trajectory,
+        "sheet": traj["judgement_sheet_jsonb"] or {},
+        "freshness": {
+            "dependency_hash": dependency_hash,
+            "is_stale": is_stale,
+            "cache_expires_at": cache_expires_at,
+            "last_run_completed_at": tab.get("last_run_completed_at"),
+            "dependency_snapshot": tab.get("dependency_snapshot_jsonb") or {},
+        },
+    }
+    if not is_stale:
+        cache_set_json(
+            cache_key("scenario_sheet", tab_id, dependency_hash),
+            response,
+            ttl_seconds=_SCENARIO_CACHE_TTL_SECONDS,
+        )
+    return JSONResponse(content=jsonable_encoder(response))

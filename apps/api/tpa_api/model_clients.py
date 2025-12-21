@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import os
 from typing import Any
 
@@ -259,6 +260,59 @@ def _embed_texts_sync(
     return None
 
 
+def _embed_multimodal_sync(
+    *,
+    image_bytes: bytes,
+    text: str,
+    model_id: str | None = None,
+    time_budget_seconds: float = 60.0,
+) -> list[float] | None:
+    base_url = _ensure_model_role_sync(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_MM_BASE_URL") or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
+    if not base_url:
+        return None
+
+    model_id = model_id or os.environ.get("TPA_EMBEDDINGS_MM_MODEL_ID", "nomic-ai/colnomic-embed-multimodal-7b")
+    timeout = min(max(time_budget_seconds, 2.0), 180.0)
+    url_base = base_url.rstrip("/")
+
+    data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+    payloads: list[tuple[str, dict[str, Any]]] = [
+        (url_base + "/v1/embeddings", {"model": model_id, "input": [{"image": data_url, "text": text}]}),
+        (url_base + "/embeddings", {"model": model_id, "input": [{"image": data_url, "text": text}]}),
+        (url_base + "/embed", {"model": model_id, "input": {"image": data_url, "text": text}}),
+        (url_base + "/embed", {"inputs": [{"image": data_url, "text": text}]}),
+    ]
+
+    for url, payload in payloads:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, json=payload)
+                if resp.status_code >= 400:
+                    continue
+                data = resp.json()
+        except Exception:  # noqa: BLE001
+            continue
+
+        if isinstance(data, dict) and isinstance(data.get("data"), list) and data["data"]:
+            item = data["data"][0]
+            emb = item.get("embedding") if isinstance(item, dict) else None
+            if isinstance(emb, list):
+                return [float(x) for x in emb if isinstance(x, (int, float))]
+
+        if isinstance(data, dict) and isinstance(data.get("embedding"), list):
+            return [float(x) for x in data["embedding"] if isinstance(x, (int, float))]
+
+        if isinstance(data, list) and data and all(isinstance(x, (int, float)) for x in data):
+            return [float(x) for x in data]
+
+        if isinstance(data, list) and data and isinstance(data[0], list):
+            emb = data[0]
+            if all(isinstance(x, (int, float)) for x in emb):
+                return [float(x) for x in emb]
+
+    return None
+
+
 def _generate_completion_sync(
     *,
     prompt: str,
@@ -299,4 +353,3 @@ def _generate_completion_sync(
     except Exception:
         pass
     return None
-

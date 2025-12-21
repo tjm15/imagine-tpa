@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 import os
 from pathlib import Path
@@ -82,3 +83,23 @@ def to_data_url(data: bytes, content_type: str) -> str:
     b64 = base64.b64encode(data).decode("ascii")
     ct = content_type or "application/octet-stream"
     return f"data:{ct};base64,{b64}"
+
+
+def write_blob_bytes(blob_path: str, data: bytes, content_type: str | None = None) -> tuple[str | None, str | None]:
+    """
+    Best-effort blob writer for derived artefacts (charts, overlays, etc.).
+
+    Returns (blob_path, error_text).
+    """
+    if not blob_path:
+        return None, "empty_blob_path"
+    client = minio_client_or_none()
+    bucket = os.environ.get("TPA_S3_BUCKET")
+    if not client or not bucket:
+        return None, "minio_unconfigured"
+    ct = content_type or mimetypes.guess_type(blob_path)[0] or "application/octet-stream"
+    try:
+        client.put_object(bucket, blob_path, io.BytesIO(data), length=len(data), content_type=ct)
+        return blob_path, None
+    except Exception as exc:  # noqa: BLE001
+        return None, f"minio_put_object_failed: {exc}"

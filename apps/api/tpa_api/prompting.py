@@ -60,6 +60,7 @@ def _llm_structured_sync(
     model_id: str | None = None,
     output_schema_ref: str | None = None,
     ingest_batch_id: str | None = None,
+    run_id: str | None = None,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Calls the configured LLMProvider (OpenAI-compatible) and returns (json, tool_run_id, errors).
@@ -116,13 +117,14 @@ def _llm_structured_sync(
     _db_execute(
         """
         INSERT INTO tool_runs (
-          id, ingest_batch_id, tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint, uncertainty_note
+          id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint, uncertainty_note
         )
-        VALUES (%s, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
         """,
         (
             tool_run_id,
             ingest_batch_id,
+            run_id,
             "llm_generate_structured",
             json.dumps(
                 {
@@ -156,4 +158,3 @@ def _llm_structured_sync(
     )
 
     return obj, tool_run_id, errors
-

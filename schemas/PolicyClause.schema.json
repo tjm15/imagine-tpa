@@ -5,7 +5,7 @@
   "description": "A canonical clause/criterion within a Policy, suitable for clause-aware retrieval and citation binding in the reasoning grammar.",
   "properties": {
     "policy_clause_id": { "type": "string", "format": "uuid" },
-    "policy_id": { "type": "string", "format": "uuid" },
+    "policy_section_id": { "type": "string", "format": "uuid" },
     "clause_ref": {
       "type": ["string", "null"],
       "description": "Optional intra-policy reference (e.g., '(a)', 'Criterion 3', 'Part B')."
@@ -25,5 +25,5 @@
     },
     "metadata": { "type": "object" }
   },
-  "required": ["policy_clause_id", "policy_id", "text"]
+  "required": ["policy_clause_id", "policy_section_id", "text"]
 }

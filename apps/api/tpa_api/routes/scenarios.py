@@ -4,7 +4,7 @@ from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
 from ..services import scenarios as scenarios_service
-from ..services.scenarios import ScenarioCreate, ScenarioSetCreate, ScenarioTabRunRequest, ScenarioTabSelection
+from ..services.scenarios import ScenarioCreate, ScenarioSetAutoCreate, ScenarioSetCreate, ScenarioTabRunRequest, ScenarioTabSelection
 
 
 router = APIRouter(tags=["scenarios"])
@@ -38,6 +38,11 @@ def create_scenario_set(body: ScenarioSetCreate) -> JSONResponse:
     return scenarios_service.create_scenario_set(body)
 
 
+@router.post("/scenario-sets/auto")
+def create_scenario_set_auto(body: ScenarioSetAutoCreate) -> JSONResponse:
+    return scenarios_service.create_scenario_set_auto(body)
+
+
 @router.get("/scenario-sets/{scenario_set_id}")
 def get_scenario_set(scenario_set_id: str) -> JSONResponse:
     return scenarios_service.get_scenario_set(scenario_set_id)
@@ -54,5 +59,5 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
 
 
 @router.get("/scenario-framing-tabs/{tab_id}/sheet")
-def get_scenario_tab_sheet(tab_id: str) -> JSONResponse:
-    return scenarios_service.get_scenario_tab_sheet(tab_id)
+def get_scenario_tab_sheet(tab_id: str, auto_refresh: bool = True, prefer_async: bool = True) -> JSONResponse:
+    return scenarios_service.get_scenario_tab_sheet(tab_id, auto_refresh=auto_refresh, prefer_async=prefer_async)

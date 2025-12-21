@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { LayoutGrid, Calendar, AlertCircle, CheckCircle, Clock, ArrowRight, ChevronRight, MapPin, Building2, Plus, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "./ui/card";
 import { Badge } from "./ui/badge";
@@ -34,6 +34,62 @@ const defaultStages: StageStatus[] = [
 
 export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHomeProps) {
   const { authority, setAuthority, authorities, loadingAuthorities } = useProject();
+  const [planProjects, setPlanProjects] = useState<Array<{ plan_project_id: string; title: string }>>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+
+  useEffect(() => {
+    if (!authority) {
+      setPlanProjects([]);
+      return;
+    }
+    const controller = new AbortController();
+    async function loadProjects() {
+      setLoadingProjects(true);
+      try {
+        const resp = await fetch(`/api/plan-projects?authority_id=${authority.id}`, { signal: controller.signal });
+        if (!resp.ok) {
+          throw new Error(`Failed to load plan projects: ${resp.status}`);
+        }
+        const data = (await resp.json()) as { plan_projects?: Array<Record<string, any>> };
+        const items = Array.isArray(data.plan_projects) ? data.plan_projects : [];
+        setPlanProjects(
+          items.map((item) => ({
+            plan_project_id: item.plan_project_id,
+            title: item.title || 'Local Plan',
+          }))
+        );
+      } catch (err) {
+        console.error(err);
+        setPlanProjects([]);
+      } finally {
+        setLoadingProjects(false);
+      }
+    }
+    loadProjects();
+    return () => controller.abort();
+  }, [authority]);
+
+  const createPlanProject = async () => {
+    if (!authority) return;
+    if (planProjects.length > 0) {
+      onOpenProject(planProjects[0].plan_project_id);
+      return;
+    }
+    const resp = await fetch('/api/plan-projects', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        authority_id: authority.id,
+        title: `${authority.name} Local Plan`,
+        status: 'draft',
+      }),
+    });
+    if (!resp.ok) {
+      throw new Error(`Failed to create plan project: ${resp.status}`);
+    }
+    const data = (await resp.json()) as { plan_project_id: string };
+    onOpenProject(data.plan_project_id);
+  };
 
   // 1. Empty/Onboarding View (No Authority Selected)
   if (!authority) {
@@ -147,7 +203,7 @@ export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHom
                 </p>
               </div>
               <Button
-                onClick={() => onOpenProject('new-plan')}
+                onClick={createPlanProject}
                 size="lg"
                 className="shadow-lg border-0 font-medium"
                 style={{
@@ -160,6 +216,23 @@ export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHom
             </div>
           </div>
         </section>
+
+        {loadingProjects && (
+          <div className="text-sm text-slate-500 mb-4">Loading existing plans…</div>
+        )}
+        {!loadingProjects && planProjects.length > 0 && (
+          <section className="mb-8">
+            <div className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-slate-500">Existing Plan</p>
+                <h3 className="text-sm font-medium text-slate-900">{planProjects[0].title}</h3>
+              </div>
+              <Button variant="outline" onClick={() => onOpenProject(planProjects[0].plan_project_id)}>
+                Continue Plan
+              </Button>
+            </div>
+          </section>
+        )}
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Programme Timeline */}

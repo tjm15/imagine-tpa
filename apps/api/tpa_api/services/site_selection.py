@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from datetime import timedelta
 from uuid import uuid4
 
 from fastapi.encoders import jsonable_encoder
@@ -22,6 +23,18 @@ class SiteCategoryCreate(BaseModel):
 class SiteCreate(BaseModel):
     plan_project_id: str | None = None
     geometry_wkt: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class SiteDraftCreate(BaseModel):
+    plan_project_id: str
+    geometry_wkt: str | None = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    status: str = Field(default="draft")
+    expires_in_days: int | None = Field(default=14, ge=1, le=90)
+
+
+class SiteDraftConfirm(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -155,15 +168,22 @@ def create_site(body: SiteCreate) -> JSONResponse:
     )
 
 
-def list_sites(limit: int = 50) -> JSONResponse:
+def list_sites(limit: int = 50, plan_project_id: str | None = None) -> JSONResponse:
+    limit = max(1, min(int(limit), 500))
+    params: list[Any] = [limit]
+    where_sql = ""
+    if plan_project_id:
+        where_sql = "WHERE metadata->>'plan_project_id' = %s"
+        params = [plan_project_id, limit]
     rows = _db_fetch_all(
-        """
+        f"""
         SELECT id, geometry_polygon, metadata
         FROM sites
+        {where_sql}
         ORDER BY id DESC
         LIMIT %s
         """,
-        (limit,),
+        tuple(params),
     )
     items = [
         {
@@ -174,6 +194,151 @@ def list_sites(limit: int = 50) -> JSONResponse:
         for r in rows
     ]
     return JSONResponse(content=jsonable_encoder({"sites": items}))
+
+
+def create_site_draft(body: SiteDraftCreate) -> JSONResponse:
+    now = _utc_now()
+    expires_at = None
+    if body.expires_in_days:
+        expires_at = now + timedelta(days=int(body.expires_in_days))
+    metadata = dict(body.metadata)
+    metadata.setdefault("plan_project_id", body.plan_project_id)
+    if body.geometry_wkt:
+        row = _db_execute_returning(
+            """
+            INSERT INTO site_drafts (
+              id, plan_project_id, geometry_polygon, status, metadata_jsonb,
+              expires_at, created_at, updated_at
+            )
+            VALUES (%s, %s::uuid, ST_GeomFromText(%s, 4326), %s, %s::jsonb, %s, %s, %s)
+            RETURNING id, plan_project_id, geometry_polygon, status, metadata_jsonb, expires_at, created_at, updated_at
+            """,
+            (
+                str(uuid4()),
+                body.plan_project_id,
+                body.geometry_wkt,
+                body.status,
+                json.dumps(metadata, ensure_ascii=False),
+                expires_at,
+                now,
+                now,
+            ),
+        )
+    else:
+        row = _db_execute_returning(
+            """
+            INSERT INTO site_drafts (
+              id, plan_project_id, geometry_polygon, status, metadata_jsonb,
+              expires_at, created_at, updated_at
+            )
+            VALUES (%s, %s::uuid, NULL, %s, %s::jsonb, %s, %s, %s)
+            RETURNING id, plan_project_id, geometry_polygon, status, metadata_jsonb, expires_at, created_at, updated_at
+            """,
+            (
+                str(uuid4()),
+                body.plan_project_id,
+                body.status,
+                json.dumps(metadata, ensure_ascii=False),
+                expires_at,
+                now,
+                now,
+            ),
+        )
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "site_draft_id": str(row["id"]),
+                "plan_project_id": str(row["plan_project_id"]),
+                "geometry": row.get("geometry_polygon"),
+                "status": row["status"],
+                "metadata": row.get("metadata_jsonb") or {},
+                "expires_at": row.get("expires_at"),
+                "created_at": row.get("created_at"),
+                "updated_at": row.get("updated_at"),
+            }
+        )
+    )
+
+
+def list_site_drafts(plan_project_id: str, status: str | None = None, limit: int = 50) -> JSONResponse:
+    limit = max(1, min(int(limit), 200))
+    params: list[Any] = [plan_project_id]
+    where = "WHERE plan_project_id = %s::uuid"
+    if status:
+        where += " AND status = %s"
+        params.append(status)
+    rows = _db_fetch_all(
+        f"""
+        SELECT id, plan_project_id, geometry_polygon, status, metadata_jsonb, expires_at, created_at, updated_at
+        FROM site_drafts
+        {where}
+        ORDER BY updated_at DESC
+        LIMIT %s
+        """,
+        tuple(params + [limit]),
+    )
+    items = [
+        {
+            "site_draft_id": str(r["id"]),
+            "plan_project_id": str(r["plan_project_id"]),
+            "geometry": r.get("geometry_polygon"),
+            "status": r.get("status"),
+            "metadata": r.get("metadata_jsonb") or {},
+            "expires_at": r.get("expires_at"),
+            "created_at": r.get("created_at"),
+            "updated_at": r.get("updated_at"),
+        }
+        for r in rows
+    ]
+    return JSONResponse(content=jsonable_encoder({"site_drafts": items}))
+
+
+def confirm_site_draft(site_draft_id: str, body: SiteDraftConfirm | None = None) -> JSONResponse:
+    body = body or SiteDraftConfirm()
+    now = _utc_now()
+    draft = _db_fetch_one(
+        """
+        SELECT id, plan_project_id, geometry_polygon, metadata_jsonb
+        FROM site_drafts
+        WHERE id = %s::uuid
+        """,
+        (site_draft_id,),
+    )
+    if not draft:
+        return JSONResponse(status_code=404, content=jsonable_encoder({"detail": "Site draft not found"}))
+
+    metadata = dict(draft.get("metadata_jsonb") or {})
+    metadata.update(body.metadata or {})
+    metadata.setdefault("plan_project_id", str(draft["plan_project_id"]))
+    site_row = _db_execute_returning(
+        """
+        INSERT INTO sites (id, geometry_polygon, metadata)
+        VALUES (%s, %s, %s::jsonb)
+        RETURNING id, geometry_polygon, metadata
+        """,
+        (
+            str(uuid4()),
+            draft.get("geometry_polygon"),
+            json.dumps(metadata, ensure_ascii=False),
+        ),
+    )
+    _db_execute(
+        """
+        UPDATE site_drafts
+        SET status = %s, updated_at = %s, metadata_jsonb = %s::jsonb
+        WHERE id = %s::uuid
+        """,
+        ("confirmed", now, json.dumps(metadata, ensure_ascii=False), site_draft_id),
+    )
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "site_id": str(site_row["id"]),
+                "geometry": site_row.get("geometry_polygon"),
+                "metadata": site_row.get("metadata") or {},
+            }
+        )
+    )
 
 
 def list_site_categories(plan_project_id: str) -> JSONResponse:

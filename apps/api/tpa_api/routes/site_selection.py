@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 
 from ..services.site_selection import AllocationDecisionCreate, DecisionLogCreate, MitigationCreate
 from ..services.site_selection import SiteAssessmentCreate, SiteCategoryCreate, SiteCreate, SiteScoreCreate
+from ..services.site_selection import SiteDraftConfirm, SiteDraftCreate
 from ..services.site_selection import Stage4SummaryRowCreate
 from ..services.site_selection import create_allocation_decision as service_create_allocation_decision
 from ..services.site_selection import create_decision_log as service_create_decision_log
@@ -12,13 +13,16 @@ from ..services.site_selection import create_mitigation as service_create_mitiga
 from ..services.site_selection import create_site_assessment as service_create_site_assessment
 from ..services.site_selection import create_site_category as service_create_site_category
 from ..services.site_selection import create_site as service_create_site
+from ..services.site_selection import create_site_draft as service_create_site_draft
 from ..services.site_selection import create_site_score as service_create_site_score
 from ..services.site_selection import create_stage4_summary_row as service_create_stage4_summary_row
+from ..services.site_selection import confirm_site_draft as service_confirm_site_draft
 from ..services.site_selection import list_allocation_decisions as service_list_allocation_decisions
 from ..services.site_selection import list_decision_logs as service_list_decision_logs
 from ..services.site_selection import list_mitigations as service_list_mitigations
 from ..services.site_selection import list_site_assessments as service_list_site_assessments
 from ..services.site_selection import list_site_categories as service_list_site_categories
+from ..services.site_selection import list_site_drafts as service_list_site_drafts
 from ..services.site_selection import list_sites as service_list_sites
 from ..services.site_selection import list_site_scores as service_list_site_scores
 from ..services.site_selection import list_stage4_summary_rows as service_list_stage4_summary_rows
@@ -38,8 +42,23 @@ def create_site(body: SiteCreate) -> JSONResponse:
 
 
 @router.get("/sites")
-def list_sites(limit: int = 50) -> JSONResponse:
-    return service_list_sites(limit=limit)
+def list_sites(limit: int = 50, plan_project_id: str | None = None) -> JSONResponse:
+    return service_list_sites(limit=limit, plan_project_id=plan_project_id)
+
+
+@router.post("/site-drafts")
+def create_site_draft(body: SiteDraftCreate) -> JSONResponse:
+    return service_create_site_draft(body)
+
+
+@router.get("/plan-projects/{plan_project_id}/site-drafts")
+def list_site_drafts(plan_project_id: str, status: str | None = None, limit: int = 50) -> JSONResponse:
+    return service_list_site_drafts(plan_project_id, status=status, limit=limit)
+
+
+@router.post("/site-drafts/{site_draft_id}/confirm")
+def confirm_site_draft(site_draft_id: str, body: SiteDraftConfirm | None = None) -> JSONResponse:
+    return service_confirm_site_draft(site_draft_id, body)
 
 
 @router.get("/plan-projects/{plan_project_id}/site-categories")

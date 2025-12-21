@@ -21,12 +21,14 @@ from .routes.retrieval_frames import router as retrieval_frames_router
 from .routes.runs import router as runs_router
 from .routes.rulepacks import router as rulepacks_router
 from .routes.scenarios import router as scenarios_router
+from .routes.scenario_inspector import router as scenario_inspector_router
 from .routes.spec import router as spec_router
 from .routes.site_selection import router as site_selection_router
 from .routes.timetable import router as timetable_router
 from .routes.tool_requests import router as tool_requests_router
 from .routes.trace import router as trace_router
 from .routes.workflow import router as workflow_router
+from .routes.visuals import router as visuals_router
 
 
 def create_app() -> FastAPI:
@@ -58,11 +60,13 @@ def create_app() -> FastAPI:
     app.include_router(applications_router)
     app.include_router(monitoring_router)
     app.include_router(scenarios_router)
+    app.include_router(scenario_inspector_router)
     app.include_router(trace_router)
     app.include_router(retrieval_router)
     app.include_router(retrieval_frames_router)
     app.include_router(runs_router)
     app.include_router(tool_requests_router)
+    app.include_router(visuals_router)
     app.include_router(ingest_router)
 
     return app

@@ -27,6 +27,15 @@ instruments:
       - "visual_asset_refs"
       - "viewpoint_context"
 
+  - id: render_simple_chart
+    name: "Simple Chart Renderer"
+    type: "internal_renderer"
+    description: "Renders a simple chart (SVG) from a structured figure specification."
+    required_inputs:
+      - "figure_spec"
+      - "plan_project_id"
+      - "scenario_id"
+
   - id: sea_hra
     name: "SEA/HRA Continuous Checks"
     type: "internal_workflow"

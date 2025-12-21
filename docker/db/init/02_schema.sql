@@ -5,6 +5,11 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
+DROP TABLE IF EXISTS policy_clause_embeddings;
+DROP TABLE IF EXISTS policy_clauses;
+DROP TABLE IF EXISTS policies;
+DROP TABLE IF EXISTS chunk_embeddings;
+
 -- ---------------------------------------------------------------------------
 -- Identity / lifecycle tables (planner-grade audit questions land here)
 -- ---------------------------------------------------------------------------
@@ -54,6 +59,48 @@ CREATE TABLE IF NOT EXISTS ingest_batches (
 CREATE INDEX IF NOT EXISTS ingest_batches_authority_started_idx
   ON ingest_batches (authority_id, started_at DESC);
 
+CREATE TABLE IF NOT EXISTS ingest_runs (
+  id uuid PRIMARY KEY,
+  ingest_batch_id uuid NOT NULL REFERENCES ingest_batches (id) ON DELETE CASCADE,
+  authority_id text,
+  plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL,
+  pipeline_version text,
+  model_ids_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  prompt_hashes_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status text NOT NULL,
+  started_at timestamptz NOT NULL,
+  ended_at timestamptz,
+  inputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  outputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_text text
+);
+
+CREATE INDEX IF NOT EXISTS ingest_runs_batch_idx
+  ON ingest_runs (ingest_batch_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS ingest_runs_plan_cycle_idx
+  ON ingest_runs (plan_cycle_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS ingest_runs_status_idx
+  ON ingest_runs (status, started_at DESC);
+
+CREATE TABLE IF NOT EXISTS ingest_run_aliases (
+  id uuid PRIMARY KEY,
+  scope_type text NOT NULL,
+  scope_key text NOT NULL,
+  alias text NOT NULL,
+  run_id uuid NOT NULL REFERENCES ingest_runs (id) ON DELETE CASCADE,
+  set_at timestamptz NOT NULL,
+  set_by text,
+  notes text
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS ingest_run_aliases_unique
+  ON ingest_run_aliases (scope_type, scope_key, alias);
+
+CREATE INDEX IF NOT EXISTS ingest_run_aliases_run_idx
+  ON ingest_run_aliases (run_id);
+
 CREATE TABLE IF NOT EXISTS ingest_jobs (
   id uuid PRIMARY KEY,
   ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
@@ -68,6 +115,33 @@ CREATE TABLE IF NOT EXISTS ingest_jobs (
   completed_at timestamptz,
   error_text text
 );
+
+CREATE TABLE IF NOT EXISTS ingest_run_steps (
+  id uuid PRIMARY KEY,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE CASCADE,
+  step_name text NOT NULL,
+  status text NOT NULL,
+  started_at timestamptz,
+  ended_at timestamptz,
+  inputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  outputs_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  error_text text
+);
+
+DROP INDEX IF EXISTS ingest_run_steps_unique;
+
+CREATE UNIQUE INDEX IF NOT EXISTS ingest_run_steps_unique
+  ON ingest_run_steps (run_id, step_name);
+
+CREATE INDEX IF NOT EXISTS ingest_run_steps_status_idx
+  ON ingest_run_steps (status, started_at DESC);
+
+ALTER TABLE ingest_run_steps
+  ALTER COLUMN ingest_batch_id DROP NOT NULL;
+
+ALTER TABLE ingest_run_steps
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE CASCADE;
 
 CREATE INDEX IF NOT EXISTS ingest_jobs_status_idx
   ON ingest_jobs (status, created_at DESC);
@@ -130,8 +204,32 @@ CREATE TABLE IF NOT EXISTS documents (
   confidence_hint text,
   uncertainty_note text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
-  blob_path text NOT NULL
+  blob_path text NOT NULL,
+  raw_blob_path text,
+  raw_sha256 text,
+  raw_bytes bigint,
+  raw_content_type text,
+  raw_source_uri text,
+  raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL
 );
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_blob_path text;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_sha256 text;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_bytes bigint;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_content_type text;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_source_uri text;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL;
 
 CREATE INDEX IF NOT EXISTS documents_authority_id_idx
   ON documents (authority_id);
@@ -139,12 +237,54 @@ CREATE INDEX IF NOT EXISTS documents_authority_id_idx
 CREATE INDEX IF NOT EXISTS documents_plan_cycle_idx
   ON documents (plan_cycle_id);
 
+CREATE INDEX IF NOT EXISTS documents_raw_sha_idx
+  ON documents (raw_sha256);
+
 CREATE TABLE IF NOT EXISTS pages (
   id uuid PRIMARY KEY,
   document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
   page_number integer NOT NULL,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  render_blob_path text,
+  render_format text,
+  render_dpi integer,
+  render_width integer,
+  render_height integer,
+  render_tier text,
+  render_reason text,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_blob_path text;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_format text;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_dpi integer;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_width integer;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_height integer;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_tier text;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS render_reason text;
 
 CREATE UNIQUE INDEX IF NOT EXISTS pages_document_page_unique
   ON pages (document_id, page_number);
@@ -153,40 +293,155 @@ CREATE TABLE IF NOT EXISTS chunks (
   id uuid PRIMARY KEY,
   document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
   page_number integer,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
   text text NOT NULL,
   bbox jsonb,
+  bbox_quality text,
   type text,
   section_path text,
+  span_start integer,
+  span_end integer,
+  span_quality text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS bbox jsonb;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS bbox_quality text;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS type text;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS section_path text;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS span_start integer;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS span_end integer;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS span_quality text;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS metadata jsonb NOT NULL DEFAULT '{}'::jsonb;
 
 CREATE INDEX IF NOT EXISTS chunks_document_id_idx
   ON chunks (document_id);
 
--- Retrieval vectors for chunks (pgvector; OSS RetrievalProvider backend).
--- Dimension is intentionally not fixed here to support swapping embedding models.
-CREATE TABLE IF NOT EXISTS chunk_embeddings (
+CREATE TABLE IF NOT EXISTS layout_blocks (
   id uuid PRIMARY KEY,
-  chunk_id uuid NOT NULL REFERENCES chunks (id) ON DELETE CASCADE,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  page_number integer NOT NULL,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  block_id text NOT NULL,
+  block_type text NOT NULL,
+  text text NOT NULL,
+  bbox jsonb,
+  bbox_quality text,
+  section_path text,
+  span_start integer,
+  span_end integer,
+  span_quality text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS layout_blocks_document_block_unique
+  ON layout_blocks (document_id, block_id);
+
+CREATE INDEX IF NOT EXISTS layout_blocks_document_idx
+  ON layout_blocks (document_id);
+
+CREATE TABLE IF NOT EXISTS document_tables (
+  id uuid PRIMARY KEY,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  page_number integer NOT NULL,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  table_id text NOT NULL,
+  bbox jsonb,
+  bbox_quality text,
+  rows_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS document_tables_document_table_unique
+  ON document_tables (document_id, table_id);
+
+CREATE INDEX IF NOT EXISTS document_tables_document_idx
+  ON document_tables (document_id);
+
+CREATE TABLE IF NOT EXISTS vector_paths (
+  id uuid PRIMARY KEY,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  page_number integer NOT NULL,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  path_id text NOT NULL,
+  path_type text NOT NULL,
+  geometry_jsonb jsonb,
+  bbox jsonb,
+  bbox_quality text,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS vector_paths_document_path_unique
+  ON vector_paths (document_id, path_id);
+
+CREATE INDEX IF NOT EXISTS vector_paths_document_idx
+  ON vector_paths (document_id);
+
+-- Retrieval vectors for units (pgvector; OSS RetrievalProvider backend).
+-- Dimension is intentionally not fixed here to support swapping embedding models.
+CREATE TABLE IF NOT EXISTS unit_embeddings (
+  id uuid PRIMARY KEY,
+  unit_type text NOT NULL,
+  unit_id uuid NOT NULL,
   embedding vector NOT NULL,
   embedding_model_id text NOT NULL,
+  embedding_dim integer,
   created_at timestamptz NOT NULL,
   tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS chunk_embeddings_unique
-  ON chunk_embeddings (chunk_id, embedding_model_id);
+CREATE UNIQUE INDEX IF NOT EXISTS unit_embeddings_unique
+  ON unit_embeddings (unit_type, unit_id, embedding_model_id);
 
-CREATE INDEX IF NOT EXISTS chunk_embeddings_model_idx
-  ON chunk_embeddings (embedding_model_id);
+CREATE INDEX IF NOT EXISTS unit_embeddings_model_idx
+  ON unit_embeddings (embedding_model_id);
+
+CREATE INDEX IF NOT EXISTS unit_embeddings_unit_type_idx
+  ON unit_embeddings (unit_type);
 
 CREATE TABLE IF NOT EXISTS visual_assets (
   id uuid PRIMARY KEY,
   document_id uuid REFERENCES documents (id) ON DELETE SET NULL,
   page_number integer,
+  ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
   asset_type text NOT NULL,
   blob_path text NOT NULL,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  updated_at timestamptz NOT NULL DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS parse_bundles (
@@ -207,6 +462,18 @@ CREATE INDEX IF NOT EXISTS parse_bundles_document_idx
 CREATE INDEX IF NOT EXISTS visual_assets_document_id_idx
   ON visual_assets (document_id);
 
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
+
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL;
+
 CREATE TABLE IF NOT EXISTS visual_features (
   id uuid PRIMARY KEY,
   visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
@@ -224,13 +491,74 @@ CREATE INDEX IF NOT EXISTS visual_features_asset_idx
 CREATE TABLE IF NOT EXISTS segmentation_masks (
   id uuid PRIMARY KEY,
   visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
   label text,
   prompt text,
   mask_artifact_path text NOT NULL,
+  mask_rle_jsonb jsonb,
+  bbox jsonb,
+  bbox_quality text,
   confidence double precision,
   tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS visual_asset_regions (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  region_type text NOT NULL,
+  bbox jsonb,
+  bbox_quality text,
+  mask_id uuid REFERENCES segmentation_masks (id) ON DELETE SET NULL,
+  caption_text text,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_asset_regions_asset_idx
+  ON visual_asset_regions (visual_asset_id);
+
+CREATE INDEX IF NOT EXISTS visual_asset_regions_run_idx
+  ON visual_asset_regions (run_id);
+
+CREATE TABLE IF NOT EXISTS visual_asset_links (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  target_type text NOT NULL,
+  target_id text NOT NULL,
+  link_type text NOT NULL,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_asset_links_asset_idx
+  ON visual_asset_links (visual_asset_id);
+
+CREATE INDEX IF NOT EXISTS visual_asset_links_target_idx
+  ON visual_asset_links (target_type, target_id);
+
+CREATE TABLE IF NOT EXISTS visual_semantic_outputs (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  schema_version text NOT NULL,
+  asset_type text,
+  asset_subtype text,
+  canonical_facts_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  asset_specific_facts_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  assertions_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
+  agent_findings_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  material_index_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_semantic_outputs_asset_idx
+  ON visual_semantic_outputs (visual_asset_id);
 
 CREATE TABLE IF NOT EXISTS frames (
   id uuid PRIMARY KEY,
@@ -276,55 +604,93 @@ CREATE TABLE IF NOT EXISTS projection_artifacts (
   created_at timestamptz NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS policies (
+CREATE TABLE IF NOT EXISTS policy_sections (
   id uuid PRIMARY KEY,
-  authority_id text NOT NULL,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
   ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL,
-  plan_cycle_id uuid REFERENCES plan_cycles (id) ON DELETE SET NULL,
-  policy_status text,
-  policy_weight_hint text,
-  effective_from date,
-  effective_to date,
-  applicability_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
-  is_active boolean NOT NULL DEFAULT true,
-  superseded_by_policy_id uuid REFERENCES policies (id) ON DELETE SET NULL,
-  confidence_hint text,
-  uncertainty_note text,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  policy_code text,
+  title text,
+  section_path text,
+  heading_text text,
   text text NOT NULL,
-  overarching_policy_id uuid REFERENCES policies (id) ON DELETE SET NULL,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  page_start integer,
+  page_end integer,
+  span_start integer,
+  span_end integer,
+  span_quality text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
+CREATE INDEX IF NOT EXISTS policy_sections_document_idx
+  ON policy_sections (document_id);
 
 CREATE TABLE IF NOT EXISTS policy_clauses (
   id uuid PRIMARY KEY,
-  policy_id uuid NOT NULL REFERENCES policies (id) ON DELETE CASCADE,
+  policy_section_id uuid NOT NULL REFERENCES policy_sections (id) ON DELETE CASCADE,
   clause_ref text,
   text text NOT NULL,
-  metadata jsonb NOT NULL DEFAULT '{}'::jsonb
+  page_number integer,
+  span_start integer,
+  span_end integer,
+  span_quality text,
+  speech_act_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  subject text,
+  object text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
--- Retrieval vectors for policy clauses (pgvector; clause-aware retrieval backend).
--- Dimension is intentionally not fixed here to support swapping embedding models.
-CREATE TABLE IF NOT EXISTS policy_clause_embeddings (
+CREATE INDEX IF NOT EXISTS policy_clauses_section_idx
+  ON policy_clauses (policy_section_id);
+
+CREATE TABLE IF NOT EXISTS policy_definitions (
   id uuid PRIMARY KEY,
-  policy_clause_id uuid NOT NULL REFERENCES policy_clauses (id) ON DELETE CASCADE,
-  embedding vector NOT NULL,
-  embedding_model_id text NOT NULL,
-  created_at timestamptz NOT NULL,
-  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL
+  policy_section_id uuid REFERENCES policy_sections (id) ON DELETE SET NULL,
+  policy_clause_id uuid REFERENCES policy_clauses (id) ON DELETE SET NULL,
+  term text NOT NULL,
+  definition_text text NOT NULL,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS policy_clause_embeddings_unique
-  ON policy_clause_embeddings (policy_clause_id, embedding_model_id);
+CREATE INDEX IF NOT EXISTS policy_definitions_term_idx
+  ON policy_definitions (term);
 
-CREATE INDEX IF NOT EXISTS policy_clause_embeddings_model_idx
-  ON policy_clause_embeddings (embedding_model_id);
+CREATE TABLE IF NOT EXISTS policy_targets (
+  id uuid PRIMARY KEY,
+  policy_section_id uuid REFERENCES policy_sections (id) ON DELETE SET NULL,
+  policy_clause_id uuid REFERENCES policy_clauses (id) ON DELETE SET NULL,
+  metric text,
+  value numeric,
+  unit text,
+  timeframe text,
+  geography_ref text,
+  raw_text text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
+
+CREATE TABLE IF NOT EXISTS policy_monitoring_hooks (
+  id uuid PRIMARY KEY,
+  policy_section_id uuid REFERENCES policy_sections (id) ON DELETE SET NULL,
+  policy_clause_id uuid REFERENCES policy_clauses (id) ON DELETE SET NULL,
+  indicator_text text NOT NULL,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
+);
 
 CREATE TABLE IF NOT EXISTS sites (
   id uuid PRIMARY KEY,
   geometry_polygon geometry,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb
 );
+
 
 CREATE TABLE IF NOT EXISTS spatial_features (
   id uuid PRIMARY KEY,
@@ -380,6 +746,20 @@ CREATE TABLE IF NOT EXISTS plan_projects (
   created_at timestamptz NOT NULL,
   updated_at timestamptz NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS site_drafts (
+  id uuid PRIMARY KEY,
+  plan_project_id uuid NOT NULL REFERENCES plan_projects (id) ON DELETE CASCADE,
+  geometry_polygon geometry,
+  status text NOT NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  expires_at timestamptz,
+  created_at timestamptz NOT NULL,
+  updated_at timestamptz NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS site_drafts_plan_idx
+  ON site_drafts (plan_project_id, status);
 
 -- ---------------------------------------------------------------------------
 -- Rule packs + workflow state (plan-making FSM + checks)
@@ -923,8 +1303,28 @@ CREATE TABLE IF NOT EXISTS scenario_framing_tabs (
   status text NOT NULL,
   trajectory_id uuid,
   judgement_sheet_ref text,
-  updated_at timestamptz NOT NULL
+  updated_at timestamptz NOT NULL,
+  dependency_hash text,
+  dependency_snapshot_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  cache_expires_at timestamptz,
+  last_run_started_at timestamptz,
+  last_run_completed_at timestamptz
 );
+
+ALTER TABLE scenario_framing_tabs
+  ADD COLUMN IF NOT EXISTS dependency_hash text;
+
+ALTER TABLE scenario_framing_tabs
+  ADD COLUMN IF NOT EXISTS dependency_snapshot_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb;
+
+ALTER TABLE scenario_framing_tabs
+  ADD COLUMN IF NOT EXISTS cache_expires_at timestamptz;
+
+ALTER TABLE scenario_framing_tabs
+  ADD COLUMN IF NOT EXISTS last_run_started_at timestamptz;
+
+ALTER TABLE scenario_framing_tabs
+  ADD COLUMN IF NOT EXISTS last_run_completed_at timestamptz;
 
 CREATE TABLE IF NOT EXISTS trajectories (
   id uuid PRIMARY KEY,
@@ -1244,5 +1644,101 @@ CREATE TABLE IF NOT EXISTS snapshot_diffs (
   diff_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL
 );
+
+-- ---------------------------------------------------------------------------
+-- Run provenance columns (append-only runs; outputs carry run_id)
+-- ---------------------------------------------------------------------------
+ALTER TABLE evidence_refs
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE tool_runs
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE parse_bundles
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE pages
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE layout_blocks
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE document_tables
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE vector_paths
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE chunks
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_features
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE segmentation_masks
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE segmentation_masks
+  ADD COLUMN IF NOT EXISTS mask_rle_jsonb jsonb;
+
+ALTER TABLE segmentation_masks
+  ADD COLUMN IF NOT EXISTS bbox jsonb;
+
+ALTER TABLE segmentation_masks
+  ADD COLUMN IF NOT EXISTS bbox_quality text;
+
+ALTER TABLE visual_asset_regions
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_asset_links
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_semantic_outputs
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE unit_embeddings
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_sections
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_clauses
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_definitions
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_targets
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE policy_monitoring_hooks
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE frames
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE transforms
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE control_points
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE projection_artifacts
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE kg_edge
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE kg_edge
+  ADD COLUMN IF NOT EXISTS edge_class text;
+
+ALTER TABLE kg_edge
+  ADD COLUMN IF NOT EXISTS resolve_method text;
 
 COMMIT;

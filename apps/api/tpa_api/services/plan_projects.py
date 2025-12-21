@@ -119,3 +119,32 @@ def list_plan_projects(authority_id: str | None = None) -> JSONResponse:
         for r in rows
     ]
     return JSONResponse(content=jsonable_encoder({"plan_projects": items}))
+
+
+def get_plan_project(plan_project_id: str) -> JSONResponse:
+    row = _db_fetch_all(
+        """
+        SELECT id, authority_id, process_model_id, title, status, current_stage_id, metadata_jsonb, created_at, updated_at
+        FROM plan_projects
+        WHERE id = %s::uuid
+        """,
+        (plan_project_id,),
+    )
+    if not row:
+        return JSONResponse(status_code=404, content=jsonable_encoder({"detail": "Plan project not found"}))
+    r = row[0]
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "plan_project_id": str(r["id"]),
+                "authority_id": r["authority_id"],
+                "process_model_id": r["process_model_id"],
+                "title": r["title"],
+                "status": r["status"],
+                "current_stage_id": r["current_stage_id"],
+                "created_at": r["created_at"],
+                "updated_at": r["updated_at"],
+                "metadata": r["metadata_jsonb"] or {},
+            }
+        )
+    )

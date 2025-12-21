@@ -1,0 +1,34 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PolicyEdgeParseResult",
+  "type": "object",
+  "description": "LLM instrument output for policy clause citations and mentions.",
+  "properties": {
+    "citations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_clause_id": { "type": "string" },
+          "target_policy_code": { "type": "string" },
+          "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+        },
+        "required": ["source_clause_id", "target_policy_code"]
+      }
+    },
+    "mentions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "source_clause_id": { "type": "string" },
+          "mention_text": { "type": "string" },
+          "mention_type": { "type": "string", "enum": ["place", "designation", "constraint", "other"] },
+          "confidence": { "type": "string", "enum": ["low", "medium", "high"] }
+        },
+        "required": ["source_clause_id", "mention_text", "mention_type"]
+      }
+    }
+  },
+  "required": ["citations", "mentions"]
+}

@@ -4,6 +4,7 @@ import { StrategicHome } from './components/StrategicHome';
 import { CaseworkHome } from './components/CaseworkHome';
 import { DebugDisabled, DebugView } from './components/DebugView';
 import { ProjectProvider, useProject } from './contexts/AuthorityContext';
+import { ExplainabilityProvider } from './contexts/ExplainabilityContext';
 
 export type WorkspaceMode = 'plan' | 'casework';
 export type ViewMode = 'document' | 'map' | 'judgement' | 'reality';
@@ -61,7 +62,9 @@ function AppContent() {
 export default function App() {
     return (
         <ProjectProvider>
-            <AppContent />
+            <ExplainabilityProvider>
+                <AppContent />
+            </ExplainabilityProvider>
         </ProjectProvider>
     );
 }

@@ -154,7 +154,7 @@ def _retrieve_chunks_hybrid_sync(
 ) -> dict[str, Any]:
     """
     OSS RetrievalProvider v0:
-    - FTS (websearch_to_tsquery) + pgvector (chunk_embeddings) merged via RRF.
+    - FTS (websearch_to_tsquery) + pgvector (unit_embeddings) merged via RRF.
     - Optional reranking via external reranker service (Qwen3 reranker family).
 
     Always logs a ToolRun (and optionally a rerank ToolRun) and returns ids.
@@ -242,13 +242,14 @@ def _retrieve_chunks_hybrid_sync(
                       c.text AS full_text,
                       er.fragment_id AS fragment_id,
                       d.metadata->>'title' AS document_title,
-                      (ce.embedding <=> %s::vector) AS vec_distance
-                    FROM chunk_embeddings ce
-                    JOIN chunks c ON c.id = ce.chunk_id
+                      (ue.embedding <=> %s::vector) AS vec_distance
+                    FROM unit_embeddings ue
+                    JOIN chunks c ON c.id = ue.unit_id
                     JOIN documents d ON d.id = c.document_id
                     LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
                     WHERE {where_sql}
-                      AND ce.embedding_model_id = %s
+                      AND ue.embedding_model_id = %s
+                      AND ue.unit_type = 'chunk'
                     ORDER BY vec_distance ASC
                     LIMIT %s
                     """,
@@ -451,18 +452,18 @@ def _retrieve_policy_clauses_hybrid_sync(
     used: dict[str, bool] = {"fts": False, "vector": False, "rerank": False}
     errors: list[str] = []
 
-    where: list[str] = ["p.is_active = true"]
+    where: list[str] = ["d.is_active = true"]
     params_base: list[Any] = []
     if authority_id:
-        where.append("p.authority_id = %s")
+        where.append("d.authority_id = %s")
         params_base.append(authority_id)
     if plan_cycle_id:
-        where.append("p.plan_cycle_id = %s::uuid")
+        where.append("d.plan_cycle_id = %s::uuid")
         params_base.append(plan_cycle_id)
         # Default to the latest completed ingest batch for this plan cycle to avoid mixing parse versions.
         where.append(
             """
-            p.ingest_batch_id = (
+            d.ingest_batch_id = (
               SELECT ib.id
               FROM ingest_batches ib
               WHERE ib.plan_cycle_id = %s::uuid
@@ -482,20 +483,21 @@ def _retrieve_policy_clauses_hybrid_sync(
                 SELECT
                   pc.id AS policy_clause_id,
                   pc.clause_ref,
-                  pc.metadata->>'section_path' AS section_path,
-                  pc.metadata->'speech_act' AS speech_act,
+                  ps.section_path AS section_path,
+                  pc.speech_act_jsonb AS speech_act,
                   LEFT(pc.text, 800) AS snippet,
                   pc.text AS full_text,
-                  p.id AS policy_id,
-                  p.metadata->>'policy_ref' AS policy_ref,
-                  p.metadata->>'policy_title' AS policy_title,
-                  p.metadata->>'document_title' AS document_title,
+                  ps.id AS policy_section_id,
+                  ps.policy_code AS policy_code,
+                  ps.title AS policy_title,
+                  d.metadata->>'title' AS document_title,
                   ts_rank_cd(
                     to_tsvector('english', pc.text),
                     websearch_to_tsquery('english', %s)
                   ) AS kw_score
                 FROM policy_clauses pc
-                JOIN policies p ON p.id = pc.policy_id
+                JOIN policy_sections ps ON ps.id = pc.policy_section_id
+                JOIN documents d ON d.id = ps.document_id
                 WHERE {where_sql}
                   AND to_tsvector('english', pc.text) @@ websearch_to_tsquery('english', %s)
                 ORDER BY kw_score DESC
@@ -525,20 +527,22 @@ def _retrieve_policy_clauses_hybrid_sync(
                     SELECT
                       pc.id AS policy_clause_id,
                       pc.clause_ref,
-                      pc.metadata->>'section_path' AS section_path,
-                      pc.metadata->'speech_act' AS speech_act,
+                      ps.section_path AS section_path,
+                      pc.speech_act_jsonb AS speech_act,
                       LEFT(pc.text, 800) AS snippet,
                       pc.text AS full_text,
-                      p.id AS policy_id,
-                      p.metadata->>'policy_ref' AS policy_ref,
-                      p.metadata->>'policy_title' AS policy_title,
-                      p.metadata->>'document_title' AS document_title,
-                      (pce.embedding <=> %s::vector) AS vec_distance
-                    FROM policy_clause_embeddings pce
-                    JOIN policy_clauses pc ON pc.id = pce.policy_clause_id
-                    JOIN policies p ON p.id = pc.policy_id
+                      ps.id AS policy_section_id,
+                      ps.policy_code AS policy_code,
+                      ps.title AS policy_title,
+                      d.metadata->>'title' AS document_title,
+                      (ue.embedding <=> %s::vector) AS vec_distance
+                    FROM unit_embeddings ue
+                    JOIN policy_clauses pc ON pc.id = ue.unit_id
+                    JOIN policy_sections ps ON ps.id = pc.policy_section_id
+                    JOIN documents d ON d.id = ps.document_id
                     WHERE {where_sql}
-                      AND pce.embedding_model_id = %s
+                      AND ue.embedding_model_id = %s
+                      AND ue.unit_type = 'policy_clause'
                     ORDER BY vec_distance ASC
                     LIMIT %s
                     """,
@@ -572,9 +576,9 @@ def _retrieve_policy_clauses_hybrid_sync(
         merged.append(
             {
                 "policy_clause_id": cid,
-                "policy_id": str(r.get("policy_id")) if r.get("policy_id") else None,
+                "policy_section_id": str(r.get("policy_section_id")) if r.get("policy_section_id") else None,
                 "clause_ref": r.get("clause_ref"),
-                "policy_ref": r.get("policy_ref"),
+                "policy_ref": r.get("policy_code"),
                 "policy_title": r.get("policy_title"),
                 "document_title": r.get("document_title"),
                 "section_path": r.get("section_path"),
@@ -649,7 +653,7 @@ def _retrieve_policy_clauses_hybrid_sync(
             {
                 "policy_clause_id": r["policy_clause_id"],
                 "evidence_ref": evidence_ref,
-                "policy_id": r.get("policy_id"),
+                "policy_section_id": r.get("policy_section_id"),
                 "clause_ref": r.get("clause_ref"),
                 "policy_ref": r.get("policy_ref"),
                 "policy_title": r.get("policy_title"),
@@ -711,4 +715,3 @@ def _retrieve_policy_clauses_hybrid_sync(
     )
 
     return {"results": results, "tool_run_id": retrieval_tool_run_id, "rerank_tool_run_id": rerank_tool_run_id}
-

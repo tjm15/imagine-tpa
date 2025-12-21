@@ -6,6 +6,8 @@
   "properties": {
     "schema_version": {"type": "string"},
     "bundle_id": {"type": "string", "format": "uuid"},
+    "tables_unimplemented": {"type": "boolean"},
+    "parse_flags": {"type": "array", "items": {"type": "string"}},
     "document": {
       "type": "object",
       "properties": {
@@ -25,7 +27,16 @@
         "type": "object",
         "properties": {
           "page_number": {"type": "integer"},
-          "text": {"type": "string"}
+          "text": {"type": "string"},
+          "width": {"type": ["number", "null"]},
+          "height": {"type": ["number", "null"]},
+          "render_blob_path": {"type": ["string", "null"]},
+          "render_format": {"type": ["string", "null"]},
+          "render_dpi": {"type": ["integer", "null"]},
+          "render_width": {"type": ["integer", "null"]},
+          "render_height": {"type": ["integer", "null"]},
+          "render_tier": {"type": ["string", "null"]},
+          "render_reason": {"type": ["string", "null"]}
         },
         "required": ["page_number", "text"]
       }
@@ -41,6 +52,7 @@
           "page_number": {"type": "integer"},
           "section_path": {"type": ["string", "null"]},
           "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "bbox_quality": {"type": ["string", "null"]},
           "evidence_ref": {"type": ["string", "null"]}
         },
         "required": ["block_id", "type", "text", "page_number"]
@@ -54,6 +66,7 @@
           "table_id": {"type": "string"},
           "page_number": {"type": "integer"},
           "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "bbox_quality": {"type": ["string", "null"]},
           "rows": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}}
         },
         "required": ["table_id", "page_number", "rows"]
@@ -88,7 +101,8 @@
           "page_number": {"type": "integer"},
           "path_type": {"type": "string"},
           "geometry": {"type": ["object", "null"]},
-          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4}
+          "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
+          "bbox_quality": {"type": ["string", "null"]}
         },
         "required": ["path_id", "page_number", "path_type"]
       }

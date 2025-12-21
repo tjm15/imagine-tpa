@@ -5,6 +5,7 @@ import hashlib
 import io
 import json
 import os
+import tempfile
 import time
 from typing import Any
 from uuid import uuid4
@@ -14,6 +15,7 @@ import httpx
 from fastapi import FastAPI, HTTPException, UploadFile, Form
 from fastapi.responses import JSONResponse
 
+from pdf2image import convert_from_bytes
 from pypdf import PdfReader
 from minio import Minio
 from PIL import Image
@@ -172,6 +174,332 @@ def _normalize_image_bytes(data: bytes) -> tuple[bytes, str, int | None, int | N
         return data, "bin", None, None
 
 
+def _get_attr(obj: Any, *names: str) -> Any:
+    if isinstance(obj, dict):
+        for name in names:
+            if name in obj:
+                return obj.get(name)
+        return None
+    for name in names:
+        if hasattr(obj, name):
+            return getattr(obj, name)
+    return None
+
+
+def _normalize_bbox(raw: Any) -> tuple[list[float] | None, str]:
+    if isinstance(raw, (list, tuple)) and len(raw) == 4:
+        try:
+            return [float(x) for x in raw], "exact"
+        except Exception:  # noqa: BLE001
+            return None, "none"
+    if isinstance(raw, dict):
+        keys = raw.keys()
+        if {"x0", "y0", "x1", "y1"} <= set(keys):
+            try:
+                return [float(raw["x0"]), float(raw["y0"]), float(raw["x1"]), float(raw["y1"])], "exact"
+            except Exception:  # noqa: BLE001
+                return None, "none"
+        if {"left", "top", "right", "bottom"} <= set(keys):
+            try:
+                return [float(raw["left"]), float(raw["top"]), float(raw["right"]), float(raw["bottom"])], "exact"
+            except Exception:  # noqa: BLE001
+                return None, "none"
+        if {"x", "y", "width", "height"} <= set(keys):
+            try:
+                x0 = float(raw["x"])
+                y0 = float(raw["y"])
+                return [x0, y0, x0 + float(raw["width"]), y0 + float(raw["height"])], "approx"
+            except Exception:  # noqa: BLE001
+                return None, "none"
+    return None, "none"
+
+
+def _docling_to_dict(doc: Any) -> dict[str, Any] | None:
+    for attr in ("model_dump", "to_dict", "dict"):
+        if hasattr(doc, attr):
+            try:
+                data = getattr(doc, attr)()
+            except Exception:  # noqa: BLE001
+                continue
+            if isinstance(data, dict):
+                return data
+    if isinstance(doc, dict):
+        return doc
+    return None
+
+
+def _extract_docling_tables(raw: Any) -> list[dict[str, Any]]:
+    tables: list[dict[str, Any]] = []
+    if not isinstance(raw, list):
+        return tables
+    for idx, table in enumerate(raw, start=1):
+        if not isinstance(table, dict):
+            table_dict = _docling_to_dict(table)
+        else:
+            table_dict = table
+        if not isinstance(table_dict, dict):
+            continue
+        rows = table_dict.get("rows")
+        if not isinstance(rows, list):
+            rows = table_dict.get("cells")
+        if not isinstance(rows, list):
+            continue
+        page_number = table_dict.get("page_number") or table_dict.get("page") or 0
+        bbox_raw = table_dict.get("bbox") or table_dict.get("bounding_box")
+        bbox, bbox_quality = _normalize_bbox(bbox_raw)
+        tables.append(
+            {
+                "table_id": table_dict.get("table_id") or f"t-{idx:04d}",
+                "page_number": int(page_number) if page_number else 0,
+                "bbox": bbox,
+                "bbox_quality": bbox_quality,
+                "rows": rows,
+            }
+        )
+    return tables
+
+
+def _extract_docling_blocks(page: Any, page_number: int) -> list[dict[str, Any]]:
+    blocks_raw = _get_attr(page, "blocks", "layout_blocks", "elements", "regions")
+    if not isinstance(blocks_raw, list):
+        return []
+    blocks: list[dict[str, Any]] = []
+    for idx, block in enumerate(blocks_raw, start=1):
+        block_dict = block if isinstance(block, dict) else _docling_to_dict(block)
+        if not isinstance(block_dict, dict):
+            continue
+        text = block_dict.get("text") or block_dict.get("content") or ""
+        block_type = block_dict.get("type") or block_dict.get("block_type") or block_dict.get("label") or "other"
+        bbox_raw = block_dict.get("bbox") or block_dict.get("bounding_box") or block_dict.get("box")
+        bbox, bbox_quality = _normalize_bbox(bbox_raw)
+        blocks.append(
+            {
+                "block_id": block_dict.get("block_id") or f"b-{page_number:03d}-{idx:04d}",
+                "type": str(block_type),
+                "text": str(text),
+                "page_number": page_number,
+                "section_path": block_dict.get("section_path"),
+                "bbox": bbox,
+                "bbox_quality": bbox_quality,
+            }
+        )
+    return blocks
+
+
+def _select_render_tier(
+    *,
+    page_text: str,
+    visual_count: int,
+    docling_used: bool,
+    docling_errors: list[str],
+) -> tuple[str, str]:
+    del page_text, visual_count, docling_used, docling_errors
+    return "full", "full_res_only"
+
+
+def _render_page_images(
+    *,
+    pdf_bytes: bytes,
+    pages: list[dict[str, Any]],
+    visuals_by_page: dict[int, int],
+    authority_id: str,
+    plan_cycle_id: str | None,
+    document_id: str,
+    docling_used: bool,
+    docling_errors: list[str],
+    minio_client: Minio,
+    bucket: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    render_dpi = int(os.environ.get("TPA_DOCPARSE_RENDER_DPI", "300"))
+    render_format = (os.environ.get("TPA_DOCPARSE_RENDER_FORMAT", "png") or "png").lower()
+    jpeg_quality = int(os.environ.get("TPA_DOCPARSE_RENDER_JPEG_QUALITY", "88"))
+    if render_format not in {"png", "jpeg", "jpg"}:
+        raise HTTPException(status_code=500, detail=f"Unsupported render format: {render_format}")
+    fmt = "jpeg" if render_format in {"jpeg", "jpg"} else "png"
+    ext = "jpg" if fmt == "jpeg" else "png"
+
+    render_runs: list[dict[str, Any]] = []
+    rendered_pages: list[dict[str, Any]] = []
+    for page in pages:
+        page_number = int(page.get("page_number") or 0)
+        if page_number <= 0:
+            continue
+        page_text = page.get("text") if isinstance(page.get("text"), str) else ""
+        visual_count = int(visuals_by_page.get(page_number, 0))
+        tier, reason = _select_render_tier(
+            page_text=page_text,
+            visual_count=visual_count,
+            docling_used=docling_used,
+            docling_errors=docling_errors,
+        )
+        dpi = render_dpi
+
+        started = time.time()
+        try:
+            images = convert_from_bytes(
+                pdf_bytes,
+                dpi=dpi,
+                first_page=page_number,
+                last_page=page_number,
+                fmt=fmt,
+            )
+        except Exception as exc:  # noqa: BLE001
+            render_runs.append(
+                {
+                    "tool_name": "page_render",
+                    "status": "error",
+                    "inputs": {"page_number": page_number, "dpi": dpi, "format": fmt},
+                    "outputs": {"error": str(exc)},
+                    "duration_seconds": max(0.0, time.time() - started),
+                    "limitations_text": "Page render failed; raster output required for explainability layers.",
+                }
+            )
+            raise HTTPException(status_code=500, detail=f"page_render_failed:p{page_number}:{exc}") from exc
+        if not images:
+            render_runs.append(
+                {
+                    "tool_name": "page_render",
+                    "status": "error",
+                    "inputs": {"page_number": page_number, "dpi": dpi, "format": fmt},
+                    "outputs": {"error": "no_images_returned"},
+                    "duration_seconds": max(0.0, time.time() - started),
+                    "limitations_text": "No raster output returned for the requested page.",
+                }
+            )
+            raise HTTPException(status_code=500, detail=f"page_render_failed:p{page_number}:no_output")
+
+        img = images[0]
+        out = io.BytesIO()
+        if fmt == "jpeg":
+            img.convert("RGB").save(out, format="JPEG", quality=jpeg_quality, optimize=True)
+        else:
+            img.save(out, format="PNG")
+        img_bytes = out.getvalue()
+
+        base_prefix = f"docparse/{authority_id}/{plan_cycle_id or 'none'}/{document_id}"
+        blob_path = f"{base_prefix}/page_renders/p{page_number:04d}-{tier.lower()}.{ext}"
+        _upload_bytes(
+            client=minio_client,
+            bucket=bucket,
+            blob_path=blob_path,
+            data=img_bytes,
+            content_type="image/jpeg" if fmt == "jpeg" else "image/png",
+        )
+
+        rendered_pages.append(
+            {
+                "page_number": page_number,
+                "render_blob_path": blob_path,
+                "render_format": fmt,
+                "render_dpi": dpi,
+                "render_width": img.width,
+                "render_height": img.height,
+                "render_tier": tier,
+                "render_reason": reason,
+            }
+        )
+        render_runs.append(
+            {
+                "tool_name": "page_render",
+                "status": "success",
+                "inputs": {"page_number": page_number, "dpi": dpi, "format": fmt, "tier": tier},
+                "outputs": {"render_path": blob_path, "width": img.width, "height": img.height},
+                "duration_seconds": max(0.0, time.time() - started),
+                "limitations_text": "Raster page renders are for explainability overlays; verify scale before measurements.",
+            }
+        )
+
+    return rendered_pages, render_runs
+
+
+def _docling_parse_pdf(
+    *,
+    file_bytes: bytes,
+    filename: str,
+    max_pages: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    try:
+        from docling.document_converter import DocumentConverter  # type: ignore[import-not-found]
+    except Exception as exc:  # noqa: BLE001
+        return [], [], [], [], [f"docling_unavailable:{exc}"]
+
+    temp_path = None
+    pages: list[dict[str, Any]] = []
+    blocks: list[dict[str, Any]] = []
+    tables: list[dict[str, Any]] = []
+    tool_runs: list[dict[str, Any]] = []
+    errors: list[str] = []
+
+    try:
+        with tempfile.NamedTemporaryFile(suffix=os.path.splitext(filename)[1] or ".pdf", delete=False) as tmp:
+            tmp.write(file_bytes)
+            temp_path = tmp.name
+
+        converter = DocumentConverter()
+        result = converter.convert(temp_path)
+        doc = getattr(result, "document", result)
+        data = _docling_to_dict(doc)
+
+        if isinstance(data, dict):
+            pages_raw = data.get("pages")
+            if isinstance(pages_raw, list):
+                for idx, page in enumerate(pages_raw, start=1):
+                    if idx > max_pages:
+                        break
+                    page_number = page.get("page_number") or page.get("page") or idx
+                    text = page.get("text") or page.get("content") or ""
+                    page_item: dict[str, Any] = {"page_number": int(page_number), "text": str(text)}
+                    for key in ("width", "height"):
+                        if key in page:
+                            page_item[key] = page.get(key)
+                    pages.append(page_item)
+                    blocks.extend(_extract_docling_blocks(page, int(page_number)))
+                    tables.extend(_extract_docling_tables(page.get("tables")))
+            tables.extend(_extract_docling_tables(data.get("tables")))
+
+        if not pages:
+            pages_raw = _get_attr(doc, "pages")
+            if isinstance(pages_raw, list):
+                for idx, page in enumerate(pages_raw, start=1):
+                    if idx > max_pages:
+                        break
+                    text = _get_attr(page, "text", "text_content", "content") or ""
+                    page_number = _get_attr(page, "page_number", "page", "number") or idx
+                    pages.append({"page_number": int(page_number), "text": str(text)})
+                    blocks.extend(_extract_docling_blocks(page, int(page_number)))
+
+        tool_runs.append(
+            {
+                "tool_name": "docling_parse",
+                "status": "success" if pages else "partial",
+                "inputs": {"filename": filename, "max_pages": max_pages},
+                "outputs": {"page_count": len(pages), "block_count": len(blocks), "table_count": len(tables)},
+                "duration_seconds": None,
+                "limitations_text": "Docling output is deterministic but may miss layout elements in complex PDFs.",
+            }
+        )
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"docling_failed:{exc}")
+        tool_runs.append(
+            {
+                "tool_name": "docling_parse",
+                "status": "error",
+                "inputs": {"filename": filename, "max_pages": max_pages},
+                "outputs": {"error": str(exc)},
+                "duration_seconds": None,
+                "limitations_text": "Docling parsing failed; fallback extraction used.",
+            }
+        )
+    finally:
+        if temp_path:
+            try:
+                os.unlink(temp_path)
+            except Exception:  # noqa: BLE001
+                pass
+
+    return pages, blocks, tables, tool_runs, errors
+
+
 def _extract_page_texts(reader: PdfReader, *, max_pages: int) -> list[dict[str, Any]]:
     pages: list[dict[str, Any]] = []
     for idx, page in enumerate(reader.pages, start=1):
@@ -233,6 +561,7 @@ def _lines_to_blocks(page_texts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                             "page_number": page_number,
                             "section_path": None,
                             "bbox": None,
+                            "bbox_quality": "none",
                         }
                     )
                     buf = []
@@ -248,6 +577,7 @@ def _lines_to_blocks(page_texts: list[dict[str, Any]]) -> list[dict[str, Any]]:
                     "page_number": page_number,
                     "section_path": None,
                     "bbox": None,
+                    "bbox_quality": "none",
                 }
             )
     return blocks
@@ -604,13 +934,39 @@ async def parse_bundle(
         raise HTTPException(status_code=413, detail=f"File too large (>{max_bytes} bytes)")
 
     reader = PdfReader(io.BytesIO(data))
-    max_pages = int(os.environ.get("TPA_DOCPARSE_MAX_PAGES", "800"))
-    page_texts = _extract_page_texts(reader, max_pages=max_pages)
+    max_pages = int(os.environ.get("TPA_DOCPARSE_MAX_PAGES", "2000"))
+
+    docling_pages, docling_blocks, docling_tables, docling_runs, docling_errors = _docling_parse_pdf(
+        file_bytes=data,
+        filename=file.filename or "document.pdf",
+        max_pages=max_pages,
+    )
+    docling_used = bool(docling_pages or docling_blocks)
+
+    if docling_pages:
+        page_texts = docling_pages
+    else:
+        page_texts = _extract_page_texts(reader, max_pages=max_pages)
 
     max_visuals = int(os.environ.get("TPA_DOCPARSE_MAX_VISUALS", "120"))
     visuals = _extract_images(reader, max_pages=max_pages, max_visuals=max_visuals)
+    visuals_by_page: dict[int, int] = {}
+    for asset in visuals:
+        page_number = int(asset.get("page_number") or 0)
+        if page_number <= 0:
+            continue
+        visuals_by_page[page_number] = visuals_by_page.get(page_number, 0) + 1
 
-    blocks = _lines_to_blocks(page_texts)
+    blocks = docling_blocks if docling_blocks else _lines_to_blocks(page_texts)
+    tables = docling_tables
+    tables_unimplemented = (not docling_used) or bool(docling_errors)
+    parse_flags: list[str] = []
+    if not docling_used:
+        parse_flags.append("docling_fallback")
+    if docling_errors:
+        parse_flags.append("docling_errors")
+    if tables_unimplemented:
+        parse_flags.append("tables_unimplemented")
     for block in blocks:
         block_id = block.get("block_id") or "block"
         page_number = int(block.get("page_number") or 0)
@@ -618,11 +974,33 @@ async def parse_bundle(
 
     evidence_refs = _make_evidence_refs(document_id, blocks)
 
-    llm_model_id = os.environ.get("TPA_LLM_MODEL_ID")
-    blocks, policy_headings, standard_matrices, scope_candidates, llm_runs = _annotate_blocks_with_llm(
-        blocks,
-        llm_model_id=llm_model_id,
+    policy_headings: list[dict[str, Any]] = []
+    standard_matrices: list[dict[str, Any]] = []
+    scope_candidates: list[dict[str, Any]] = []
+    llm_runs: list[dict[str, Any]] = []
+
+    bucket = os.environ.get("TPA_S3_BUCKET") or "tpa"
+    minio_client = _minio_client()
+    _ensure_bucket(minio_client, bucket)
+
+    rendered_pages, render_tool_runs = _render_page_images(
+        pdf_bytes=data,
+        pages=page_texts,
+        visuals_by_page=visuals_by_page,
+        authority_id=authority_id,
+        plan_cycle_id=plan_cycle_id,
+        document_id=document_id,
+        docling_used=docling_used,
+        docling_errors=docling_errors,
+        minio_client=minio_client,
+        bucket=bucket,
     )
+    render_by_page = {p["page_number"]: p for p in rendered_pages}
+    for page in page_texts:
+        page_number = int(page.get("page_number") or 0)
+        render = render_by_page.get(page_number)
+        if render:
+            page.update(render)
 
     vlm_model_id = os.environ.get("TPA_VLM_MODEL_ID")
     classified_visuals, vlm_runs = _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=max_visuals)
@@ -639,13 +1017,16 @@ async def parse_bundle(
             paths, errs = _call_vectorize(image_bytes=bytes(data_bytes), time_budget_seconds=60.0)
             elapsed = max(0.0, time.time() - started)
             for p_idx, path in enumerate(paths, start=1):
+                bbox_raw = path.get("bbox") if isinstance(path, dict) else None
+                bbox, bbox_quality = _normalize_bbox(bbox_raw)
                 vector_paths.append(
                     {
                         "path_id": f"vp-{idx:04d}-{p_idx:03d}",
                         "page_number": int(asset.get("page_number") or 0),
                         "path_type": asset_type,
                         "geometry": path.get("geometry") if isinstance(path, dict) else None,
-                        "bbox": path.get("bbox") if isinstance(path, dict) else None,
+                        "bbox": bbox,
+                        "bbox_quality": bbox_quality,
                     }
                 )
             vector_tool_runs.append(
@@ -658,10 +1039,6 @@ async def parse_bundle(
                     "limitations_text": "Vectorization is best-effort; verify geometry and scale.",
                 }
             )
-
-    bucket = os.environ.get("TPA_S3_BUCKET") or "tpa"
-    minio_client = _minio_client()
-    _ensure_bucket(minio_client, bucket)
 
     asset_items: list[dict[str, Any]] = []
     for idx, asset in enumerate(classified_visuals, start=1):
@@ -760,7 +1137,7 @@ async def parse_bundle(
         },
         "pages": page_texts,
         "layout_blocks": blocks,
-        "tables": [],
+        "tables": tables,
         "visual_assets": asset_items,
         "vector_paths": vector_paths,
         "evidence_refs": evidence_refs,
@@ -771,11 +1148,13 @@ async def parse_bundle(
             "visual_constraints": visual_constraints,
             "design_exemplars": design_exemplars,
         },
-        "tool_runs": [*llm_runs, *vlm_runs, *vector_tool_runs],
+        "tool_runs": [*docling_runs, *render_tool_runs, *llm_runs, *vlm_runs, *vector_tool_runs],
         "limitations": [
             "BBox coordinates are best-effort and may be null for PDF text/images.",
             "Vector extraction is best-effort; map geometry may require follow-up tools.",
         ],
+        "tables_unimplemented": tables_unimplemented,
+        "parse_flags": parse_flags,
     }
 
     bundle_path = f"docparse/{authority_id}/{plan_cycle_id or 'none'}/{document_id}/parse_bundles/{job_id}.json"
@@ -806,11 +1185,21 @@ async def parse_pdf(file: UploadFile) -> JSONResponse:
     if not data:
         raise HTTPException(status_code=400, detail="empty file")
     reader = PdfReader(io.BytesIO(data))
-    page_texts = _extract_page_texts(reader, max_pages=200)
-    blocks = _lines_to_blocks(page_texts)
+    max_pages = int(os.environ.get("TPA_DOCPARSE_MAX_PAGES", "2000"))
+    docling_pages, docling_blocks, _, _, docling_errors = _docling_parse_pdf(
+        file_bytes=data,
+        filename=file.filename or "document.pdf",
+        max_pages=max_pages,
+    )
+    if docling_pages:
+        page_texts = docling_pages
+    else:
+        page_texts = _extract_page_texts(reader, max_pages=max_pages)
+    blocks = docling_blocks if docling_blocks else _lines_to_blocks(page_texts)
+    provider = "docling" if docling_pages and not docling_errors else "pypdf"
     return JSONResponse(
         content={
-            "provider": "docparse_v2",
+            "provider": provider,
             "pages": page_texts,
             "chunks": blocks,
         }

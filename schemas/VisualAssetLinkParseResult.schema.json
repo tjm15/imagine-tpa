@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualAssetLinkParseResult",
+  "type": "object",
+  "properties": {
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "policy_code": {"type": "string"},
+          "confidence": {"type": ["string", "null"]},
+          "rationale": {"type": ["string", "null"]}
+        },
+        "required": ["policy_code"]
+      }
+    }
+  },
+  "required": ["links"]
+}

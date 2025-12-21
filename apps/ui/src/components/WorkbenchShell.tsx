@@ -18,6 +18,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/t
 import { Separator } from "./ui/separator";
 import { Logo } from "./Logo";
 import { useProject } from "../contexts/AuthorityContext";
+import { useExplainability } from "../contexts/ExplainabilityContext";
 
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
@@ -35,9 +36,9 @@ export function WorkbenchShell({
   onWorkspaceChange,
   onBackToHome,
 }: WorkbenchShellProps) {
-  const { authority } = useProject();
+  const { authority, planProject } = useProject();
   const [showTraceCanvas, setShowTraceCanvas] = useState(false);
-  const [explainabilityMode, setExplainabilityMode] = useState<'summary' | 'inspect' | 'forensic'>('summary');
+  const { level: explainabilityMode, setGlobalLevel } = useExplainability();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const viewConfig: Record<ViewMode, { icon: any, label: string, component: any, description: string }> = {
@@ -99,7 +100,7 @@ export function WorkbenchShell({
                   <span>{authority?.name || 'Local Authority'}</span>
                   <span style={{ color: 'var(--color-neutral-400)' }}>/</span>
                   <span className="font-medium" style={{ color: 'var(--color-ink)' }}>
-                    {workspace === 'plan' ? 'Local Plan 2025' : '24/0456/FUL'}
+                    {workspace === 'plan' ? (planProject?.title || 'Local Plan') : '24/0456/FUL'}
                   </span>
                 </div>
               </div>
@@ -228,7 +229,7 @@ export function WorkbenchShell({
               {(['summary', 'inspect', 'forensic'] as const).map((mode) => (
                 <button
                   key={mode}
-                  onClick={() => setExplainabilityMode(mode)}
+                  onClick={() => setGlobalLevel(mode)}
                   className="px-2.5 py-0.5 rounded text-[10px] font-medium transition-all"
                   style={{
                     backgroundColor: explainabilityMode === mode ? 'white' : 'transparent',
@@ -306,7 +307,7 @@ export function WorkbenchShell({
 
             <div className={`flex-1 overflow-auto transition-all duration-300 ${showTraceCanvas ? 'pt-[140px]' : ''}`}>
               <div className="h-full w-full">
-                <ActiveViewComponent workspace={workspace} />
+                <ActiveViewComponent workspace={workspace} explainabilityLevel={explainabilityMode} />
               </div>
             </div>
           </div>

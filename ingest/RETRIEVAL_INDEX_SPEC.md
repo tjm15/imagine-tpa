@@ -3,7 +3,7 @@
 ## Index Structure
 * **Chunks/Clauses Index**: Text + Embedding + rich metadata.
   * Minimum metadata: `authority_id`, `document_id`, `doc_type`, `published_date`, `page`, `section_path`
-  * Policy-aware metadata where available: `policy_id`, `policy_clause_id`, `policy_topic_tags[]`
+  * Policy-aware metadata where available: `policy_section_id`, `policy_clause_id`, `policy_topic_tags[]`
   * Every record must be resolvable to an `EvidenceRef`.
   * Notes:
     - “Policy atoms” are an indexing concept: short, embedding-dense fragments derived from policy documents and stored as chunk/atom records with stable citation selectors.

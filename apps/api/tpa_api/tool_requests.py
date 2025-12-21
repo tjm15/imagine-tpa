@@ -8,7 +8,8 @@ from uuid import UUID, uuid4
 import httpx
 from fastapi import HTTPException
 
-from .blob_store import read_blob_bytes, to_data_url
+from .blob_store import read_blob_bytes, to_data_url, write_blob_bytes
+from .chart_renderer import render_chart_svg
 from .db import _db_execute, _db_fetch_all, _db_fetch_one
 from .evidence import _parse_evidence_ref
 from .model_clients import _ensure_model_role_sync, _vlm_model_id
@@ -245,7 +246,7 @@ def _run_townscape_vlm_assessment_sync(
         if not parsed:
             continue
         source_type, source_id, fragment_id = parsed
-        if source_type != "visual_asset" or fragment_id != "blob":
+        if source_type != "visual_asset" or fragment_id not in ("blob", "image"):
             continue
         row = _db_fetch_one("SELECT blob_path FROM visual_assets WHERE id = %s::uuid", (source_id,))
         if not row or not row.get("blob_path"):
@@ -356,6 +357,100 @@ def _run_townscape_vlm_assessment_sync(
         errors.append(f"tool_run_persist_failed:{exc}")
 
     return obj, tool_run_id, errors
+
+
+def _run_render_simple_chart_sync(
+    *,
+    run_id: str,
+    figure_spec: dict[str, Any],
+    plan_project_id: str | None,
+    scenario_id: str | None,
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    errors: list[str] = []
+    svg = render_chart_svg(figure_spec or {})
+    blob_path = f"derived/charts/{uuid4()}.svg"
+    stored_path, err = write_blob_bytes(blob_path, svg.encode("utf-8"), "image/svg+xml")
+    if err or not stored_path:
+        errors.append(err or "chart_store_failed")
+        return None, None, errors
+
+    now = _utc_now()
+    visual_asset_id = str(uuid4())
+    metadata = {
+        "origin": "generated",
+        "chart_type": figure_spec.get("chart_type"),
+        "figure_spec": figure_spec,
+        "plan_project_id": plan_project_id,
+        "scenario_id": scenario_id,
+    }
+    try:
+        _db_execute(
+            """
+            INSERT INTO visual_assets (id, document_id, page_number, asset_type, blob_path, metadata, created_at, updated_at)
+            VALUES (%s, NULL, NULL, %s, %s, %s::jsonb, %s, %s)
+            """,
+            (
+                visual_asset_id,
+                figure_spec.get("chart_type") or "chart",
+                stored_path,
+                json.dumps(metadata, ensure_ascii=False),
+                now,
+                now,
+            ),
+        )
+        evidence_ref_id = str(uuid4())
+        _db_execute(
+            """
+            INSERT INTO evidence_refs (id, source_type, source_id, fragment_id)
+            VALUES (%s, %s, %s, %s)
+            """,
+            (evidence_ref_id, "visual_asset", visual_asset_id, "image"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"visual_asset_persist_failed:{exc}")
+
+    tool_run_id = str(uuid4())
+    try:
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, ingest_batch_id, tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint, uncertainty_note
+            )
+            VALUES (%s, NULL, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+            """,
+            (
+                tool_run_id,
+                "render.simple_chart",
+                json.dumps({"run_id": run_id, "figure_spec": figure_spec}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "ok": True,
+                        "visual_asset_id": visual_asset_id,
+                        "artifact_path": stored_path,
+                        "evidence_ref": f"visual_asset::{visual_asset_id}::image",
+                    },
+                    ensure_ascii=False,
+                ),
+                "success",
+                now,
+                now,
+                "medium",
+                "Chart renderer is deterministic; verify input data provenance.",
+            ),
+        )
+    except Exception as exc:  # noqa: BLE001
+        errors.append(f"tool_run_persist_failed:{exc}")
+
+    return (
+        {
+            "visual_asset_id": visual_asset_id,
+            "artifact_path": stored_path,
+            "evidence_ref": f"visual_asset::{visual_asset_id}::image",
+            "figure_spec": figure_spec,
+        },
+        tool_run_id,
+        errors,
+    )
 
 
 def _run_environment_agency_flood_sync(
@@ -856,6 +951,33 @@ def execute_tool_request_sync(*, tool_request_id: str) -> dict[str, Any]:
             )
             completed_at = _utc_now()
             evidence_refs = [f"tool_run::{tool_run_id}::instrument_output"] if tool_run_id else []
+            outputs = obj or {"errors": errs[:10]}
+            new_status = "success" if obj and not errs else ("partial" if obj else "error")
+            _update_tool_request(
+                tool_request_id=tool_request_id,
+                status=new_status,
+                completed_at=completed_at,
+                tool_run_id=tool_run_id,
+                outputs=outputs if isinstance(outputs, dict) else {"output": outputs},
+                evidence_refs=evidence_refs,
+                error_text="; ".join(errs[:3]) if errs else None,
+            )
+            return get_tool_request(tool_request_id=tool_request_id) or {}
+
+        if tool_name == "render_figure" or (tool_name == "request_instrument" and instrument_id in ("render_simple_chart", "render_figure")):
+            figure_spec = inputs.get("figure_spec") if isinstance(inputs.get("figure_spec"), dict) else None
+            if not figure_spec:
+                raise HTTPException(status_code=400, detail="ToolRequest.inputs.figure_spec must be provided for render_simple_chart")
+            plan_project_id = inputs.get("plan_project_id") if isinstance(inputs.get("plan_project_id"), str) else None
+            scenario_id = inputs.get("scenario_id") if isinstance(inputs.get("scenario_id"), str) else None
+            obj, tool_run_id, errs = _run_render_simple_chart_sync(
+                run_id=run_id,
+                figure_spec=figure_spec,
+                plan_project_id=plan_project_id,
+                scenario_id=scenario_id,
+            )
+            completed_at = _utc_now()
+            evidence_refs = [obj.get("evidence_ref")] if isinstance(obj, dict) and obj.get("evidence_ref") else []
             outputs = obj or {"errors": errs[:10]}
             new_status = "success" if obj and not errs else ("partial" if obj else "error")
             _update_tool_request(

@@ -1,0 +1,45 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "InspectorReport",
+  "type": "object",
+  "properties": {
+    "decision": { "type": "string", "enum": ["ready", "needs_more", "blocked"] },
+    "summary": { "type": "string" },
+    "scorecard": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "dimension": { "type": "string" },
+          "rating": { "type": "string", "enum": ["strong", "mixed", "weak", "missing"] },
+          "notes": { "type": "string" }
+        },
+        "required": ["dimension", "rating", "notes"]
+      }
+    },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        },
+        "required": ["title", "detail"]
+      }
+    },
+    "suggestions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "title": { "type": "string" },
+          "detail": { "type": "string" }
+        },
+        "required": ["title", "detail"]
+      }
+    },
+    "cache_tier_hint": { "type": "string", "enum": ["fast", "normal", "slow"] }
+  },
+  "required": ["decision", "summary", "scorecard", "blockers", "suggestions", "cache_tier_hint"]
+}

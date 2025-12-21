@@ -142,11 +142,13 @@ services:
       TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
       TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
       TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
+      TPA_EMBEDDINGS_MM_BASE_URL: ${TPA_EMBEDDINGS_MM_BASE_URL:-http://tpa-embeddings:8080}
       TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
       # Model IDs used in outbound requests (should match the served model IDs).
       TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
       TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
+      TPA_EMBEDDINGS_MM_MODEL_ID: ${TPA_EMBEDDINGS_MM_MODEL_ID:-nomic-ai/colnomic-embed-multimodal-7b}
       TPA_RERANKER_MODEL_ID: ${TPA_RERANKER_MODEL_ID:-Qwen/Qwen3-Reranker-4B}
       # Optional (OSS dev): model supervisor auto-starts/stops model services so you don't run LLM+VLM simultaneously on one GPU.
       TPA_MODEL_SUPERVISOR_URL: ${TPA_MODEL_SUPERVISOR_URL:-}
@@ -197,7 +199,7 @@ services:
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
       TPA_DOCPARSE_MAX_VISUALS: ${TPA_DOCPARSE_MAX_VISUALS:-120}
-      TPA_DOCPARSE_MAX_PAGES: ${TPA_DOCPARSE_MAX_PAGES:-800}
+      TPA_DOCPARSE_MAX_PAGES: ${TPA_DOCPARSE_MAX_PAGES:-2000}
     ports:
       - "${TPA_DOCPARSE_PORT:-8084}:8084"
     <<: *service_defaults
@@ -218,11 +220,15 @@ services:
       TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
+      TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
       TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
+      TPA_EMBEDDINGS_MM_BASE_URL: ${TPA_EMBEDDINGS_MM_BASE_URL:-http://tpa-embeddings:8080}
       TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
       TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
       TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
       TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
+      TPA_EMBEDDINGS_MM_MODEL_ID: ${TPA_EMBEDDINGS_MM_MODEL_ID:-nomic-ai/colnomic-embed-multimodal-7b}
       TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
     volumes:
