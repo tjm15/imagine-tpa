@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, UploadFile
 from fastapi.responses import JSONResponse
 
 from ..services.debug import debug_overview as service_debug_overview
@@ -75,3 +75,22 @@ def list_runs(limit: int = 25) -> JSONResponse:
 @router.get("/debug/kg")
 def kg_snapshot(limit: int = 500, edge_limit: int = 2000, node_type: str | None = None, edge_type: str | None = None) -> JSONResponse:
     return service_kg_snapshot(limit=limit, edge_limit=edge_limit, node_type=node_type, edge_type=edge_type)
+
+
+@router.get("/debug/policies/{document_id}")
+def debug_policies(document_id: str) -> JSONResponse:
+    from ..services.debug import debug_policies as service_debug_policies
+    return service_debug_policies(document_id)
+
+
+@router.get("/debug/ingest/runs/{run_id}/deep")
+def debug_ingest_run_deep(run_id: str) -> JSONResponse:
+    from ..services.debug import debug_ingest_run_deep as service_debug_ingest_run_deep
+    return service_debug_ingest_run_deep(run_id)
+
+
+@router.post("/debug/ingest/upload")
+async def debug_upload_ingest(file: UploadFile) -> JSONResponse:
+    from ..services.debug import upload_and_ingest_file as service_upload_and_ingest_file
+    content = await file.read()
+    return service_upload_and_ingest_file(content, file.filename or "debug_doc.pdf")

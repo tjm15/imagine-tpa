@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from fastapi import FastAPI
 
 from .db import init_db_pool, shutdown_db_pool
@@ -44,7 +45,10 @@ def create_app() -> FastAPI:
         shutdown_db_pool()
 
     app.include_router(core_router)
-    app.include_router(debug_router)
+    
+    if os.environ.get("TPA_DEBUG_ENABLED", "false").lower() == "true":
+        app.include_router(debug_router)
+        
     app.include_router(spec_router)
     app.include_router(draft_router)
     app.include_router(rulepacks_router)

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, RefreshCcw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import { ArrowLeft, RefreshCcw, AlertTriangle, CheckCircle2, Search, FileText, Upload } from 'lucide-react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
@@ -8,6 +8,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Input } from './ui/input';
 import { DebugGraph3D, DebugGraphData, DebugGraphNode } from './DebugGraph3D';
+import { IngestRunInspector } from './views/inspector/IngestRunInspector';
+import { PolicyInspector } from './views/inspector/PolicyInspector';
 
 type ApiResult<T> = {
   ok: boolean;
@@ -265,6 +267,13 @@ export function DebugView() {
   const [visualAssetDetail, setVisualAssetDetail] = useState<VisualAssetDetail | null>(null);
   const [selectedRunStepId, setSelectedRunStepId] = useState<string | null>(null);
 
+  // New state for sub-views
+  const [view, setView] = useState<'dashboard' | 'run-inspector' | 'policy-inspector'>('dashboard');
+  const [inspectRunId, setInspectRunId] = useState<string | null>(null);
+  const [inspectDocId, setInspectDocId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUpload] = useState(false);
+
   const envLabel = useMemo(() => (import.meta.env.DEV ? 'dev' : 'prod'), []);
   const latestPromptVersion = useMemo(() => {
     const map = new Map<string, number>();
@@ -295,6 +304,34 @@ export function DebugView() {
       setSelectedToolRunId(null);
     }
   }, [selectedToolRunId, toolRunById]);
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setUpload(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/debug/ingest/upload', {
+        method: 'POST',
+        body: formData,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Reload to show the new run
+        setTimeout(() => load(), 1000);
+      } else {
+        console.error('Upload failed');
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setUpload(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -495,6 +532,38 @@ export function DebugView() {
     setKgLoading(false);
   }, [kgLimit, kgNodeTypeFilter]);
 
+  if (view === 'run-inspector' && inspectRunId) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-6xl rounded-xl border bg-white p-6 shadow-sm">
+          <IngestRunInspector
+            runId={inspectRunId}
+            onBack={() => {
+              setView('dashboard');
+              setInspectRunId(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (view === 'policy-inspector' && inspectDocId) {
+    return (
+      <div className="min-h-screen bg-slate-50 p-6">
+        <div className="mx-auto max-w-6xl rounded-xl border bg-white p-6 shadow-sm">
+          <PolicyInspector
+            documentId={inspectDocId}
+            onBack={() => {
+              setView('dashboard');
+              setInspectDocId(null);
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className="min-h-screen"
@@ -595,6 +664,40 @@ export function DebugView() {
                 <a className="text-sm underline" href="/api/spec/schemas" target="_blank" rel="noreferrer">
                   Open
                 </a>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Manual Ingest</CardTitle>
+              <CardDescription>Upload a PDF to trigger a debug ingest run.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-2">
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={handleFileUpload}
+                  accept="application/pdf"
+                  style={{ display: 'none' }}
+                />
+                <Button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={uploading}
+                  className="w-full"
+                  style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+                >
+                  {uploading ? (
+                    <RefreshCcw className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Upload className="mr-2 h-4 w-4" />
+                  )}
+                  {uploading ? 'Uploading...' : 'Upload & Ingest'}
+                </Button>
+                <p className="text-xs text-slate-500">
+                  Uploaded file will be saved to authority_packs/debug and a new run will start immediately.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -732,8 +835,8 @@ export function DebugView() {
                   <TableRow>
                     <TableHead>Run</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Authority</TableHead>
                     <TableHead>Started</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -753,8 +856,20 @@ export function DebugView() {
                         <TableCell>
                           <StatusBadge label={run.status || 'unknown'} />
                         </TableCell>
-                        <TableCell>{run.authority_id || '--'}</TableCell>
                         <TableCell>{formatDate(run.started_at)}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectRunId(run.id);
+                              setView('run-inspector');
+                            }}
+                          >
+                            <Search className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -838,7 +953,7 @@ export function DebugView() {
                   <TableRow>
                     <TableHead>Doc</TableHead>
                     <TableHead>Title</TableHead>
-                    <TableHead>Authority</TableHead>
+                    <TableHead></TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -856,7 +971,19 @@ export function DebugView() {
                       >
                         <TableCell className="font-mono text-xs">{doc.id.slice(0, 8)}</TableCell>
                         <TableCell className="text-xs">{doc.title || 'Untitled document'}</TableCell>
-                        <TableCell className="text-xs">{doc.authority_id}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setInspectDocId(doc.id);
+                              setView('policy-inspector');
+                            }}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -904,105 +1031,6 @@ export function DebugView() {
                       </div>
                     ))}
                   </div>
-                </>
-              )}
-            </CardContent>
-          </Card>
-        </div>
-
-        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
-
-        <div className="grid gap-6 lg:grid-cols-2">
-          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
-            <CardHeader>
-              <CardTitle>Visual assets</CardTitle>
-              <CardDescription>Detected visuals with semantic + georef status.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Asset</TableHead>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Georef</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {visualAssets.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={3}>No visual assets found.</TableCell>
-                    </TableRow>
-                  ) : (
-                    visualAssets.map((asset) => (
-                      <TableRow
-                        key={asset.id}
-                        className={selectedVisualAssetId === asset.id ? 'bg-slate-50' : undefined}
-                        onClick={() => setSelectedVisualAssetId(asset.id)}
-                        style={{ cursor: 'pointer' }}
-                      >
-                        <TableCell className="font-mono text-xs">{asset.id.slice(0, 8)}</TableCell>
-                        <TableCell className="text-xs">
-                          {asset.semantic_asset_type || asset.asset_type || 'unknown'}
-                          {asset.semantic_asset_subtype ? ` · ${asset.semantic_asset_subtype}` : ''}
-                        </TableCell>
-                        <TableCell>
-                          <StatusBadge label={asset.georef_status || 'pending'} />
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </CardContent>
-          </Card>
-
-          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
-            <CardHeader>
-              <CardTitle>Visual asset detail</CardTitle>
-              <CardDescription>Selection drill-down across masks, assertions, and transforms.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {!visualAssetDetail ? (
-                <div>Select a visual asset to inspect details.</div>
-              ) : (
-                <>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
-                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
-                        Assertions
-                      </div>
-                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
-                        {visualAssetDetail.semantic_outputs?.[0]?.assertions_jsonb?.length ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
-                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
-                        Regions
-                      </div>
-                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
-                        {visualAssetDetail.regions?.length ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
-                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
-                        Masks
-                      </div>
-                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
-                        {visualAssetDetail.masks?.length ?? 0}
-                      </div>
-                    </div>
-                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
-                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
-                        Projections
-                      </div>
-                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
-                        {visualAssetDetail.projection_artifacts?.length ?? 0}
-                      </div>
-                    </div>
-                  </div>
-                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
-                    {JSON.stringify(visualAssetDetail, null, 2)}
-                  </pre>
                 </>
               )}
             </CardContent>

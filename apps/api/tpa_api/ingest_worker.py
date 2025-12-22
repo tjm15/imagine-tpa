@@ -1219,6 +1219,26 @@ def _extract_visual_asset_facts(
             asset_specific_facts=asset_specific,
             metadata_update={"asset_facts_tool_run_id": tool_run_id},
         )
+        if asset_type or asset_subtype:
+            _update_visual_asset_identity(
+                visual_asset_id=visual_asset_id,
+                asset_type=asset_type,
+                asset_subtype=asset_subtype,
+            )
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={
+                    "asset_type_vlm": asset_type,
+                    "asset_subtype_vlm": asset_subtype,
+                    "asset_type_source": "vlm_asset_facts",
+                },
+            )
+            asset_meta = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+            asset_meta["asset_type_vlm"] = asset_type
+            asset_meta["asset_subtype_vlm"] = asset_subtype
+            asset_meta["asset_type_source"] = "vlm_asset_facts"
+            asset["metadata"] = asset_meta
+            asset["asset_type"] = asset_type
         inserted += 1
 
     return inserted
@@ -1374,83 +1394,6 @@ def _extract_visual_region_assertions(
             total_assertions += len(region_assertions)
 
         material_index = _build_material_index(assertions)
-        agent_findings: dict[str, Any] = {}
-        if assertions:
-            system_template = (
-                "You are a planning specialist review panel. Return ONLY valid JSON with the shape:\n"
-                "{\n"
-                '  "agent_findings": {\n'
-                '    "Design & Character Agent": {\n'
-                '      "agent_name": "Design & Character Agent",\n'
-                '      "scope_tags": ["design.scale_massing", "design.form_roofline", "design.materials_detailing", "design.public_realm_frontage"],\n'
-                '      "supported_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2}],\n'
-                '      "challenged_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2, "additional_risk_flags": ["string"]}],\n'
-                '      "additional_assertions": [ {"assertion_id": "uuid", "assertion_type": "string", "statement": "string", "polarity": "supports|raises_risk|neutral", "basis": ["string"], "confidence": 0.0, "risk_flags": ["string"], "material_consideration_tags": ["string"], "follow_up_requests": ["string"]} ],\n'
-                '      "notable_omissions": ["string"]\n'
-                "    },\n"
-                '    "Townscape & Visual Impact Agent": { ... },\n'
-                '    "Heritage & Setting Agent": { ... },\n'
-                '    "Residential Amenity Agent": { ... },\n'
-                '    "Access, Parking & Servicing Agent": { ... },\n'
-                '    "Landscape & Trees Agent": { ... },\n'
-                '    "Water, Flood & Drainage Agent": { ... },\n'
-                '    "Representation Integrity Agent": { ... }\n'
-                "  }\n"
-                "}\n"
-                "Rules:\n"
-                "- Only reference assertion_id values that exist in the provided assertions list.\n"
-                "- If there is nothing to add, return empty arrays and empty omissions.\n"
-                "- Keep commentary concise and in officer-report language.\n"
-                "- Do not decide compliance or planning balance; focus on evidence quality and visual signals.\n"
-            )
-            obj, tool_run_id, _ = _llm_structured_sync(
-                prompt_id="visual_agent_findings_v1",
-                prompt_version=1,
-                prompt_name="Visual agent findings",
-                purpose="Review visual assertions with specialist planning lenses.",
-                system_template=system_template,
-                user_payload={
-                    "asset_type": asset_type,
-                    "asset_subtype": asset_subtype,
-                    "canonical_facts": canonical_facts,
-                    "asset_specific_facts": asset_specific,
-                    "assertions": assertions,
-                },
-                time_budget_seconds=120.0,
-                output_schema_ref=None,
-                ingest_batch_id=ingest_batch_id,
-                run_id=run_id,
-            )
-            if isinstance(obj, dict) and isinstance(obj.get("agent_findings"), dict):
-                agent_findings = obj.get("agent_findings") or {}
-                if isinstance(agent_findings, dict):
-                    for agent in agent_findings.values():
-                        if not isinstance(agent, dict):
-                            continue
-                        additional = agent.get("additional_assertions")
-                        if isinstance(additional, list):
-                            for extra in additional:
-                                if not isinstance(extra, dict):
-                                    continue
-                                assertion_id = extra.get("assertion_id")
-                                try:
-                                    if not isinstance(assertion_id, str):
-                                        raise ValueError("invalid")
-                                    UUID(assertion_id)
-                                except Exception:  # noqa: BLE001
-                                    assertion_id = str(uuid4())
-                                extra["assertion_id"] = assertion_id
-            if tool_run_id:
-                _upsert_visual_semantic_output(
-                    visual_asset_id=visual_asset_id,
-                    run_id=run_id,
-                    schema_version="1.0",
-                    output_kind="classification",
-                    tool_run_id=tool_run_id,
-                    agent_findings=agent_findings,
-                    metadata_update={"agent_findings_tool_run_id": tool_run_id},
-                )
-
         _upsert_visual_semantic_output(
             visual_asset_id=visual_asset_id,
             run_id=run_id,
@@ -1458,12 +1401,127 @@ def _extract_visual_region_assertions(
             output_kind="classification",
             tool_run_id=None,
             assertions=assertions,
-            agent_findings=agent_findings,
             material_index=material_index,
             metadata_update={"region_assertions_count": len(assertions)},
         )
 
     return total_assertions
+
+
+def _extract_visual_agent_findings(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_assets: list[dict[str, Any]],
+) -> int:
+    if not visual_assets:
+        return 0
+
+    system_template = (
+        "You are a planning specialist review panel. Return ONLY valid JSON with the shape:\n"
+        "{\n"
+        '  "agent_findings": {\n'
+        '    "Design & Character Agent": {\n'
+        '      "agent_name": "Design & Character Agent",\n'
+        '      "scope_tags": ["design.scale_massing", "design.form_roofline", "design.materials_detailing", "design.public_realm_frontage"],\n'
+        '      "supported_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2}],\n'
+        '      "challenged_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2, "additional_risk_flags": ["string"]}],\n'
+        '      "additional_assertions": [ {"assertion_id": "uuid", "assertion_type": "string", "statement": "string", "polarity": "supports|raises_risk|neutral", "basis": ["string"], "confidence": 0.0, "risk_flags": ["string"], "material_consideration_tags": ["string"], "follow_up_requests": ["string"]} ],\n'
+        '      "notable_omissions": ["string"]\n'
+        "    },\n"
+        '    "Townscape & Visual Impact Agent": { ... },\n'
+        '    "Heritage & Setting Agent": { ... },\n'
+        '    "Residential Amenity Agent": { ... },\n'
+        '    "Access, Parking & Servicing Agent": { ... },\n'
+        '    "Landscape & Trees Agent": { ... },\n'
+        '    "Water, Flood & Drainage Agent": { ... },\n'
+        '    "Representation Integrity Agent": { ... }\n'
+        "  }\n"
+        "}\n"
+        "Rules:\n"
+        "- Only reference assertion_id values that exist in the provided assertions list.\n"
+        "- If there is nothing to add, return empty arrays and empty omissions.\n"
+        "- Keep commentary concise and in officer-report language.\n"
+        "- Do not decide compliance or planning balance; focus on evidence quality and visual signals.\n"
+    )
+
+    updated = 0
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        if not visual_asset_id:
+            continue
+        semantic_row = _db_fetch_one(
+            """
+            SELECT canonical_facts_jsonb, asset_specific_facts_jsonb, asset_type, asset_subtype, assertions_jsonb
+            FROM visual_semantic_outputs
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        if not isinstance(semantic_row, dict):
+            continue
+        assertions = semantic_row.get("assertions_jsonb") if isinstance(semantic_row.get("assertions_jsonb"), list) else []
+        if not assertions:
+            continue
+        canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row.get("canonical_facts_jsonb"), dict) else {}
+        asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row.get("asset_specific_facts_jsonb"), dict) else {}
+        asset_type = semantic_row.get("asset_type") if isinstance(semantic_row.get("asset_type"), str) else None
+        asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row.get("asset_subtype"), str) else None
+
+        obj, tool_run_id, _ = _llm_structured_sync(
+            prompt_id="visual_agent_findings_v1",
+            prompt_version=1,
+            prompt_name="Visual agent findings",
+            purpose="Review visual assertions with specialist planning lenses.",
+            system_template=system_template,
+            user_payload={
+                "asset_type": asset_type,
+                "asset_subtype": asset_subtype,
+                "canonical_facts": canonical_facts,
+                "asset_specific_facts": asset_specific,
+                "assertions": assertions,
+            },
+            time_budget_seconds=120.0,
+            output_schema_ref=None,
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+        )
+        if not isinstance(obj, dict) or not isinstance(obj.get("agent_findings"), dict):
+            continue
+        agent_findings = obj.get("agent_findings") or {}
+        if isinstance(agent_findings, dict):
+            for agent in agent_findings.values():
+                if not isinstance(agent, dict):
+                    continue
+                additional = agent.get("additional_assertions")
+                if isinstance(additional, list):
+                    for extra in additional:
+                        if not isinstance(extra, dict):
+                            continue
+                        assertion_id = extra.get("assertion_id")
+                        try:
+                            if not isinstance(assertion_id, str):
+                                raise ValueError("invalid")
+                            UUID(assertion_id)
+                        except Exception:  # noqa: BLE001
+                            assertion_id = str(uuid4())
+                        extra["assertion_id"] = assertion_id
+
+        _upsert_visual_semantic_output(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+            schema_version="1.0",
+            output_kind="classification",
+            tool_run_id=tool_run_id,
+            agent_findings=agent_findings,
+            metadata_update={"agent_findings_tool_run_id": tool_run_id},
+        )
+        updated += 1
+
+    return updated
 
 def _decode_base64_payload(data: str) -> bytes:
     if "base64," in data:
@@ -1723,6 +1781,31 @@ def _merge_visual_asset_metadata(*, visual_asset_id: str, patch: dict[str, Any])
         WHERE id = %s::uuid
         """,
         (json.dumps(patch, ensure_ascii=False), visual_asset_id),
+    )
+
+
+def _update_visual_asset_identity(
+    *,
+    visual_asset_id: str,
+    asset_type: str | None,
+    asset_subtype: str | None,
+) -> None:
+    if not asset_type and not asset_subtype:
+        return
+    patch: dict[str, Any] = {}
+    if asset_type:
+        patch["asset_type"] = asset_type
+    if asset_subtype:
+        patch["asset_subtype"] = asset_subtype
+    _db_execute(
+        """
+        UPDATE visual_assets
+        SET asset_type = COALESCE(%s, asset_type),
+            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+            updated_at = NOW()
+        WHERE id = %s::uuid
+        """,
+        (asset_type, json.dumps(patch, ensure_ascii=False), visual_asset_id),
     )
 
 
@@ -2083,50 +2166,32 @@ def _auto_georef_visual_assets(
     return attempts, successes, transform_count, projection_count
 
 
-def _link_visual_assets_to_policies(
+def _propose_visual_policy_links(
     *,
     ingest_batch_id: str,
     run_id: str | None,
     visual_assets: list[dict[str, Any]],
-    policy_sections: list[dict[str, Any]],
+    policy_headings: list[dict[str, Any]],
     page_texts: dict[int, str],
-) -> tuple[dict[str, list[str]], int]:
-    if not visual_assets:
+) -> tuple[dict[str, list[dict[str, Any]]], int]:
+    if not visual_assets or not policy_headings:
         return {}, 0
+
     candidates_all = [
         {
-            "policy_code": s.get("policy_code"),
-            "title": s.get("title"),
-            "section_path": s.get("section_path"),
-            "page_start": s.get("page_start"),
-            "page_end": s.get("page_end"),
-            "snippet": _truncate_text(s.get("text"), 240),
+            "policy_code": h.get("policy_code"),
+            "title": h.get("policy_title"),
+            "evidence_ref": h.get("evidence_ref"),
         }
-        for s in policy_sections
-        if s.get("policy_code")
+        for h in policy_headings
+        if h.get("policy_code")
     ]
     if not candidates_all:
         return {}, 0
 
-    section_by_code = {s.get("policy_code"): s for s in policy_sections if s.get("policy_code")}
-    links_by_asset: dict[str, list[str]] = {}
-    link_count = 0
-
     prompt_id = "visual_asset_link_v2"
-
-    def _select_candidates(page_number: int) -> tuple[list[dict[str, Any]], str]:
-        if page_number <= 0:
-            return candidates_all, "all"
-        page_candidates = [
-            c
-            for c in candidates_all
-            if isinstance(c.get("page_start"), int)
-            and isinstance(c.get("page_end"), int)
-            and c["page_start"] <= page_number <= c["page_end"]
-        ]
-        if page_candidates:
-            return page_candidates, "page_range"
-        return candidates_all, "all"
+    proposals_by_asset: dict[str, list[dict[str, Any]]] = {}
+    proposal_count = 0
 
     for asset in visual_assets:
         visual_asset_id = asset.get("visual_asset_id")
@@ -2137,7 +2202,7 @@ def _link_visual_assets_to_policies(
         page_number = int(asset.get("page_number") or 0)
         caption = metadata.get("caption") or (metadata.get("classification") or {}).get("caption_hint")
         page_text = _truncate_text(page_texts.get(page_number), 1200)
-        asset_type = metadata.get("asset_type") or (metadata.get("classification") or {}).get("asset_type")
+        asset_type = metadata.get("asset_type") or metadata.get("asset_type_vlm") or (metadata.get("classification") or {}).get("asset_type")
         semantic_row = _db_fetch_one(
             """
             SELECT asset_type, asset_subtype
@@ -2157,7 +2222,6 @@ def _link_visual_assets_to_policies(
         if err or not image_bytes:
             raise RuntimeError(f"visual_asset_read_failed:{err or 'no_bytes'}")
 
-        candidates, candidate_scope = _select_candidates(page_number)
         prompt = (
             "You are a planning visual linker. Return ONLY valid JSON.\n"
             "Text may appear inside the image; use it if present. Some links are implied by the visual content.\n"
@@ -2169,7 +2233,7 @@ def _link_visual_assets_to_policies(
             f"Asset subtype: {asset_subtype or 'unknown'}.\n"
             f"Caption (if any): {caption or ''}\n"
             f"Page text (if any): {page_text or ''}\n"
-            f"Policy candidates: {json.dumps(candidates, ensure_ascii=False)}\n"
+            f"Policy candidates: {json.dumps(candidates_all, ensure_ascii=False)}\n"
         )
 
         obj, tool_run_id, errs = _run_vlm_structured(
@@ -2193,9 +2257,58 @@ def _link_visual_assets_to_policies(
             if not isinstance(link, dict):
                 continue
             policy_code = link.get("policy_code")
-            if not policy_code or policy_code not in section_by_code:
+            if not isinstance(policy_code, str):
                 continue
-            section_id = section_by_code[policy_code].get("policy_section_id")
+            proposals_by_asset.setdefault(visual_asset_id, []).append(
+                {
+                    "policy_code": policy_code,
+                    "confidence": link.get("confidence"),
+                    "rationale": link.get("rationale"),
+                    "basis": link.get("basis") or "unspecified",
+                    "candidate_scope": "all",
+                    "page_number": page_number,
+                    "tool_run_id": tool_run_id,
+                }
+            )
+            proposal_count += 1
+
+    return proposals_by_asset, proposal_count
+
+
+def _persist_visual_policy_links_from_proposals(
+    *,
+    run_id: str | None,
+    proposals_by_asset: dict[str, list[dict[str, Any]]],
+    visual_assets: list[dict[str, Any]],
+    policy_sections: list[dict[str, Any]],
+) -> tuple[dict[str, list[str]], int]:
+    if not proposals_by_asset:
+        return {}, 0
+    section_by_code = {
+        str(s.get("policy_code")).strip(): s
+        for s in policy_sections
+        if isinstance(s.get("policy_code"), str)
+    }
+    section_by_title = {
+        str(s.get("title")).strip().lower(): s
+        for s in policy_sections
+        if isinstance(s.get("title"), str)
+    }
+    evidence_by_asset = {row.get("visual_asset_id"): row.get("evidence_ref_id") for row in visual_assets}
+    links_by_asset: dict[str, list[str]] = {}
+    link_count = 0
+
+    for asset_id, proposals in proposals_by_asset.items():
+        for link in proposals:
+            policy_code = link.get("policy_code")
+            section = None
+            if isinstance(policy_code, str):
+                section = section_by_code.get(policy_code.strip()) or section_by_code.get(policy_code.strip().upper())
+                if not section:
+                    section = section_by_title.get(policy_code.strip().lower())
+            if not section:
+                continue
+            section_id = section.get("policy_section_id")
             if not section_id:
                 continue
             _db_execute(
@@ -2208,28 +2321,29 @@ def _link_visual_assets_to_policies(
                 """,
                 (
                     str(uuid4()),
-                    visual_asset_id,
+                    asset_id,
                     run_id,
                     "policy_section",
                     str(section_id),
                     "policy_reference",
-                    asset.get("evidence_ref_id"),
-                    tool_run_id,
+                    evidence_by_asset.get(asset_id),
+                    link.get("tool_run_id"),
                     json.dumps(
                         {
-                            "policy_code": policy_code,
+                            "policy_code": section.get("policy_code"),
+                            "policy_title": section.get("title"),
                             "confidence": link.get("confidence"),
                             "rationale": link.get("rationale"),
                             "basis": link.get("basis") or "unspecified",
-                            "candidate_scope": candidate_scope,
-                            "page_number": page_number,
+                            "candidate_scope": link.get("candidate_scope") or "all",
+                            "page_number": link.get("page_number"),
                         },
                         ensure_ascii=False,
                     ),
                     _utc_now(),
                 ),
             )
-            links_by_asset.setdefault(visual_asset_id, []).append(str(section_id))
+            links_by_asset.setdefault(asset_id, []).append(str(section_id))
             link_count += 1
 
     return links_by_asset, link_count
@@ -4279,6 +4393,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "visual_asset_links": 0,
             "visual_semantic_assets": 0,
             "visual_semantic_assertions": 0,
+            "visual_semantic_agents": 0,
             "georef_attempts": 0,
             "georef_success": 0,
             "transforms": 0,
@@ -4513,22 +4628,6 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             counts["layout_blocks"] += len(block_rows)
 
-            identity_bundle, identity_tool_run_id, identity_errors = _extract_document_identity_status(
-                ingest_batch_id=ingest_batch_id,
-                run_id=run_id,
-                document_id=document_id,
-                title=doc_metadata.get("title") or filename,
-                filename=filename,
-                content_type=content_type,
-                block_rows=block_rows,
-                evidence_ref_map=evidence_ref_map,
-            )
-            if identity_errors:
-                errors.extend([f"document_identity:{err}" for err in identity_errors])
-            if identity_bundle:
-                counts["document_identity_status"] += 1
-                step_counts["document_identity_status"] = step_counts.get("document_identity_status", 0) + 1
-
             tables = bundle.get("tables") if isinstance(bundle.get("tables"), list) else []
             _persist_document_tables(
                 document_id=document_id,
@@ -4572,6 +4671,9 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
 
             semantic = bundle.get("semantic") if isinstance(bundle.get("semantic"), dict) else {}
             _persist_visual_semantic_features(visual_assets=visual_rows, semantic=semantic, run_id=run_id)
+            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
+            page_texts = {int(p.get("page_number") or 0): str(p.get("text") or "") for p in pages}
+            link_proposals: dict[str, list[dict[str, Any]]] = {}
             if visual_rows:
                 counts["visual_semantic_assets"] = counts.get("visual_semantic_assets", 0) + _extract_visual_asset_facts(
                     ingest_batch_id=ingest_batch_id,
@@ -4580,9 +4682,64 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 )
                 step_counts["visual_semantics_asset"] = step_counts.get("visual_semantics_asset", 0) + 1
 
+                mask_count, region_count = _segment_visual_assets(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    authority_id=authority_id,
+                    plan_cycle_id=plan_cycle_id,
+                    document_id=document_id,
+                    visual_assets=visual_rows,
+                )
+                counts["segmentation_masks"] += mask_count
+                counts["visual_asset_regions"] += region_count
+                step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
+
+                assertion_count = _extract_visual_region_assertions(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                )
+                counts["visual_semantic_assertions"] += assertion_count
+                step_counts["visual_semantics_regions"] = step_counts.get("visual_semantics_regions", 0) + 1
+
+                target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
+                georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                    target_epsg=target_epsg,
+                )
+                counts["georef_attempts"] += georef_attempts
+                counts["georef_success"] += georef_success
+                counts["transforms"] += transform_count
+                counts["projection_artifacts"] += projection_count
+                step_counts["visual_georef"] = step_counts.get("visual_georef", 0) + 1
+
+                link_proposals, _ = _propose_visual_policy_links(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                    policy_headings=policy_headings,
+                    page_texts=page_texts,
+                )
+
             step_counts["canonical_load"] = step_counts.get("canonical_load", 0) + 1
 
-            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
+            identity_bundle, identity_tool_run_id, identity_errors = _extract_document_identity_status(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                title=doc_metadata.get("title") or filename,
+                filename=filename,
+                content_type=content_type,
+                block_rows=block_rows,
+                evidence_ref_map=evidence_ref_map,
+            )
+            if identity_errors:
+                errors.extend([f"document_identity:{err}" for err in identity_errors])
+            if identity_bundle:
+                counts["document_identity_status"] += 1
+                step_counts["document_identity_status"] = step_counts.get("document_identity_status", 0) + 1
             sections, _, struct_errors = _llm_extract_policy_structure(
                 ingest_batch_id=ingest_batch_id,
                 run_id=run_id,
@@ -4674,47 +4831,20 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 monitoring=monitoring,
             )
 
-            page_texts = {int(p.get("page_number") or 0): str(p.get("text") or "") for p in pages}
             if visual_rows:
-                mask_count, region_count = _segment_visual_assets(
-                    ingest_batch_id=ingest_batch_id,
-                    run_id=run_id,
-                    authority_id=authority_id,
-                    plan_cycle_id=plan_cycle_id,
-                    document_id=document_id,
-                    visual_assets=visual_rows,
-                )
-                counts["segmentation_masks"] += mask_count
-                counts["visual_asset_regions"] += region_count
-                step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
-
-                assertion_count = _extract_visual_region_assertions(
+                agent_count = _extract_visual_agent_findings(
                     ingest_batch_id=ingest_batch_id,
                     run_id=run_id,
                     visual_assets=visual_rows,
                 )
-                counts["visual_semantic_assertions"] += assertion_count
-                step_counts["visual_semantics_regions"] = step_counts.get("visual_semantics_regions", 0) + 1
+                if agent_count:
+                    counts["visual_semantic_agents"] = counts.get("visual_semantic_agents", 0) + agent_count
 
-                target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
-                georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
-                    ingest_batch_id=ingest_batch_id,
+                links_by_asset, link_count = _persist_visual_policy_links_from_proposals(
                     run_id=run_id,
-                    visual_assets=visual_rows,
-                    target_epsg=target_epsg,
-                )
-                counts["georef_attempts"] += georef_attempts
-                counts["georef_success"] += georef_success
-                counts["transforms"] += transform_count
-                counts["projection_artifacts"] += projection_count
-                step_counts["visual_georef"] = step_counts.get("visual_georef", 0) + 1
-
-                links_by_asset, link_count = _link_visual_assets_to_policies(
-                    ingest_batch_id=ingest_batch_id,
-                    run_id=run_id,
+                    proposals_by_asset=link_proposals,
                     visual_assets=visual_rows,
                     policy_sections=policy_sections,
-                    page_texts=page_texts,
                 )
                 counts["visual_asset_links"] += link_count
                 step_counts["visual_linking"] = step_counts.get("visual_linking", 0) + 1

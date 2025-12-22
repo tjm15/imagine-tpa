@@ -195,13 +195,14 @@ services:
       TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
       TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
       TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
-      TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
+      TPA_VLM_BASE_URL: ""
       TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
-      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
+      TPA_VLM_MODEL_ID: ""
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
     ports:
       - "${TPA_DOCPARSE_PORT:-8084}:8084"
+    command: uvicorn tpa_docparse.main:app --host 0.0.0.0 --port 8084 --workers ${TPA_DOCPARSE_WORKERS:-16}
     <<: *service_defaults
 
   tpa-ingest-worker:

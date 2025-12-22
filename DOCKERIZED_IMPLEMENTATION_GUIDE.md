@@ -511,3 +511,39 @@ This will set the correct ownership on the `tpa_models` volume.
    ```bash
    ./scripts/docker_down.sh
    ```
+
+---
+
+## 13) Debugging & Performance Tuning
+
+### The Debug Console
+The system includes a hidden "Debug Console" for inspecting the ingestion pipeline's brain.
+
+1.  **Enable it:** Set `TPA_DEBUG_ENABLED=true` in your `.env`.
+2.  **Access it:** Go to `http://localhost:3000/debug`.
+3.  **Features:**
+    *   **Manual Ingest:** Upload a PDF directly to test the pipeline without setting up a full Authority Pack.
+    *   **Run Inspector:** Deep-dive into execution logs, timing, and error traces for every step of an ingestion run.
+    *   **Policy Logic Inspector:** Visualize extracted policy structures, matrices, and scoping rules to verify semantic accuracy.
+    *   **Graph Inspector:** 3D visualization of the Knowledge Graph nodes and edges.
+
+### Performance Tuning for Workstations (32GB+ VRAM)
+If you are running on a high-end workstation (e.g., RTX 3090/4090/5090) with a single GPU, you must tune the system to avoid "Model Thrashing" (constant swapping of heavy models).
+
+**Recommended `.env` settings:**
+
+```env
+# Force serial execution of VLM tasks to keep VRAM usage predictable
+TPA_VLM_CONCURRENCY=1
+
+# Maximize CPU usage for Docling (Layout Analysis)
+# (Ensure your tpa-docparse container has access to all CPU cores)
+
+# Increase LLM batch sizes to utilize full context window (reduces number of swaps)
+TPA_DOC_PARSE_LLM_BLOCKS_PER_PASS=300
+TPA_DOC_PARSE_LLM_CHARS_PER_PASS=30000
+```
+
+**Strategy:**
+*   **Rapid Serialization:** The system is designed to "batch" operations. By setting concurrency to 1, you ensure the pipeline finishes all VLM work for a document before swapping to the LLM, or vice-versa.
+*   **Context Saturation:** Increasing `BLOCKS_PER_PASS` makes each LLM call heavier but reduces the *total number* of calls, which is the winning strategy when model loading time > inference time.

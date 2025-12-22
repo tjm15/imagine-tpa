@@ -973,10 +973,12 @@ def _default_role_from_type(asset_type: str) -> str:
 
 def _normalize_asset_type(raw: str) -> str:
     val = (raw or "").strip().lower()
-    allowed = {"map", "diagram", "photo", "render", "decorative"}
+    if not val:
+        return "unknown"
+    allowed = {"map", "diagram", "photo", "render", "decorative", "unknown"}
     if val in allowed:
         return val
-    return "decorative"
+    return "unknown"
 
 
 def _normalize_metrics(raw: Any) -> list[dict[str, Any]]:
@@ -1132,7 +1134,27 @@ async def parse_bundle(
             page.update(render)
 
     vlm_model_id = os.environ.get("TPA_VLM_MODEL_ID")
-    classified_visuals, vlm_runs = await _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
+    vlm_base_url = os.environ.get("TPA_VLM_BASE_URL")
+    vlm_enabled = bool(vlm_model_id and vlm_model_id.strip() and vlm_base_url and vlm_base_url.strip())
+    if vlm_enabled:
+        classified_visuals, vlm_runs = await _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
+    else:
+        parse_flags.append("vlm_disabled")
+        classified_visuals = []
+        for asset in visuals:
+            asset_copy = dict(asset)
+            asset_copy["classification"] = {"status": "skipped", "reason": "vlm_disabled"}
+            classified_visuals.append(asset_copy)
+        vlm_runs = [
+            {
+                "tool_name": "vlm_visual_classification",
+                "status": "skipped",
+                "inputs": {"image_count": len(visuals)},
+                "outputs": {"reason": "vlm_disabled"},
+                "duration_seconds": None,
+                "limitations_text": "VLM classification disabled in DocParse; deferred to ingest pipeline.",
+            }
+        ]
 
     vector_paths: list[dict[str, Any]] = []
     vector_tool_runs: list[dict[str, Any]] = []

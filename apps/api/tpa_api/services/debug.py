@@ -350,3 +350,224 @@ def kg_snapshot(limit: int = 500, edge_limit: int = 2000, node_type: str | None 
             tuple(edge_params),
         )
     return JSONResponse(content=jsonable_encoder({"nodes": nodes, "edges": edges}))
+
+
+def debug_policies(document_id: str) -> JSONResponse:
+    sections = _db_fetch_all(
+        """
+        SELECT id, policy_code, title, section_path, heading_text, text, page_start, page_end
+        FROM policy_sections
+        WHERE document_id = %s::uuid
+        ORDER BY page_start ASC, section_path ASC
+        """,
+        (document_id,),
+    )
+    section_ids = [str(s["id"]) for s in sections]
+
+    clauses = []
+    definitions = []
+    targets = []
+    monitoring = []
+    matrices = []
+    scopes = []
+
+    if section_ids:
+        clauses = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, clause_ref, text, speech_act_jsonb, conditions_jsonb
+            FROM policy_clauses
+            WHERE policy_section_id = ANY(%s::uuid[])
+            ORDER BY span_start ASC
+            """,
+            (section_ids,),
+        )
+        definitions = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, term, definition_text
+            FROM policy_definitions
+            WHERE policy_section_id = ANY(%s::uuid[])
+            """,
+            (section_ids,),
+        )
+        targets = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, metric, value, unit, timeframe, geography_ref, raw_text
+            FROM policy_targets
+            WHERE policy_section_id = ANY(%s::uuid[])
+            """,
+            (section_ids,),
+        )
+        monitoring = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, indicator_text
+            FROM policy_monitoring_hooks
+            WHERE policy_section_id = ANY(%s::uuid[])
+            """,
+            (section_ids,),
+        )
+        matrices = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, matrix_jsonb
+            FROM policy_matrices
+            WHERE policy_section_id = ANY(%s::uuid[])
+            """,
+            (section_ids,),
+        )
+        scopes = _db_fetch_all(
+            """
+            SELECT id, policy_section_id, scope_jsonb
+            FROM policy_scopes
+            WHERE policy_section_id = ANY(%s::uuid[])
+            """,
+            (section_ids,),
+        )
+
+    # Orphaned matrices/scopes (linked to document but not section)
+    orphaned_matrices = _db_fetch_all(
+        """
+        SELECT id, policy_section_id, matrix_jsonb
+        FROM policy_matrices
+        WHERE document_id = %s::uuid AND policy_section_id IS NULL
+        """,
+        (document_id,),
+    )
+    matrices.extend(orphaned_matrices)
+
+    orphaned_scopes = _db_fetch_all(
+        """
+        SELECT id, policy_section_id, scope_jsonb
+        FROM policy_scopes
+        WHERE document_id = %s::uuid AND policy_section_id IS NULL
+        """,
+        (document_id,),
+    )
+    scopes.extend(orphaned_scopes)
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "sections": sections,
+                "clauses": clauses,
+                "definitions": definitions,
+                "targets": targets,
+                "monitoring": monitoring,
+                "matrices": matrices,
+                "scopes": scopes,
+            }
+        )
+    )
+
+
+def debug_ingest_run_deep(run_id: str) -> JSONResponse:
+    run = _db_fetch_one(
+        """
+        SELECT id, ingest_batch_id, authority_id, plan_cycle_id, status, started_at, ended_at,
+               inputs_jsonb, outputs_jsonb, error_text, model_ids_jsonb
+        FROM ingest_runs
+        WHERE id = %s::uuid
+        """,
+        (run_id,),
+    )
+    if not run:
+        raise HTTPException(status_code=404, detail="Run not found")
+
+    steps = _db_fetch_all(
+        """
+        SELECT step_name, status, started_at, ended_at, error_text
+        FROM ingest_run_steps
+        WHERE run_id = %s::uuid
+        ORDER BY started_at ASC
+        """,
+        (run_id,),
+    )
+
+    tool_runs = _db_fetch_all(
+        """
+        SELECT id, tool_name, status, started_at, ended_at, confidence_hint, uncertainty_note,
+               (outputs_jsonb->>'error') as error_detail
+        FROM tool_runs
+        WHERE run_id = %s::uuid
+        ORDER BY started_at ASC
+        """,
+        (run_id,),
+    )
+
+    # Output counts
+    counts = {
+        "pages": _count("SELECT COUNT(*) AS count FROM pages WHERE run_id = %s::uuid", (run_id,)),
+        "layout_blocks": _count("SELECT COUNT(*) AS count FROM layout_blocks WHERE run_id = %s::uuid", (run_id,)),
+        "visual_assets": _count("SELECT COUNT(*) AS count FROM visual_assets WHERE run_id = %s::uuid", (run_id,)),
+        "policy_sections": _count("SELECT COUNT(*) AS count FROM policy_sections WHERE run_id = %s::uuid", (run_id,)),
+        "policy_clauses": _count("SELECT COUNT(*) AS count FROM policy_clauses WHERE run_id = %s::uuid", (run_id,)),
+        "matrices": _count("SELECT COUNT(*) AS count FROM policy_matrices WHERE run_id = %s::uuid", (run_id,)),
+        "scopes": _count("SELECT COUNT(*) AS count FROM policy_scopes WHERE run_id = %s::uuid", (run_id,)),
+        "vectors": _count("SELECT COUNT(*) AS count FROM unit_embeddings WHERE run_id = %s::uuid", (run_id,)),
+    }
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "run": run,
+                "steps": steps,
+                "tool_runs": tool_runs,
+                "output_counts": counts,
+            }
+        )
+    )
+
+
+def upload_and_ingest_file(file_bytes: bytes, filename: str) -> JSONResponse:
+    from uuid import uuid4
+    from pathlib import Path
+    import os
+    from ..services.ingest import _create_ingest_job, _enqueue_ingest_job
+    from ..db import _db_execute
+
+    # 1. Save file to debug pack directory
+    pack_root = Path(os.environ.get("TPA_AUTHORITY_PACKS_ROOT", "/authority_packs")).resolve()
+    debug_dir = pack_root / "debug"
+    debug_dir.mkdir(parents=True, exist_ok=True)
+    
+    file_path = debug_dir / filename
+    file_path.write_bytes(file_bytes)
+
+    # 2. Create Ingest Job
+    authority_id = "debug"
+    
+    # Create a batch
+    ingest_batch_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO ingest_batches (
+          id, source_system, authority_id, status, started_at, inputs_jsonb, outputs_jsonb
+        )
+        VALUES (%s, %s, %s, %s, %s, %s::jsonb, %s::jsonb)
+        """,
+        (ingest_batch_id, "debug_upload", authority_id, "running", _utc_now_iso(), "{}", "{}"),
+    )
+
+    ingest_job_id = _create_ingest_job(
+        authority_id=authority_id,
+        plan_cycle_id=None,
+        ingest_batch_id=ingest_batch_id,
+        job_type="manual_upload",
+        inputs={
+            "authority_id": authority_id,
+            "pack_dir": str(debug_dir),
+            "documents": [
+                {
+                    "file_path": filename,
+                    "title": filename,
+                    "source": "debug_upload",
+                    "document_type": "local_plan",
+                }
+            ],
+        },
+    )
+
+    # 3. Enqueue
+    enqueued, error = _enqueue_ingest_job(ingest_job_id)
+    if not enqueued:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue debug job: {error}")
+
+    return JSONResponse(content={"ingest_job_id": ingest_job_id, "ingest_batch_id": ingest_batch_id})
