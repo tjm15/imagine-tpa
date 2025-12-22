@@ -64,11 +64,7 @@ class GrammarOrchestrator:
         
         # 3. LLM Inference
         print("  -> Calling LLM...")
-        raw_output = _generate_completion_sync(
-            prompt=prompt,
-            temperature=0.7 if move_type != MoveType.FRAMING else 0.9,
-            max_tokens=2000
-        ) or "{}"
+        raw_output = _generate_completion_sync(prompt=prompt) or "{}"
         
         # 4. Parse (Naive JSON)
         try:

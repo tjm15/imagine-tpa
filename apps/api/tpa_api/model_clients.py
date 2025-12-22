@@ -318,8 +318,8 @@ def _generate_completion_sync(
     prompt: str,
     system: str | None = None,
     model_id: str | None = None,
-    max_tokens: int = 1024,
-    temperature: float = 0.7,
+    max_tokens: int | None = None,
+    temperature: float | None = None,
     time_budget_seconds: float = 60.0,
 ) -> str | None:
     base_url = _ensure_model_role_sync(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
@@ -335,12 +335,11 @@ def _generate_completion_sync(
         messages.append({"role": "system", "content": system})
     messages.append({"role": "user", "content": prompt})
 
-    payload = {
-        "model": model_id,
-        "messages": messages,
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
+    payload: dict[str, Any] = {"model": model_id, "messages": messages}
+    if max_tokens is not None:
+        payload["max_tokens"] = max_tokens
+    if temperature is not None:
+        payload["temperature"] = temperature
 
     try:
         with httpx.Client(timeout=timeout) as client:
