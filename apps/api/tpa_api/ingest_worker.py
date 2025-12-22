@@ -526,6 +526,27 @@ def _find_span(text: str, fragment: str) -> tuple[int | None, int | None, str]:
     return None, None, "none"
 
 
+def _find_trigger_spans(text: str, fragment: str) -> list[dict[str, Any]]:
+    if not text or not fragment:
+        return []
+    spans: list[dict[str, Any]] = []
+    idx = text.find(fragment)
+    if idx >= 0:
+        spans.append({"start": idx, "end": idx + len(fragment), "quality": "exact"})
+    if spans:
+        return spans
+    lowered = text.lower()
+    frag_lower = fragment.lower()
+    start = 0
+    while True:
+        idx = lowered.find(frag_lower, start)
+        if idx < 0:
+            break
+        spans.append({"start": idx, "end": idx + len(fragment), "quality": "approx"})
+        start = idx + len(fragment)
+    return spans
+
+
 def _persist_layout_blocks(
     *,
     document_id: str,
@@ -595,6 +616,7 @@ def _persist_layout_blocks(
                 "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
                 (evidence_ref_id, "layout_block", layout_block_id, block_id, run_id),
             )
+        evidence_ref_str = raw_ref if isinstance(raw_ref, str) else f"layout_block::{layout_block_id}::{block_id}"
         rows.append(
             {
                 "layout_block_id": layout_block_id,
@@ -609,7 +631,7 @@ def _persist_layout_blocks(
                 "span_end": span_end,
                 "span_quality": span_quality,
                 "evidence_ref_id": evidence_ref_id,
-                "evidence_ref": raw_ref,
+                "evidence_ref": evidence_ref_str,
             }
         )
     return rows
@@ -790,13 +812,30 @@ def _persist_visual_assets(
             "source_asset_id": asset.get("asset_id"),
         }
         now = _utc_now()
+        evidence_ref_id: str | None = None
+        source_asset_id = asset.get("asset_id")
+        if isinstance(source_asset_id, str) and source_asset_id:
+            fragment = f"visual::{source_asset_id}"
+            evidence_ref_id = evidence_ref_map.get(fragment)
+            if not evidence_ref_id:
+                evidence_ref = f"doc::{document_id}::{fragment}"
+                evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+            if not evidence_ref_id:
+                evidence_ref_id = str(uuid4())
+                _db_execute(
+                    """
+                    INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id)
+                    VALUES (%s, %s, %s, %s, %s::uuid)
+                    """,
+                    (evidence_ref_id, "visual_asset", asset_id, "image", run_id),
+                )
         _db_execute(
             """
             INSERT INTO visual_assets (
               id, document_id, page_number, ingest_batch_id, run_id, source_artifact_id,
-              asset_type, blob_path, metadata, created_at, updated_at
+              asset_type, blob_path, evidence_ref_id, metadata, created_at, updated_at
             )
-            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s::jsonb, %s, %s)
+            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s::uuid, %s::jsonb, %s, %s)
             """,
             (
                 asset_id,
@@ -807,28 +846,12 @@ def _persist_visual_assets(
                 source_artifact_id,
                 asset.get("asset_type") or "unknown",
                 blob_path,
+                evidence_ref_id,
                 json.dumps(metadata, ensure_ascii=False),
                 now,
                 now,
             ),
         )
-        evidence_ref_id: str | None = None
-        source_asset_id = asset.get("asset_id")
-        if isinstance(source_asset_id, str) and source_asset_id:
-            fragment = f"visual::{source_asset_id}"
-            evidence_ref_id = evidence_ref_map.get(fragment)
-            if not evidence_ref_id:
-                evidence_ref = f"doc::{document_id}::{fragment}"
-                evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
-        if not evidence_ref_id:
-            evidence_ref_id = str(uuid4())
-            _db_execute(
-                """
-                INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id)
-                VALUES (%s, %s, %s, %s, %s::uuid)
-                """,
-                (evidence_ref_id, "visual_asset", asset_id, "image", run_id),
-            )
         rows.append(
             {
                 "visual_asset_id": asset_id,
@@ -1270,6 +1293,7 @@ def _extract_visual_region_assertions(
             region_id = str(region.get("id"))
             meta = region.get("metadata_jsonb") if isinstance(region.get("metadata_jsonb"), dict) else {}
             region_blob_path = meta.get("region_blob_path")
+            region_evidence_ref = meta.get("evidence_ref")
             if not isinstance(region_blob_path, str):
                 continue
             image_bytes, _, err = read_blob_bytes(region_blob_path)
@@ -1330,6 +1354,8 @@ def _extract_visual_region_assertions(
                 a["assertion_id"] = assertion_id
                 if not a.get("evidence_region_id"):
                     a["evidence_region_id"] = region_id
+                if isinstance(region_evidence_ref, str) and region_evidence_ref:
+                    a["evidence_region_ref"] = region_evidence_ref
                 assertions.append(a)
             total_assertions += len(region_assertions)
 
@@ -1602,21 +1628,25 @@ def _segment_visual_assets(
                 except Exception as exc:  # noqa: BLE001
                     raise RuntimeError(f"region_crop_failed:{exc}") from exc
 
+            region_id = str(uuid4())
+            region_evidence_ref = f"visual_region::{region_id}::crop"
+            region_evidence_ref_id = _ensure_evidence_ref_row(region_evidence_ref, run_id=run_id)
             region_meta = {
                 "region_blob_path": region_blob_path,
                 "polygon": mask.get("polygon"),
                 "confidence": mask.get("confidence"),
+                "evidence_ref": region_evidence_ref,
             }
             _db_execute(
                 """
                 INSERT INTO visual_asset_regions (
                   id, visual_asset_id, run_id, region_type, bbox, bbox_quality,
-                  mask_id, caption_text, metadata_jsonb, created_at
+                  mask_id, caption_text, evidence_ref_id, metadata_jsonb, created_at
                 )
-                VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s::uuid, %s, %s::jsonb, %s)
+                VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s::uuid, %s, %s::uuid, %s::jsonb, %s)
                 """,
                 (
-                    str(uuid4()),
+                    region_id,
                     visual_asset_id,
                     run_id,
                     "mask_crop",
@@ -1624,6 +1654,7 @@ def _segment_visual_assets(
                     bbox_quality,
                     mask_id,
                     caption,
+                    region_evidence_ref_id,
                     json.dumps(region_meta, ensure_ascii=False),
                     _utc_now(),
                 ),
@@ -2445,13 +2476,14 @@ def _persist_policy_structure(
                     clause.get("object"),
                     clause_evidence_ref_id,
                     source_artifact_id,
-                    json.dumps({}, ensure_ascii=False),
+                    json.dumps({"block_ids": clause_block_ids}, ensure_ascii=False),
                 ),
             )
             _db_execute(
                 "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
                 (clause_evidence_ref_id, "policy_clause", clause_id, clause.get("clause_ref") or clause_id, run_id),
             )
+            clause_evidence_ref = f"policy_clause::{clause_id}::{clause.get('clause_ref') or clause_id}"
             _ensure_kg_node(
                 node_id=f"policy_clause::{clause_id}",
                 node_type="PolicyClause",
@@ -2465,6 +2497,8 @@ def _persist_policy_structure(
                     "policy_code": section.get("policy_code"),
                     "text": clause_text,
                     "evidence_ref_id": clause_evidence_ref_id,
+                    "evidence_ref": clause_evidence_ref,
+                    "block_ids": clause_block_ids,
                 }
             )
 
@@ -2676,6 +2710,7 @@ def _persist_policy_edges(
     citations: list[dict[str, Any]],
     mentions: list[dict[str, Any]],
     conditions: list[dict[str, Any]],
+    block_rows: list[dict[str, Any]],
     tool_run_ids: list[str],
     run_id: str | None,
 ) -> None:
@@ -2685,6 +2720,7 @@ def _persist_policy_edges(
         if s.get("policy_code") and s.get("policy_section_id")
     }
     clause_ref_map = {c.get("policy_clause_id"): c for c in policy_clauses if c.get("policy_clause_id")}
+    block_lookup = {b.get("block_id"): b for b in block_rows if b.get("block_id")}
     tool_run_id = tool_run_ids[0] if tool_run_ids else None
 
     for definition in definitions:
@@ -2774,6 +2810,7 @@ def _persist_policy_edges(
         _apply_clause_conditions(
             conditions=conditions,
             clause_ref_map=clause_ref_map,
+            block_lookup=block_lookup,
             run_id=run_id,
         )
 
@@ -2822,6 +2859,7 @@ def _apply_clause_conditions(
     *,
     conditions: list[dict[str, Any]],
     clause_ref_map: dict[str, dict[str, Any]],
+    block_lookup: dict[str, dict[str, Any]],
     run_id: str | None,
 ) -> None:
     by_clause: dict[str, list[dict[str, Any]]] = {}
@@ -2837,7 +2875,34 @@ def _apply_clause_conditions(
         if operator not in allowed_ops:
             continue
         clause = clause_ref_map.get(source_clause_id)
-        evidence_ref_id = clause.get("evidence_ref_id") if clause else None
+        evidence_ref = clause.get("evidence_ref") if clause else None
+        clause_block_ids = clause.get("block_ids") if isinstance(clause.get("block_ids"), list) else []
+        clause_block_ids = [b for b in clause_block_ids if isinstance(b, str)]
+        span_refs: list[str] = []
+        trigger_spans: list[dict[str, Any]] = []
+        for block_id in clause_block_ids:
+            block = block_lookup.get(block_id)
+            if not block:
+                continue
+            block_text = str(block.get("text") or "")
+            spans = _find_trigger_spans(block_text, str(trigger_text))
+            if not spans:
+                continue
+            block_evidence_ref = block.get("evidence_ref")
+            if block_evidence_ref and isinstance(block_evidence_ref, str):
+                span_refs.append(block_evidence_ref)
+            for span in spans:
+                trigger_spans.append(
+                    {
+                        "block_id": block_id,
+                        "span_start": span.get("start"),
+                        "span_end": span.get("end"),
+                        "span_quality": span.get("quality"),
+                        "evidence_ref": block_evidence_ref,
+                    }
+                )
+        if not span_refs and evidence_ref and isinstance(evidence_ref, str):
+            span_refs = [evidence_ref]
         cond_key = f"{source_clause_id}|{operator}|{trigger_text}"
         condition_id = hashlib.sha1(cond_key.encode("utf-8")).hexdigest()
         item = {
@@ -2848,7 +2913,8 @@ def _apply_clause_conditions(
             "requires": cond.get("requires") if isinstance(cond.get("requires"), list) else [],
             "severity": cond.get("severity") if cond.get("severity") in allowed_severity else None,
             "test_type": cond.get("test_type") if cond.get("test_type") in allowed_test_type else None,
-            "span_evidence_refs": [evidence_ref_id] if evidence_ref_id else [],
+            "span_evidence_refs": span_refs,
+            "trigger_spans": trigger_spans,
         }
         by_clause.setdefault(source_clause_id, []).append(item)
 
@@ -3062,7 +3128,19 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             _start_run_step(
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
+                step_name="visual_semantics_asset",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
                 step_name="visual_segmentation",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
+                step_name="visual_semantics_regions",
                 inputs={"document_count": len(documents)},
             )
             _start_run_step(
@@ -3075,6 +3153,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
                 step_name="visual_embeddings",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
+                step_name="visual_assertion_embeddings",
                 inputs={"document_count": len(documents)},
             )
             _start_run_step(
@@ -3323,6 +3407,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 citations=citations,
                 mentions=mentions,
                 conditions=conditions,
+                block_rows=block_rows,
                 tool_run_ids=edge_tool_run_ids,
                 run_id=run_id,
             )
@@ -3442,12 +3527,30 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             _finish_run_step(
                 run_id=run_id,
+                step_name="visual_semantics_asset",
+                status="success" if (not visuals_present or step_counts.get("visual_semantics_asset", 0) > 0) else "partial",
+                outputs={
+                    "visual_assets": counts.get("visual_assets", 0),
+                    "visual_semantic_assets": counts.get("visual_semantic_assets", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
                 step_name="visual_segmentation",
                 status="success" if (not visuals_present or step_counts.get("visual_segmentation", 0) > 0) else "partial",
                 outputs={
                     "visual_assets": counts.get("visual_assets", 0),
                     "segmentation_masks": counts.get("segmentation_masks", 0),
                     "visual_asset_regions": counts.get("visual_asset_regions", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
+                step_name="visual_semantics_regions",
+                status="success" if (not visuals_present or step_counts.get("visual_semantics_regions", 0) > 0) else "partial",
+                outputs={
+                    "visual_assets": counts.get("visual_assets", 0),
+                    "visual_semantic_assertions": counts.get("visual_semantic_assertions", 0),
                 },
             )
             _finish_run_step(
@@ -3466,6 +3569,14 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 outputs={
                     "visual_assets": counts.get("visual_assets", 0),
                     "unit_embeddings_visual": counts.get("unit_embeddings_visual", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
+                step_name="visual_assertion_embeddings",
+                status="success" if (not visuals_present or step_counts.get("visual_assertion_embeddings", 0) > 0) else "partial",
+                outputs={
+                    "unit_embeddings_visual_assertion": counts.get("unit_embeddings_visual_assertion", 0),
                 },
             )
             _finish_run_step(

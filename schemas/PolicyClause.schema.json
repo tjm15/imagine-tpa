@@ -23,6 +23,43 @@
       "description": "Optional modality characterisation (speech act) derived as an evidence instrument; not a determination.",
       "anyOf": [{ "$ref": "PolicySpeechAct.schema.json" }, { "type": "null" }]
     },
+    "conditions": {
+      "type": "array",
+      "description": "Inline qualifiers (unless/subject to/where appropriate) with evidence anchors.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "condition_id": { "type": "string" },
+          "operator": {
+            "type": "string",
+            "enum": ["EXCEPTION", "QUALIFICATION", "DEPENDENCY", "DISCRETION_GATE", "PRIORITY_OVERRIDE"]
+          },
+          "trigger_text": { "type": "string" },
+          "testable": { "type": "boolean" },
+          "requires": { "type": "array", "items": { "type": "string" } },
+          "severity": { "type": ["string", "null"], "enum": ["hard", "soft", "discretionary", null] },
+          "test_type": { "type": ["string", "null"], "enum": ["binary", "graded", "narrative", null] },
+          "span_evidence_refs": {
+            "type": "array",
+            "items": { "$ref": "EvidenceRef.schema.json" }
+          },
+          "trigger_spans": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "block_id": { "type": "string" },
+                "span_start": { "type": ["integer", "null"] },
+                "span_end": { "type": ["integer", "null"] },
+                "span_quality": { "type": ["string", "null"] },
+                "evidence_ref": { "$ref": "EvidenceRef.schema.json" }
+              }
+            }
+          }
+        },
+        "required": ["condition_id", "operator", "trigger_text", "span_evidence_refs"]
+      }
+    },
     "metadata": { "type": "object" }
   },
   "required": ["policy_clause_id", "policy_section_id", "text"]

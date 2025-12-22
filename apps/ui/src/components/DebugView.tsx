@@ -5,6 +5,9 @@ import { Badge } from './ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Separator } from './ui/separator';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
+import { Input } from './ui/input';
+import { DebugGraph3D, DebugGraphData, DebugGraphNode } from './DebugGraph3D';
 
 type ApiResult<T> = {
   ok: boolean;
@@ -34,6 +37,90 @@ type IngestBatch = {
   status?: string | null;
   started_at?: string | null;
   completed_at?: string | null;
+};
+
+type DebugOverview = {
+  counts: Record<string, number>;
+  generated_at?: string | null;
+};
+
+type IngestRun = {
+  id: string;
+  ingest_batch_id?: string | null;
+  authority_id?: string | null;
+  plan_cycle_id?: string | null;
+  pipeline_version?: string | null;
+  status?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+};
+
+type IngestRunStep = {
+  id: string;
+  step_name?: string | null;
+  status?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  error_text?: string | null;
+  inputs_jsonb?: Record<string, any> | null;
+  outputs_jsonb?: Record<string, any> | null;
+};
+
+type DebugDocument = {
+  id: string;
+  authority_id: string;
+  plan_cycle_id?: string | null;
+  run_id?: string | null;
+  title?: string | null;
+  raw_blob_path?: string | null;
+  raw_sha256?: string | null;
+  raw_bytes?: number | null;
+  raw_source_uri?: string | null;
+  created_at?: string | null;
+};
+
+type DocumentCoverage = {
+  document_id: string;
+  run_id?: string | null;
+  counts?: Record<string, number>;
+  assertions?: Array<{ check: string; ok: boolean; detail: string }>;
+  parse_bundle?: Record<string, any>;
+  raw?: Record<string, any>;
+};
+
+type ToolRun = {
+  id: string;
+  ingest_batch_id?: string | null;
+  run_id?: string | null;
+  tool_name?: string | null;
+  status?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  confidence_hint?: string | null;
+};
+
+type PromptRow = {
+  prompt_id: string;
+  name?: string | null;
+  purpose?: string | null;
+  created_at?: string | null;
+  created_by?: string | null;
+};
+
+type PromptVersion = {
+  prompt_id: string;
+  prompt_version: number;
+  input_schema_ref?: string | null;
+  output_schema_ref?: string | null;
+  created_at?: string | null;
+  created_by?: string | null;
+};
+
+type RunSummary = {
+  id: string;
+  profile?: string | null;
+  culp_stage_id?: string | null;
+  created_at?: string | null;
 };
 
 const API_PREFIX = '/api';
@@ -121,18 +208,65 @@ export function DebugView() {
   const [jobs, setJobs] = useState<IngestJob[]>([]);
   const [batches, setBatches] = useState<IngestBatch[]>([]);
   const [schemas, setSchemas] = useState<string[]>([]);
+  const [overview, setOverview] = useState<DebugOverview | null>(null);
+  const [ingestRuns, setIngestRuns] = useState<IngestRun[]>([]);
+  const [selectedIngestRunId, setSelectedIngestRunId] = useState<string | null>(null);
+  const [ingestRunSteps, setIngestRunSteps] = useState<IngestRunStep[]>([]);
+  const [documents, setDocuments] = useState<DebugDocument[]>([]);
+  const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
+  const [documentCoverage, setDocumentCoverage] = useState<DocumentCoverage | null>(null);
+  const [toolRuns, setToolRuns] = useState<ToolRun[]>([]);
+  const [prompts, setPrompts] = useState<PromptRow[]>([]);
+  const [promptVersions, setPromptVersions] = useState<PromptVersion[]>([]);
+  const [traceRuns, setTraceRuns] = useState<RunSummary[]>([]);
+  const [traceMode, setTraceMode] = useState<'summary' | 'inspect' | 'forensic'>('summary');
+  const [traceGraph, setTraceGraph] = useState<DebugGraphData | null>(null);
+  const [selectedTraceRunId, setSelectedTraceRunId] = useState<string | null>(null);
+  const [kgGraph, setKgGraph] = useState<DebugGraphData | null>(null);
+  const [selectedGraphNode, setSelectedGraphNode] = useState<DebugGraphNode | null>(null);
+  const [kgLoading, setKgLoading] = useState(false);
+  const [kgNodeTypeFilter, setKgNodeTypeFilter] = useState('');
+  const [kgLimit, setKgLimit] = useState('500');
 
   const envLabel = useMemo(() => (import.meta.env.DEV ? 'dev' : 'prod'), []);
+  const latestPromptVersion = useMemo(() => {
+    const map = new Map<string, number>();
+    promptVersions.forEach((version) => {
+      const current = map.get(version.prompt_id);
+      if (current === undefined || version.prompt_version > current) {
+        map.set(version.prompt_id, version.prompt_version);
+      }
+    });
+    return map;
+  }, [promptVersions]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setErrors([]);
-    const [healthRes, readyRes, jobsRes, batchesRes, schemasRes] = await Promise.all([
+    const [
+      healthRes,
+      readyRes,
+      jobsRes,
+      batchesRes,
+      schemasRes,
+      overviewRes,
+      ingestRunsRes,
+      documentsRes,
+      toolRunsRes,
+      promptsRes,
+      traceRunsRes,
+    ] = await Promise.all([
       fetchJson<HealthPayload>('/healthz', signal),
       fetchJson<HealthPayload>('/readyz', signal),
       fetchJson<{ ingest_jobs: IngestJob[] }>('/ingest/jobs?limit=10', signal),
       fetchJson<{ ingest_batches: IngestBatch[] }>('/ingest/batches?limit=10', signal),
       fetchJson<{ schemas: string[] }>('/spec/schemas', signal),
+      fetchJson<DebugOverview>('/debug/overview', signal),
+      fetchJson<{ ingest_runs: IngestRun[] }>('/debug/ingest/runs?limit=20', signal),
+      fetchJson<{ documents: DebugDocument[] }>('/debug/documents?limit=25', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?limit=30', signal),
+      fetchJson<{ prompts: PromptRow[]; prompt_versions: PromptVersion[] }>('/debug/prompts', signal),
+      fetchJson<{ runs: RunSummary[] }>('/debug/runs?limit=20', signal),
     ]);
 
     const nextErrors: string[] = [];
@@ -141,12 +275,25 @@ export function DebugView() {
     if (!jobsRes.ok) nextErrors.push(`ingest jobs: ${jobsRes.error || 'unavailable'}`);
     if (!batchesRes.ok) nextErrors.push(`ingest batches: ${batchesRes.error || 'unavailable'}`);
     if (!schemasRes.ok) nextErrors.push(`schemas: ${schemasRes.error || 'unavailable'}`);
+    if (!overviewRes.ok) nextErrors.push(`debug overview: ${overviewRes.error || 'unavailable'}`);
+    if (!ingestRunsRes.ok) nextErrors.push(`ingest runs: ${ingestRunsRes.error || 'unavailable'}`);
+    if (!documentsRes.ok) nextErrors.push(`documents: ${documentsRes.error || 'unavailable'}`);
+    if (!toolRunsRes.ok) nextErrors.push(`tool runs: ${toolRunsRes.error || 'unavailable'}`);
+    if (!promptsRes.ok) nextErrors.push(`prompts: ${promptsRes.error || 'unavailable'}`);
+    if (!traceRunsRes.ok) nextErrors.push(`runs: ${traceRunsRes.error || 'unavailable'}`);
 
     setHealth(healthRes.data);
     setReady(readyRes.data);
     setJobs(jobsRes.data?.ingest_jobs || []);
     setBatches(batchesRes.data?.ingest_batches || []);
     setSchemas(schemasRes.data?.schemas || []);
+    setOverview(overviewRes.data || null);
+    setIngestRuns(ingestRunsRes.data?.ingest_runs || []);
+    setDocuments(documentsRes.data?.documents || []);
+    setToolRuns(toolRunsRes.data?.tool_runs || []);
+    setPrompts(promptsRes.data?.prompts || []);
+    setPromptVersions(promptsRes.data?.prompt_versions || []);
+    setTraceRuns(traceRunsRes.data?.runs || []);
     setErrors(nextErrors);
     setLastUpdated(new Date().toLocaleString());
     setLoading(false);
@@ -157,6 +304,84 @@ export function DebugView() {
     load(controller.signal);
     return () => controller.abort();
   }, [load]);
+
+  useEffect(() => {
+    if (!selectedIngestRunId && ingestRuns.length > 0) {
+      setSelectedIngestRunId(ingestRuns[0].id);
+    }
+  }, [ingestRuns, selectedIngestRunId]);
+
+  useEffect(() => {
+    if (!selectedTraceRunId && traceRuns.length > 0) {
+      setSelectedTraceRunId(traceRuns[0].id);
+    }
+  }, [traceRuns, selectedTraceRunId]);
+
+  useEffect(() => {
+    if (!selectedIngestRunId) {
+      setIngestRunSteps([]);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<{ steps: IngestRunStep[] }>(`/debug/ingest/run-steps?run_id=${selectedIngestRunId}`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setIngestRunSteps(res.data?.steps || []);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedIngestRunId]);
+
+  useEffect(() => {
+    if (!selectedDocumentId) {
+      setDocumentCoverage(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<DocumentCoverage>(`/ingest/documents/${selectedDocumentId}/coverage`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setDocumentCoverage(res.data);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedDocumentId]);
+
+  useEffect(() => {
+    if (!selectedTraceRunId) {
+      setTraceGraph(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<DebugGraphData>(`/trace/runs/${selectedTraceRunId}?mode=${traceMode}`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setTraceGraph(res.data);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedTraceRunId, traceMode]);
+
+  useEffect(() => {
+    setSelectedGraphNode(null);
+  }, [kgGraph, traceGraph]);
+
+  const loadKgGraph = useCallback(async () => {
+    setKgLoading(true);
+    const nodeType = kgNodeTypeFilter.trim();
+    const limitValue = Number.parseInt(kgLimit, 10);
+    const limit = Number.isFinite(limitValue) ? Math.min(Math.max(limitValue, 50), 2000) : 500;
+    const query = new URLSearchParams({ limit: String(limit), edge_limit: String(limit * 3) });
+    if (nodeType) query.set('node_type', nodeType);
+    const res = await fetchJson<DebugGraphData>(`/debug/kg?${query.toString()}`);
+    if (res.ok) {
+      setKgGraph(res.data);
+    }
+    setKgLoading(false);
+  }, [kgLimit, kgNodeTypeFilter]);
 
   return (
     <div
@@ -203,7 +428,7 @@ export function DebugView() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-6 py-6">
-        <div className="grid gap-6 lg:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-3">
           <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
             <CardHeader>
               <CardTitle>API status</CardTitle>
@@ -259,6 +484,29 @@ export function DebugView() {
                   Open
                 </a>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Coverage overview</CardTitle>
+              <CardDescription>Snapshot counts across the pipeline.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-2 gap-3 text-sm">
+              {(overview?.counts
+                ? Object.entries(overview.counts)
+                : []
+              ).map(([key, value]) => (
+                <div key={key} className="rounded-lg border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                    {key.replace(/_/g, ' ')}
+                  </div>
+                  <div className="text-lg font-semibold" style={{ color: 'var(--color-ink)' }}>
+                    {value}
+                  </div>
+                </div>
+              ))}
+              {!overview?.counts && <span>No overview data yet.</span>}
             </CardContent>
           </Card>
         </div>
@@ -357,6 +605,340 @@ export function DebugView() {
             </CardContent>
           </Card>
         </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Ingest runs</CardTitle>
+              <CardDescription>Pipeline executions (click to inspect steps).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Authority</TableHead>
+                    <TableHead>Started</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ingestRuns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>No ingest runs found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    ingestRuns.map((run) => (
+                      <TableRow
+                        key={run.id}
+                        className={selectedIngestRunId === run.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedIngestRunId(run.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="font-mono text-xs">{run.id.slice(0, 8)}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={run.status || 'unknown'} />
+                        </TableCell>
+                        <TableCell>{run.authority_id || '--'}</TableCell>
+                        <TableCell>{formatDate(run.started_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Run steps</CardTitle>
+              <CardDescription>Step status and timing for the selected run.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Step</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Started</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {ingestRunSteps.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>Select a run to view steps.</TableCell>
+                    </TableRow>
+                  ) : (
+                    ingestRunSteps.map((step) => (
+                      <TableRow key={step.id}>
+                        <TableCell className="text-xs">{step.step_name}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={step.status || 'unknown'} />
+                        </TableCell>
+                        <TableCell>{formatDate(step.started_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Documents</CardTitle>
+              <CardDescription>Parsed documents (click to load coverage).</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Doc</TableHead>
+                    <TableHead>Title</TableHead>
+                    <TableHead>Authority</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {documents.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>No documents found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    documents.map((doc) => (
+                      <TableRow
+                        key={doc.id}
+                        className={selectedDocumentId === doc.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedDocumentId(doc.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="font-mono text-xs">{doc.id.slice(0, 8)}</TableCell>
+                        <TableCell className="text-xs">{doc.title || 'Untitled document'}</TableCell>
+                        <TableCell className="text-xs">{doc.authority_id}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Document coverage</CardTitle>
+              <CardDescription>Counts + assertions for the selected document.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {!documentCoverage ? (
+                <div>Select a document to view coverage.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    {Object.entries(documentCoverage.counts || {}).map(([key, value]) => (
+                      <div key={key} className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                        <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                          {key.replace(/_/g, ' ')}
+                        </div>
+                        <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
+                          {value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="space-y-2">
+                    {(documentCoverage.assertions || []).map((assertion) => (
+                      <div
+                        key={assertion.check}
+                        className="rounded border px-3 py-2"
+                        style={{ borderColor: 'var(--color-neutral-300)' }}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-semibold uppercase tracking-[0.12em]">
+                            {assertion.check.replace(/_/g, ' ')}
+                          </span>
+                          <StatusBadge label={assertion.ok ? 'ok' : 'missing'} />
+                        </div>
+                        <div className="text-xs text-slate-500">{assertion.detail}</div>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Tool runs</CardTitle>
+              <CardDescription>Recent model/tool invocations.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tool</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Started</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {toolRuns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>No tool runs found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    toolRuns.map((run) => (
+                      <TableRow key={run.id}>
+                        <TableCell className="text-xs">{run.tool_name || 'tool'}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={run.status || 'unknown'} />
+                        </TableCell>
+                        <TableCell>{formatDate(run.started_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Prompt registry</CardTitle>
+              <CardDescription>Tracked prompt IDs and latest versions.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Prompt</TableHead>
+                    <TableHead>Latest</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {prompts.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>No prompts recorded.</TableCell>
+                    </TableRow>
+                  ) : (
+                    prompts.map((prompt) => (
+                      <TableRow key={prompt.prompt_id}>
+                        <TableCell className="text-xs">{prompt.prompt_id}</TableCell>
+                        <TableCell>{latestPromptVersion.get(prompt.prompt_id) ?? '--'}</TableCell>
+                        <TableCell>{formatDate(prompt.created_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+          <CardHeader>
+            <CardTitle>Graph inspector</CardTitle>
+            <CardDescription>3D trace + knowledge graph with selection drill-down.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Tabs defaultValue="kg">
+              <TabsList>
+                <TabsTrigger value="kg">Knowledge graph</TabsTrigger>
+                <TabsTrigger value="trace">Trace graph</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="kg">
+                <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto_auto]">
+                  <Input
+                    value={kgNodeTypeFilter}
+                    onChange={(e) => setKgNodeTypeFilter(e.target.value)}
+                    placeholder="Filter by node_type (optional)"
+                  />
+                  <Input
+                    value={kgLimit}
+                    onChange={(e) => setKgLimit(e.target.value)}
+                    placeholder="Node limit"
+                  />
+                  <Button
+                    onClick={loadKgGraph}
+                    disabled={kgLoading}
+                    style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+                  >
+                    {kgLoading ? 'Loading…' : 'Load graph'}
+                  </Button>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                  <DebugGraph3D graph={kgGraph} onNodeSelect={setSelectedGraphNode} selectedNodeId={selectedGraphNode?.node_id || null} />
+                  <div className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Selection
+                    </div>
+                    {selectedGraphNode ? (
+                      <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                        {JSON.stringify(selectedGraphNode, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="text-slate-500">Select a node to inspect.</div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="trace">
+                <div className="mb-4 grid gap-3 md:grid-cols-[1fr_auto]">
+                  <select
+                    value={selectedTraceRunId || ''}
+                    onChange={(e) => setSelectedTraceRunId(e.target.value || null)}
+                    className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="">Select a run...</option>
+                    {traceRuns.map((run) => (
+                      <option key={run.id} value={run.id}>
+                        {run.id.slice(0, 8)} · {run.culp_stage_id || run.profile || 'run'}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    value={traceMode}
+                    onChange={(e) => setTraceMode(e.target.value as 'summary' | 'inspect' | 'forensic')}
+                    className="flex h-10 rounded-md border border-input bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="summary">summary</option>
+                    <option value="inspect">inspect</option>
+                    <option value="forensic">forensic</option>
+                  </select>
+                </div>
+                <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
+                  <DebugGraph3D graph={traceGraph} onNodeSelect={setSelectedGraphNode} selectedNodeId={selectedGraphNode?.node_id || null} />
+                  <div className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Selection
+                    </div>
+                    {selectedGraphNode ? (
+                      <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                        {JSON.stringify(selectedGraphNode, null, 2)}
+                      </pre>
+                    ) : (
+                      <div className="text-slate-500">Select a node to inspect.</div>
+                    )}
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </CardContent>
+        </Card>
 
         <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
 

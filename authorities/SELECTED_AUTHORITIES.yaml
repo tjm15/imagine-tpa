@@ -1,83 +1,2182 @@
 version: 1
-description: >
-  The selected authorities used as first-class real working cases for Spatial Strategy
-  (plan-making) and demo/sandbox Development Management feeds.
-
-  This selection is referenced by connector configs (e.g., PlanIt) and by the fixture/project
+description: 'The selected authorities used as first-class real working cases for
+  Spatial Strategy (plan-making) and demo/sandbox Development Management feeds. This
+  selection is referenced by connector configs (e.g., PlanIt) and by the fixture/project
   creation flow described in `IMPLEMENTATION_PLAN.md`.
 
+  '
 selected_authorities:
-  - authority_id: brighton_and_hove
-    name: "Brighton & Hove City Council"
-    codes:
-      statistical_geography_gss: "E06000043"
-      local_planning_authority: "E60000222"
-      local_authority_reference: "BNH"
-    website: "https://www.brighton-hove.gov.uk"
+- authority_id: E60000001
+  name: County Durham
+  codes:
+    local_planning_authority: E60000001
+    statistical_geography_gss: E06000047
+    local_authority_reference: DUR
+  website: https://www.durham.gov.uk
+- authority_id: E60000002
+  name: Darlington
+  codes:
+    local_planning_authority: E60000002
+    statistical_geography_gss: E06000005
+    local_authority_reference: DAL
+  website: https://www.darlington.gov.uk
+- authority_id: E60000003
+  name: Hartlepool
+  codes:
+    local_planning_authority: E60000003
+    statistical_geography_gss: E06000001
+    local_authority_reference: HPL
+  website: https://www.hartlepool.gov.uk
+- authority_id: E60000004
+  name: Middlesbrough
+  codes:
+    local_planning_authority: E60000004
+    statistical_geography_gss: E06000002
+    local_authority_reference: MDB
+  website: https://www.middlesbrough.gov.uk
+- authority_id: E60000005
+  name: Northumberland
+  codes:
+    local_planning_authority: E60000005
+    statistical_geography_gss: E06000057
+    local_authority_reference: NBL
+  website: https://www.northumberland.gov.uk
+- authority_id: E60000006
+  name: Redcar and Cleveland
+  codes:
+    local_planning_authority: E60000006
+    statistical_geography_gss: E06000003
+    local_authority_reference: RCC
+  website: https://www.redcar-cleveland.gov.uk
+- authority_id: E60000007
+  name: Stockton-on-Tees
+  codes:
+    local_planning_authority: E60000007
+    statistical_geography_gss: E06000004
+    local_authority_reference: STT
+  website: https://www.stockton.gov.uk
+- authority_id: E60000008
+  name: Gateshead
+  codes:
+    local_planning_authority: E60000008
+    statistical_geography_gss: E08000037
+    local_authority_reference: GAT
+  website: https://www.gateshead.gov.uk
+- authority_id: E60000009
+  name: Newcastle upon Tyne
+  codes:
+    local_planning_authority: E60000009
+    statistical_geography_gss: E08000021
+    local_authority_reference: NET
+  website: https://www.newcastle.gov.uk
+- authority_id: E60000010
+  name: North Tyneside
+  codes:
+    local_planning_authority: E60000010
+    statistical_geography_gss: E08000022
+    local_authority_reference: NTY
+  website: https://www.northtyneside.gov.uk
+- authority_id: E60000011
+  name: South Tyneside
+  codes:
+    local_planning_authority: E60000011
+    statistical_geography_gss: E08000023
+    local_authority_reference: STY
+  website: https://www.southtyneside.info
+- authority_id: E60000012
+  name: Sunderland
+  codes:
+    local_planning_authority: E60000012
+    statistical_geography_gss: E08000024
+    local_authority_reference: SND
+  website: https://www.sunderland.gov.uk
+- authority_id: E60000013
+  name: Blackburn with Darwen
+  codes:
+    local_planning_authority: E60000013
+    statistical_geography_gss: E06000008
+    local_authority_reference: BBD
+  website: https://www.blackburn.gov.uk
+- authority_id: E60000014
+  name: Blackpool
+  codes:
+    local_planning_authority: E60000014
+    statistical_geography_gss: E06000009
+    local_authority_reference: BPL
+  website: https://www.blackpool.gov.uk
+- authority_id: E60000015
+  name: Cheshire East
+  codes:
+    local_planning_authority: E60000015
+    statistical_geography_gss: E06000049
+    local_authority_reference: CHE
+  website: https://www.cheshireeast.gov.uk
+- authority_id: E60000016
+  name: Cheshire West and Chester
+  codes:
+    local_planning_authority: E60000016
+    statistical_geography_gss: E06000050
+    local_authority_reference: CHW
+  website: https://www.cheshirewestandchester.gov.uk
+- authority_id: E60000017
+  name: Halton
+  codes:
+    local_planning_authority: E60000017
+    statistical_geography_gss: E06000006
+    local_authority_reference: HAL
+  website: https://www.halton.gov.uk
+- authority_id: E60000018
+  name: Warrington
+  codes:
+    local_planning_authority: E60000018
+    statistical_geography_gss: E06000007
+    local_authority_reference: WRT
+  website: https://www.warrington.gov.uk
+- authority_id: E60000025
+  name: Bolton
+  codes:
+    local_planning_authority: E60000025
+    statistical_geography_gss: E08000001
+    local_authority_reference: BOL
+  website: https://www.bolton.gov.uk
+- authority_id: E60000026
+  name: Bury
+  codes:
+    local_planning_authority: E60000026
+    statistical_geography_gss: E08000002
+    local_authority_reference: BUR
+  website: https://www.bury.gov.uk
+- authority_id: E60000027
+  name: Manchester
+  codes:
+    local_planning_authority: E60000027
+    statistical_geography_gss: E08000003
+    local_authority_reference: MAN
+  website: https://www.manchester.gov.uk
+- authority_id: E60000028
+  name: Oldham
+  codes:
+    local_planning_authority: E60000028
+    statistical_geography_gss: E08000004
+    local_authority_reference: OLD
+  website: https://www.oldham.gov.uk
+- authority_id: E60000029
+  name: Rochdale
+  codes:
+    local_planning_authority: E60000029
+    statistical_geography_gss: E08000005
+    local_authority_reference: RCH
+  website: https://www.rochdale.gov.uk
+- authority_id: E60000030
+  name: Salford
+  codes:
+    local_planning_authority: E60000030
+    statistical_geography_gss: E08000006
+    local_authority_reference: SLF
+  website: https://www.salford.gov.uk
+- authority_id: E60000031
+  name: Stockport
+  codes:
+    local_planning_authority: E60000031
+    statistical_geography_gss: E08000007
+    local_authority_reference: SKP
+  website: https://www.stockport.gov.uk
+- authority_id: E60000032
+  name: Tameside
+  codes:
+    local_planning_authority: E60000032
+    statistical_geography_gss: E08000008
+    local_authority_reference: TAM
+  website: https://www.tameside.gov.uk
+- authority_id: E60000033
+  name: Trafford
+  codes:
+    local_planning_authority: E60000033
+    statistical_geography_gss: E08000009
+    local_authority_reference: TRF
+  website: https://www.trafford.gov.uk
+- authority_id: E60000034
+  name: Wigan
+  codes:
+    local_planning_authority: E60000034
+    statistical_geography_gss: E08000010
+    local_authority_reference: WGN
+  website: https://www.wigan.gov.uk
+- authority_id: E60000035
+  name: Burnley
+  codes:
+    local_planning_authority: E60000035
+    statistical_geography_gss: E07000117
+    local_authority_reference: BUN
+  website: https://www.burnley.gov.uk
+- authority_id: E60000036
+  name: Chorley
+  codes:
+    local_planning_authority: E60000036
+    statistical_geography_gss: E07000118
+    local_authority_reference: CHO
+  website: https://www.chorley.gov.uk
+- authority_id: E60000037
+  name: Fylde
+  codes:
+    local_planning_authority: E60000037
+    statistical_geography_gss: E07000119
+    local_authority_reference: FYL
+  website: https://www.fylde.gov.uk
+- authority_id: E60000038
+  name: Hyndburn
+  codes:
+    local_planning_authority: E60000038
+    statistical_geography_gss: E07000120
+    local_authority_reference: HYN
+  website: https://www.hyndburnbc.gov.uk
+- authority_id: E60000039
+  name: Lancaster
+  codes:
+    local_planning_authority: E60000039
+    statistical_geography_gss: E07000121
+    local_authority_reference: LAC
+  website: https://www.lancaster.gov.uk
+- authority_id: E60000040
+  name: Pendle
+  codes:
+    local_planning_authority: E60000040
+    statistical_geography_gss: E07000122
+    local_authority_reference: PEN
+  website: https://www.pendle.gov.uk
+- authority_id: E60000041
+  name: Preston
+  codes:
+    local_planning_authority: E60000041
+    statistical_geography_gss: E07000123
+    local_authority_reference: PRE
+  website: https://www.preston.gov.uk
+- authority_id: E60000042
+  name: Ribble Valley
+  codes:
+    local_planning_authority: E60000042
+    statistical_geography_gss: E07000124
+    local_authority_reference: RIB
+  website: https://www.ribblevalley.gov.uk
+- authority_id: E60000043
+  name: Rossendale
+  codes:
+    local_planning_authority: E60000043
+    statistical_geography_gss: E07000125
+    local_authority_reference: ROS
+  website: https://www.rossendale.gov.uk
+- authority_id: E60000044
+  name: South Ribble
+  codes:
+    local_planning_authority: E60000044
+    statistical_geography_gss: E07000126
+    local_authority_reference: SRI
+  website: https://www.southribble.gov.uk
+- authority_id: E60000045
+  name: West Lancashire
+  codes:
+    local_planning_authority: E60000045
+    statistical_geography_gss: E07000127
+    local_authority_reference: WLA
+  website: https://www.westlancs.gov.uk
+- authority_id: E60000046
+  name: Wyre
+  codes:
+    local_planning_authority: E60000046
+    statistical_geography_gss: E07000128
+    local_authority_reference: WYR
+  website: https://www.wyre.gov.uk
+- authority_id: E60000047
+  name: Knowsley
+  codes:
+    local_planning_authority: E60000047
+    statistical_geography_gss: E08000011
+    local_authority_reference: KWL
+  website: https://www.knowsley.gov.uk
+- authority_id: E60000048
+  name: Liverpool
+  codes:
+    local_planning_authority: E60000048
+    statistical_geography_gss: E08000012
+    local_authority_reference: LIV
+  website: https://www.liverpool.gov.uk
+- authority_id: E60000049
+  name: Sefton
+  codes:
+    local_planning_authority: E60000049
+    statistical_geography_gss: E08000014
+    local_authority_reference: SFT
+  website: https://www.sefton.gov.uk
+- authority_id: E60000050
+  name: St. Helens
+  codes:
+    local_planning_authority: E60000050
+    statistical_geography_gss: E08000013
+    local_authority_reference: SHN
+  website: https://www.sthelens.gov.uk
+- authority_id: E60000051
+  name: Wirral
+  codes:
+    local_planning_authority: E60000051
+    statistical_geography_gss: E08000015
+    local_authority_reference: WRL
+  website: https://www.wirral.gov.uk
+- authority_id: E60000052
+  name: East Riding of Yorkshire
+  codes:
+    local_planning_authority: E60000052
+    statistical_geography_gss: E06000011
+    local_authority_reference: ERY
+  website: https://www.eastriding.gov.uk/
+- authority_id: E60000053
+  name: Kingston upon Hull, City of
+  codes:
+    local_planning_authority: E60000053
+    statistical_geography_gss: E06000010
+    local_authority_reference: KHL
+  website: https://www.hullcc.gov.uk
+- authority_id: E60000054
+  name: North East Lincolnshire
+  codes:
+    local_planning_authority: E60000054
+    statistical_geography_gss: E06000012
+    local_authority_reference: NEL
+  website: https://www.nelincs.gov.uk
+- authority_id: E60000055
+  name: North Lincolnshire
+  codes:
+    local_planning_authority: E60000055
+    statistical_geography_gss: E06000013
+    local_authority_reference: NLN
+  website: https://www.northlincs.gov.uk
+- authority_id: E60000056
+  name: York
+  codes:
+    local_planning_authority: E60000056
+    statistical_geography_gss: E06000014
+    local_authority_reference: YOR
+  website: https://www.york.gov.uk
+- authority_id: E60000064
+  name: Barnsley
+  codes:
+    local_planning_authority: E60000064
+    statistical_geography_gss: E08000016
+    local_authority_reference: BNS
+  website: https://www.barnsley.gov.uk
+- authority_id: E60000065
+  name: Doncaster
+  codes:
+    local_planning_authority: E60000065
+    statistical_geography_gss: E08000017
+    local_authority_reference: DNC
+  website: https://www.doncaster.gov.uk
+- authority_id: E60000066
+  name: Rotherham
+  codes:
+    local_planning_authority: E60000066
+    statistical_geography_gss: E08000018
+    local_authority_reference: ROT
+  website: https://www.rotherham.gov.uk
+- authority_id: E60000067
+  name: Sheffield
+  codes:
+    local_planning_authority: E60000067
+    statistical_geography_gss: E08000019
+    local_authority_reference: SHF
+  website: https://www.sheffield.gov.uk
+- authority_id: E60000068
+  name: Bradford
+  codes:
+    local_planning_authority: E60000068
+    statistical_geography_gss: E08000032
+    local_authority_reference: BRD
+  website: https://www.bradford.gov.uk
+- authority_id: E60000131
+  name: Coventry
+  codes:
+    local_planning_authority: E60000131
+    statistical_geography_gss: E08000026
+    local_authority_reference: COV
+  website: https://www.coventry.gov.uk
+- authority_id: E60000132
+  name: Dudley
+  codes:
+    local_planning_authority: E60000132
+    statistical_geography_gss: E08000027
+    local_authority_reference: DUD
+  website: https://www.dudley.gov.uk
+- authority_id: E60000133
+  name: Sandwell
+  codes:
+    local_planning_authority: E60000133
+    statistical_geography_gss: E08000028
+    local_authority_reference: SAW
+  website: https://www.sandwell.gov.uk
+- authority_id: E60000134
+  name: Solihull
+  codes:
+    local_planning_authority: E60000134
+    statistical_geography_gss: E08000029
+    local_authority_reference: SOL
+  website: https://www.solihull.gov.uk
+- authority_id: E60000135
+  name: Walsall
+  codes:
+    local_planning_authority: E60000135
+    statistical_geography_gss: E08000030
+    local_authority_reference: WLL
+  website: https://www.walsall.gov.uk
+- authority_id: E60000136
+  name: Wolverhampton
+  codes:
+    local_planning_authority: E60000136
+    statistical_geography_gss: E08000031
+    local_authority_reference: WLV
+  website: https://www.wolverhampton.gov.uk
+- authority_id: E60000137
+  name: Bromsgrove
+  codes:
+    local_planning_authority: E60000137
+    statistical_geography_gss: E07000234
+    local_authority_reference: BRM
+  website: https://www.bromsgrove.gov.uk
+- authority_id: E60000138
+  name: Malvern Hills
+  codes:
+    local_planning_authority: E60000138
+    statistical_geography_gss: E07000235
+    local_authority_reference: MAV
+  website: https://www.malvernhills.gov.uk
+- authority_id: E60000139
+  name: Redditch
+  codes:
+    local_planning_authority: E60000139
+    statistical_geography_gss: E07000236
+    local_authority_reference: RED
+  website: https://www.redditchbc.gov.uk
+- authority_id: E60000140
+  name: Worcester
+  codes:
+    local_planning_authority: E60000140
+    statistical_geography_gss: E07000237
+    local_authority_reference: WOC
+  website: https://www.worcester.gov.uk
+- authority_id: E60000141
+  name: Wychavon
+  codes:
+    local_planning_authority: E60000141
+    statistical_geography_gss: E07000238
+    local_authority_reference: WYC
+  website: https://www.wychavon.gov.uk
+- authority_id: E60000142
+  name: Wyre Forest
+  codes:
+    local_planning_authority: E60000142
+    statistical_geography_gss: E07000239
+    local_authority_reference: WYE
+  website: https://www.wyreforestdc.gov.uk
+- authority_id: E60000143
+  name: Bedford
+  codes:
+    local_planning_authority: E60000143
+    statistical_geography_gss: E06000055
+    local_authority_reference: BDF
+  website: https://www.bedford.gov.uk
+- authority_id: E60000144
+  name: Central Bedfordshire
+  codes:
+    local_planning_authority: E60000144
+    statistical_geography_gss: E06000056
+    local_authority_reference: CBF
+  website: https://www.centralbedfordshire.gov.uk
+- authority_id: E60000145
+  name: Luton
+  codes:
+    local_planning_authority: E60000145
+    statistical_geography_gss: E06000032
+    local_authority_reference: LUT
+  website: https://www.luton.gov.uk
+- authority_id: E60000146
+  name: Peterborough
+  codes:
+    local_planning_authority: E60000146
+    statistical_geography_gss: E06000031
+    local_authority_reference: PTE
+  website: https://www.peterborough.gov.uk
+- authority_id: E60000147
+  name: Southend-on-Sea
+  codes:
+    local_planning_authority: E60000147
+    statistical_geography_gss: E06000033
+    local_authority_reference: SOS
+  website: https://www.southend.gov.uk
+- authority_id: E60000148
+  name: Thurrock
+  codes:
+    local_planning_authority: E60000148
+    statistical_geography_gss: E06000034
+    local_authority_reference: THR
+  website: https://www.thurrock.gov.uk
+- authority_id: E60000149
+  name: Cambridge
+  codes:
+    local_planning_authority: E60000149
+    statistical_geography_gss: E07000008
+    local_authority_reference: CAB
+  website: https://www.cambridge.gov.uk
+- authority_id: E60000150
+  name: East Cambridgeshire
+  codes:
+    local_planning_authority: E60000150
+    statistical_geography_gss: E07000009
+    local_authority_reference: ECA
+  website: https://www.eastcambs.gov.uk
+- authority_id: E60000151
+  name: Fenland
+  codes:
+    local_planning_authority: E60000151
+    statistical_geography_gss: E07000010
+    local_authority_reference: FEN
+  website: https://www.fenland.gov.uk
+- authority_id: E60000152
+  name: Huntingdonshire
+  codes:
+    local_planning_authority: E60000152
+    statistical_geography_gss: E07000011
+    local_authority_reference: HUN
+  website: https://www.huntingdonshire.gov.uk
+- authority_id: E60000153
+  name: South Cambridgeshire
+  codes:
+    statistical_geography_gss: E07000012
+    local_planning_authority: E60000153
+    local_authority_reference: SCA
+  website: https://www.scambs.gov.uk
+- authority_id: E60000154
+  name: Basildon
+  codes:
+    local_planning_authority: E60000154
+    statistical_geography_gss: E07000066
+    local_authority_reference: BAI
+  website: https://www.basildon.gov.uk
+- authority_id: E60000155
+  name: Braintree
+  codes:
+    local_planning_authority: E60000155
+    statistical_geography_gss: E07000067
+    local_authority_reference: BRA
+  website: https://www.braintree.gov.uk
+- authority_id: E60000156
+  name: Brentwood
+  codes:
+    local_planning_authority: E60000156
+    statistical_geography_gss: E07000068
+    local_authority_reference: BRW
+  website: https://www.brentwood.gov.uk
+- authority_id: E60000157
+  name: Castle Point
+  codes:
+    local_planning_authority: E60000157
+    statistical_geography_gss: E07000069
+    local_authority_reference: CAS
+  website: https://www.castlepoint.gov.uk
+- authority_id: E60000158
+  name: Chelmsford
+  codes:
+    local_planning_authority: E60000158
+    statistical_geography_gss: E07000070
+    local_authority_reference: CHL
+  website: https://www.chelmsford.gov.uk
+- authority_id: E60000159
+  name: Colchester
+  codes:
+    local_planning_authority: E60000159
+    statistical_geography_gss: E07000071
+    local_authority_reference: COL
+  website: https://www.colchester.gov.uk
+- authority_id: E60000160
+  name: Epping Forest
+  codes:
+    local_planning_authority: E60000160
+    statistical_geography_gss: E07000072
+    local_authority_reference: EPP
+  website: https://www.eppingforestdc.gov.uk
+- authority_id: E60000161
+  name: Harlow
+  codes:
+    local_planning_authority: E60000161
+    statistical_geography_gss: E07000073
+    local_authority_reference: HAR
+  website: https://www.harlow.gov.uk
+- authority_id: E60000162
+  name: Maldon
+  codes:
+    local_planning_authority: E60000162
+    statistical_geography_gss: E07000074
+    local_authority_reference: MAL
+  website: https://www.maldon.gov.uk
+- authority_id: E60000163
+  name: Rochford
+  codes:
+    local_planning_authority: E60000163
+    statistical_geography_gss: E07000075
+    local_authority_reference: ROC
+  website: https://www.rochford.gov.uk
+- authority_id: E60000164
+  name: Tendring
+  codes:
+    local_planning_authority: E60000164
+    statistical_geography_gss: E07000076
+    local_authority_reference: TEN
+  website: https://www.tendringdc.gov.uk
+- authority_id: E60000165
+  name: Uttlesford
+  codes:
+    local_planning_authority: E60000165
+    statistical_geography_gss: E07000077
+    local_authority_reference: UTT
+  website: https://www.uttlesford.gov.uk
+- authority_id: E60000166
+  name: Broxbourne
+  codes:
+    local_planning_authority: E60000166
+    statistical_geography_gss: E07000095
+    local_authority_reference: BRX
+  website: https://www.broxbourne.gov.uk
+- authority_id: E60000167
+  name: Dacorum
+  codes:
+    local_planning_authority: E60000167
+    statistical_geography_gss: E07000096
+    local_authority_reference: DAC
+  website: https://www.dacorum.gov.uk
+- authority_id: E60000168
+  name: East Hertfordshire
+  codes:
+    local_planning_authority: E60000168
+    statistical_geography_gss: E07000242
+    local_authority_reference: EHE
+  website: https://www.eastherts.gov.uk
+- authority_id: E60000169
+  name: Hertsmere
+  codes:
+    local_planning_authority: E60000169
+    statistical_geography_gss: E07000098
+    local_authority_reference: HER
+  website: https://www.hertsmere.gov.uk
+- authority_id: E60000170
+  name: North Hertfordshire
+  codes:
+    local_planning_authority: E60000170
+    statistical_geography_gss: E07000099
+    local_authority_reference: NHE
+  website: https://www.north-herts.gov.uk
+- authority_id: E60000171
+  name: St Albans
+  codes:
+    local_planning_authority: E60000171
+    statistical_geography_gss: E07000240
+    local_authority_reference: SAL
+  website: https://www.stalbans.gov.uk
+- authority_id: E60000172
+  name: Stevenage
+  codes:
+    local_planning_authority: E60000172
+    statistical_geography_gss: E07000243
+    local_authority_reference: STV
+  website: https://www.stevenage.gov.uk
+- authority_id: E60000173
+  name: Three Rivers
+  codes:
+    local_planning_authority: E60000173
+    statistical_geography_gss: E07000102
+    local_authority_reference: THE
+  website: https://www.threerivers.gov.uk
+- authority_id: E60000174
+  name: Watford
+  codes:
+    local_planning_authority: E60000174
+    statistical_geography_gss: E07000103
+    local_authority_reference: WAT
+  website: https://www.watford.gov.uk
+- authority_id: E60000175
+  name: Welwyn Hatfield
+  codes:
+    local_planning_authority: E60000175
+    statistical_geography_gss: E07000241
+    local_authority_reference: WEW
+  website: https://www.welhat.gov.uk
+- authority_id: E60000176
+  name: Breckland
+  codes:
+    local_planning_authority: E60000176
+    statistical_geography_gss: E07000143
+    local_authority_reference: BRE
+  website: https://www.breckland.gov.uk
+- authority_id: E60000177
+  name: Broadland
+  codes:
+    local_planning_authority: E60000177
+    statistical_geography_gss: E07000144
+    local_authority_reference: BRO
+  website: https://www.broadland.gov.uk
+- authority_id: E60000178
+  name: Great Yarmouth
+  codes:
+    local_planning_authority: E60000178
+    statistical_geography_gss: E07000145
+    local_authority_reference: GRY
+  website: https://www.great-yarmouth.gov.uk
+- authority_id: E60000179
+  name: King’s Lynn and West Norfolk
+  codes:
+    local_planning_authority: E60000179
+    statistical_geography_gss: E07000146
+    local_authority_reference: KIN
+  website: https://www.west-norfolk.gov.uk
+- authority_id: E60000180
+  name: North Norfolk
+  codes:
+    local_planning_authority: E60000180
+    statistical_geography_gss: E07000147
+    local_authority_reference: NNO
+  website: https://www.northnorfolk.org/
+- authority_id: E60000181
+  name: Norwich
+  codes:
+    local_planning_authority: E60000181
+    statistical_geography_gss: E07000148
+    local_authority_reference: NOW
+  website: https://www.norwich.gov.uk
+- authority_id: E60000182
+  name: South Norfolk
+  codes:
+    local_planning_authority: E60000182
+    statistical_geography_gss: E07000149
+    local_authority_reference: SNO
+  website: https://www.south-norfolk.gov.uk
+- authority_id: E60000183
+  name: Babergh
+  codes:
+    local_planning_authority: E60000183
+    statistical_geography_gss: E07000200
+    local_authority_reference: BAB
+  website: https://www.babergh.gov.uk
+- authority_id: E60000184
+  name: East Suffolk
+  codes:
+    local_planning_authority: E60000184
+    statistical_geography_gss: E07000244
+    local_authority_reference: ESK
+  website: https://www.eastsuffolk.gov.uk
+- authority_id: E60000185
+  name: Ipswich
+  codes:
+    local_planning_authority: E60000185
+    statistical_geography_gss: E07000202
+    local_authority_reference: IPS
+  website: https://www.ipswich.gov.uk
+- authority_id: E60000245
+  name: Fareham
+  codes:
+    local_planning_authority: E60000245
+    statistical_geography_gss: E07000087
+    local_authority_reference: FAR
+  website: https://www.fareham.gov.uk
+- authority_id: E60000246
+  name: Gosport
+  codes:
+    local_planning_authority: E60000246
+    statistical_geography_gss: E07000088
+    local_authority_reference: GOS
+  website: https://www.gosport.gov.uk
+- authority_id: E60000247
+  name: Hart
+  codes:
+    local_planning_authority: E60000247
+    statistical_geography_gss: E07000089
+    local_authority_reference: HAT
+  website: https://www.hart.gov.uk
+- authority_id: E60000248
+  name: Havant
+  codes:
+    local_planning_authority: E60000248
+    statistical_geography_gss: E07000090
+    local_authority_reference: HAA
+  website: https://www.havant.gov.uk
+- authority_id: E60000249
+  name: New Forest
+  codes:
+    local_planning_authority: E60000249
+    statistical_geography_gss: E07000091
+    local_authority_reference: NEW
+  website: https://www.newforestdc.gov.uk
+- authority_id: E60000250
+  name: Rushmoor
+  codes:
+    local_planning_authority: E60000250
+    statistical_geography_gss: E07000092
+    local_authority_reference: RUH
+  website: https://www.rushmoor.gov.uk
+- authority_id: E60000251
+  name: Test Valley
+  codes:
+    local_planning_authority: E60000251
+    statistical_geography_gss: E07000093
+    local_authority_reference: TES
+  website: https://www.testvalley.gov.uk
+- authority_id: E60000252
+  name: Winchester
+  codes:
+    local_planning_authority: E60000252
+    statistical_geography_gss: E07000094
+    local_authority_reference: WIN
+  website: https://www.winchester.gov.uk
+- authority_id: E60000253
+  name: Ashford
+  codes:
+    local_planning_authority: E60000253
+    statistical_geography_gss: E07000105
+    local_authority_reference: ASF
+  website: https://www.ashford.gov.uk
+- authority_id: E60000254
+  name: Canterbury
+  codes:
+    local_planning_authority: E60000254
+    statistical_geography_gss: E07000106
+    local_authority_reference: CAT
+  website: https://www.canterbury.gov.uk
+- authority_id: E60000255
+  name: Dartford
+  codes:
+    local_planning_authority: E60000255
+    statistical_geography_gss: E07000107
+    local_authority_reference: DAR
+  website: https://www.dartford.gov.uk
+- authority_id: E60000256
+  name: Dover
+  codes:
+    local_planning_authority: E60000256
+    statistical_geography_gss: E07000108
+    local_authority_reference: DOV
+  website: https://www.dover.gov.uk
+- authority_id: E60000257
+  name: Folkestone and Hythe
+  codes:
+    local_planning_authority: E60000257
+    statistical_geography_gss: E07000112
+    local_authority_reference: SHE
+  website: https://www.folkestone-hythe.gov.uk
+- authority_id: E60000258
+  name: Gravesham
+  codes:
+    local_planning_authority: E60000258
+    statistical_geography_gss: E07000109
+    local_authority_reference: GRA
+  website: https://www.gravesham.gov.uk
+- authority_id: E60000259
+  name: Maidstone
+  codes:
+    local_planning_authority: E60000259
+    statistical_geography_gss: E07000110
+    local_authority_reference: MAI
+  website: https://www.maidstone.gov.uk
+- authority_id: E60000260
+  name: Sevenoaks
+  codes:
+    local_planning_authority: E60000260
+    statistical_geography_gss: E07000111
+    local_authority_reference: SEV
+  website: https://www.sevenoaks.gov.uk
+- authority_id: E60000261
+  name: Swale
+  codes:
+    local_planning_authority: E60000261
+    statistical_geography_gss: E07000113
+    local_authority_reference: SWL
+  website: https://www.swale.gov.uk
+- authority_id: E60000262
+  name: Thanet
+  codes:
+    local_planning_authority: E60000262
+    statistical_geography_gss: E07000114
+    local_authority_reference: THA
+  website: https://thanet.gov.uk
+- authority_id: E60000263
+  name: Tonbridge and Malling
+  codes:
+    local_planning_authority: E60000263
+    statistical_geography_gss: E07000115
+    local_authority_reference: TON
+  website: https://www.tmbc.gov.uk
+- authority_id: E60000264
+  name: Tunbridge Wells
+  codes:
+    local_planning_authority: E60000264
+    statistical_geography_gss: E07000116
+    local_authority_reference: TUN
+  website: https://www.tunbridgewells.gov.uk
+- authority_id: E60000265
+  name: Cherwell
+  codes:
+    local_planning_authority: E60000265
+    statistical_geography_gss: E07000177
+    local_authority_reference: CHR
+  website: https://www.cherwell-dc.gov.uk
+- authority_id: E60000266
+  name: Oxford
+  codes:
+    local_planning_authority: E60000266
+    statistical_geography_gss: E07000178
+    local_authority_reference: OXO
+  website: https://www.oxford.gov.uk
+- authority_id: E60000267
+  name: South Oxfordshire
+  codes:
+    statistical_geography_gss: E07000179
+    local_planning_authority: E60000267
+    local_authority_reference: SOX
+  website: https://www.southoxon.gov.uk
+- authority_id: E60000268
+  name: Vale of White Horse
+  codes:
+    local_planning_authority: E60000268
+    statistical_geography_gss: E07000180
+    local_authority_reference: VAL
+  website: https://www.whitehorsedc.gov.uk
+- authority_id: E60000269
+  name: West Oxfordshire
+  codes:
+    local_planning_authority: E60000269
+    statistical_geography_gss: E07000181
+    local_authority_reference: WOX
+  website: https://www.westoxon.gov.uk
+- authority_id: E60000270
+  name: Elmbridge
+  codes:
+    local_planning_authority: E60000270
+    statistical_geography_gss: E07000207
+    local_authority_reference: ELM
+  website: https://www.elmbridge.gov.uk
+- authority_id: E60000271
+  name: Epsom and Ewell
+  codes:
+    local_planning_authority: E60000271
+    statistical_geography_gss: E07000208
+    local_authority_reference: EPS
+  website: https://www.epsom-ewell.gov.uk
+- authority_id: E60000272
+  name: Guildford
+  codes:
+    local_planning_authority: E60000272
+    statistical_geography_gss: E07000209
+    local_authority_reference: GRT
+  website: https://www.guildford.gov.uk
+- authority_id: E60000273
+  name: Mole Valley
+  codes:
+    local_planning_authority: E60000273
+    statistical_geography_gss: E07000210
+    local_authority_reference: MOL
+  website: https://www.molevalley.gov.uk
+- authority_id: E60000274
+  name: Reigate and Banstead
+  codes:
+    local_planning_authority: E60000274
+    statistical_geography_gss: E07000211
+    local_authority_reference: REI
+  website: https://www.reigate-banstead.gov.uk
+- authority_id: E60000275
+  name: Runnymede
+  codes:
+    local_planning_authority: E60000275
+    statistical_geography_gss: E07000212
+    local_authority_reference: RUN
+  website: https://www.runnymede.gov.uk
+- authority_id: E60000276
+  name: Spelthorne
+  codes:
+    local_planning_authority: E60000276
+    statistical_geography_gss: E07000213
+    local_authority_reference: SPE
+  website: https://www.spelthorne.gov.uk
+- authority_id: E60000277
+  name: Surrey Heath
+  codes:
+    local_planning_authority: E60000277
+    statistical_geography_gss: E07000214
+    local_authority_reference: SUR
+  website: https://www.surreyheath.gov.uk
+- authority_id: E60000278
+  name: Tandridge
+  codes:
+    local_planning_authority: E60000278
+    statistical_geography_gss: E07000215
+    local_authority_reference: TAN
+  website: https://www.tandridge.gov.uk
+- authority_id: E60000279
+  name: Waverley
+  codes:
+    local_planning_authority: E60000279
+    statistical_geography_gss: E07000216
+    local_authority_reference: WAE
+  website: https://www.waverley.gov.uk/
+- authority_id: E60000280
+  name: Woking
+  codes:
+    local_planning_authority: E60000280
+    statistical_geography_gss: E07000217
+    local_authority_reference: WOI
+  website: https://www.woking.gov.uk
+- authority_id: E60000281
+  name: Adur
+  codes:
+    local_planning_authority: E60000281
+    statistical_geography_gss: E07000223
+    local_authority_reference: ADU
+  website: https://www.adur-worthing.gov.uk
+- authority_id: E60000282
+  name: Arun
+  codes:
+    local_planning_authority: E60000282
+    statistical_geography_gss: E07000224
+    local_authority_reference: ARU
+  website: https://www.arun.gov.uk
+- authority_id: E60000283
+  name: Chichester
+  codes:
+    local_planning_authority: E60000283
+    statistical_geography_gss: E07000225
+    local_authority_reference: CHI
+  website: https://www.chichester.gov.uk
+- authority_id: E60000284
+  name: Crawley
+  codes:
+    local_planning_authority: E60000284
+    statistical_geography_gss: E07000226
+    local_authority_reference: CRW
+  website: https://www.crawley.gov.uk
+- authority_id: E60000285
+  name: Horsham
+  codes:
+    local_planning_authority: E60000285
+    statistical_geography_gss: E07000227
+    local_authority_reference: HOR
+  website: https://www.horsham.gov.uk
+- authority_id: E60000286
+  name: Mid Sussex
+  codes:
+    local_planning_authority: E60000286
+    statistical_geography_gss: E07000228
+    local_authority_reference: MSS
+  website: https://www.midsussex.gov.uk
+- authority_id: E60000287
+  name: Worthing
+  codes:
+    local_planning_authority: E60000287
+    statistical_geography_gss: E07000229
+    local_authority_reference: WOT
+  website: https://www.adur-worthing.gov.uk
+- authority_id: E60000288
+  name: Bath and North East Somerset
+  codes:
+    local_planning_authority: E60000288
+    statistical_geography_gss: E06000022
+    local_authority_reference: BAS
+  website: https://www.bathnes.gov.uk
+- authority_id: E60000289
+  name: Bournemouth, Christchurch and Poole
+  codes:
+    local_planning_authority: E60000289
+    statistical_geography_gss: E06000058
+    local_authority_reference: BPC
+  website: https://www.bcpcouncil.gov.uk
+- authority_id: E60000290
+  name: Bristol, City of
+  codes:
+    local_planning_authority: E60000290
+    statistical_geography_gss: E06000023
+    local_authority_reference: BST
+  website: https://www.bristol.gov.uk
+- authority_id: E60000291
+  name: Cornwall
+  codes:
+    statistical_geography_gss: E06000052
+    local_planning_authority: E60000291
+    local_authority_reference: CON
+  website: https://www.cornwall.gov.uk
+- authority_id: E60000292
+  name: Dorset
+  codes:
+    local_planning_authority: E60000292
+    statistical_geography_gss: E06000059
+    local_authority_reference: DST
+  website: https://www.dorsetcouncil.gov.uk
+- authority_id: E60000293
+  name: Isles of Scilly
+  codes:
+    local_planning_authority: E60000293
+    statistical_geography_gss: E06000053
+    local_authority_reference: IOS
+  website: https://www.scilly.gov.uk
+- authority_id: E60000294
+  name: North Somerset
+  codes:
+    local_planning_authority: E60000294
+    statistical_geography_gss: E06000024
+    local_authority_reference: NSM
+  website: https://www.n-somerset.gov.uk
+- authority_id: E60000295
+  name: Plymouth
+  codes:
+    local_planning_authority: E60000295
+    statistical_geography_gss: E06000026
+    local_authority_reference: PLY
+  website: https://www.plymouth.gov.uk
+- authority_id: E60000296
+  name: South Gloucestershire
+  codes:
+    local_planning_authority: E60000296
+    statistical_geography_gss: E06000025
+    local_authority_reference: SGC
+  website: https://www.southglos.gov.uk
+- authority_id: E60000297
+  name: Swindon
+  codes:
+    local_planning_authority: E60000297
+    statistical_geography_gss: E06000030
+    local_authority_reference: SWD
+  website: https://www.swindon.gov.uk
+- authority_id: E60000298
+  name: Torbay
+  codes:
+    local_planning_authority: E60000298
+    statistical_geography_gss: E06000027
+    local_authority_reference: TOB
+  website: https://www.torbay.gov.uk
+- authority_id: E60000299
+  name: Wiltshire
+  codes:
+    local_planning_authority: E60000299
+    statistical_geography_gss: E06000054
+    local_authority_reference: WIL
+  website: https://wiltshire.gov.uk
+- authority_id: E60000300
+  name: East Devon
+  codes:
+    local_planning_authority: E60000300
+    statistical_geography_gss: E07000040
+    local_authority_reference: EDE
+  website: https://eastdevon.gov.uk
+- authority_id: E60000301
+  name: Exeter
+  codes:
+    local_planning_authority: E60000301
+    statistical_geography_gss: E07000041
+    local_authority_reference: EXE
+  website: https://www.exeter.gov.uk
+- authority_id: E60000302
+  name: Mid Devon
+  codes:
+    local_planning_authority: E60000302
+    statistical_geography_gss: E07000042
+    local_authority_reference: MDE
+  website: https://www.middevon.gov.uk
+- authority_id: E60000303
+  name: North Devon
+  codes:
+    local_planning_authority: E60000303
+    statistical_geography_gss: E07000043
+    local_authority_reference: NDE
+  website: https://www.northdevon.gov.uk
+- authority_id: E60000304
+  name: South Hams
+  codes:
+    local_planning_authority: E60000304
+    statistical_geography_gss: E07000044
+    local_authority_reference: SHA
+  website: https://www.southhams.gov.uk/
+- authority_id: E60000305
+  name: Teignbridge
+  codes:
+    local_planning_authority: E60000305
+    statistical_geography_gss: E07000045
+    local_authority_reference: TEI
+  website: https://www.teignbridge.gov.uk
+- authority_id: E60000306
+  name: Torridge
+  codes:
+    local_planning_authority: E60000306
+    statistical_geography_gss: E07000046
+    local_authority_reference: TOR
+  website: https://www.torridge.gov.uk
+- authority_id: E60000307
+  name: West Devon
+  codes:
+    local_planning_authority: E60000307
+    statistical_geography_gss: E07000047
+    local_authority_reference: WDE
+  website: https://www.westdevon.gov.uk
+- authority_id: E60000308
+  name: Cheltenham
+  codes:
+    local_planning_authority: E60000308
+    statistical_geography_gss: E07000078
+    local_authority_reference: CHT
+  website: https://www.cheltenham.gov.uk
+- authority_id: E60000309
+  name: Cotswold
+  codes:
+    local_planning_authority: E60000309
+    statistical_geography_gss: E07000079
+    local_authority_reference: COT
+  website: https://www.cotswold.gov.uk
+- authority_id: E60000310
+  name: Forest of Dean
+  codes:
+    local_planning_authority: E60000310
+    statistical_geography_gss: E07000080
+    local_authority_reference: FOE
+  website: https://www.fdean.gov.uk
+- authority_id: E60000311
+  name: Gloucester
+  codes:
+    local_planning_authority: E60000311
+    statistical_geography_gss: E07000081
+    local_authority_reference: GLO
+  website: https://www.gloucester.gov.uk
+- authority_id: E60000312
+  name: Stroud
+  codes:
+    local_planning_authority: E60000312
+    statistical_geography_gss: E07000082
+    local_authority_reference: STO
+  website: https://www.stroud.gov.uk
+- authority_id: E60000313
+  name: Tewkesbury
+  codes:
+    local_planning_authority: E60000313
+    statistical_geography_gss: E07000083
+    local_authority_reference: TEW
+  website: https://tewkesbury.gov.uk
+- authority_id: E60000318
+  name: Dartmoor National Park
+  codes:
+    local_planning_authority: E60000318
+    statistical_geography_gss: E26000001
+    local_authority_reference: DNP
+  website: https://www.dartmoor.gov.uk
+- authority_id: E60000319
+  name: Exmoor National Park
+  codes:
+    local_planning_authority: E60000319
+    statistical_geography_gss: E26000002
+    local_authority_reference: ENP
+  website: https://www.exmoor-nationalpark.gov.uk
+- authority_id: E60000320
+  name: Lake District National Park
+  codes:
+    local_planning_authority: E60000320
+    statistical_geography_gss: E26000003
+    local_authority_reference: LDN
+  website: https://www.lakedistrict.gov.uk
+- authority_id: E60000321
+  name: New Forest National Park
+  codes:
+    local_planning_authority: E60000321
+    statistical_geography_gss: E26000009
+    local_authority_reference: NFN
+  website: https://www.newforestnpa.gov.uk
+- authority_id: E60000322
+  name: North York Moors National Park
+  codes:
+    local_planning_authority: E60000322
+    statistical_geography_gss: E26000005
+    local_authority_reference: NYM
+  website: https://www.northyorkmoors.org.uk
+- authority_id: E60000323
+  name: Northumberland National Park
+  codes:
+    local_planning_authority: E60000323
+    statistical_geography_gss: E26000004
+    local_authority_reference: NNP
+  website: https://www.northumberlandnationalpark.org.uk
+- authority_id: E60000324
+  name: Peak District National Park
+  codes:
+    local_planning_authority: E60000324
+    statistical_geography_gss: E26000006
+    local_authority_reference: PDN
+  website: https://www.peakdistrict.gov.uk
+- authority_id: E60000325
+  name: South Downs National Park
+  codes:
+    local_planning_authority: E60000325
+    statistical_geography_gss: E26000010
+    local_authority_reference: SDN
+  website: https://www.southdowns.gov.uk
+- authority_id: E60000326
+  name: The Broads Authority
+  codes:
+    local_planning_authority: E60000326
+    statistical_geography_gss: E26000007
+    local_authority_reference: BRO
+  website: https://www.broads-authority.gov.uk
+- authority_id: E60000327
+  name: Yorkshire Dales National Park
+  codes:
+    local_planning_authority: E60000327
+    statistical_geography_gss: E26000008
+    local_authority_reference: YDN
+  website: https://www.yorkshiredales.org.uk
+- authority_id: E60000328
+  name: Ebbsfleet Development Corporation
+  codes:
+    local_planning_authority: E60000328
+    statistical_geography_gss: E60000328
+    local_authority_reference: EDC
+  website: https://ebbsfleetgardencity.org.uk
+- authority_id: E60000329
+  name: London Legacy Development Corporation
+  codes:
+    local_planning_authority: E60000329
+    statistical_geography_gss: E60000329
+    local_authority_reference: LLD
+  website: https://www.queenelizabetholympicpark.co.uk
+- authority_id: E60000330
+  name: Old Oak and Park Royal Development Corporation
+  codes:
+    local_planning_authority: E60000330
+    statistical_geography_gss: E60000330
+    local_authority_reference: OPD
+  website: https://www.london.gov.uk/opdc
+- authority_id: E60000331
+  name: Buckinghamshire
+  codes:
+    local_planning_authority: E60000331
+    statistical_geography_gss: E06000060
+    local_authority_reference: BUC
+  website: https://www.buckinghamshire.gov.uk/
+- authority_id: E60000332
+  name: North Northamptonshire
+  codes:
+    local_planning_authority: E60000332
+    statistical_geography_gss: E06000061
+    local_authority_reference: NNUA
+  website: https://www.northnorthants.gov.uk/
+- authority_id: E60000333
+  name: West Northamptonshire
+  codes:
+    local_planning_authority: E60000333
+    statistical_geography_gss: E06000062
+    local_authority_reference: WNUA
+  website: https://www.westnorthants.gov.uk/
+- authority_id: E60000334
+  name: Cumberland
+  codes:
+    local_planning_authority: E60000334
+    statistical_geography_gss: E06000063
+    local_authority_reference: CUA
+  website: https://www.cumberland.gov.uk/
+- authority_id: E60000335
+  name: Westmorland and Furness
+  codes:
+    local_planning_authority: E60000335
+    statistical_geography_gss: E06000064
+    local_authority_reference: WFUA
+  website: https://www.westmorlandandfurness.gov.uk/
+- authority_id: E60000336
+  name: North Yorkshire
+  codes:
+    local_planning_authority: E60000336
+    statistical_geography_gss: E06000065
+    local_authority_reference: NYUA
+  website: https://www.northyorks.gov.uk/
+- authority_id: E60000337
+  name: Somerset
+  codes:
+    local_planning_authority: E60000337
+    statistical_geography_gss: E06000066
+    local_authority_reference: SUA
+  website: https://www.somerset.gov.uk/
+- authority_id: E60000069
+  name: Calderdale
+  codes:
+    local_planning_authority: E60000069
+    statistical_geography_gss: E08000033
+    local_authority_reference: CLD
+  website: https://www.calderdale.gov.uk
+- authority_id: E60000070
+  name: Kirklees
+  codes:
+    local_planning_authority: E60000070
+    statistical_geography_gss: E08000034
+    local_authority_reference: KIR
+  website: https://www.kirklees.gov.uk
+- authority_id: E60000071
+  name: Leeds
+  codes:
+    local_planning_authority: E60000071
+    statistical_geography_gss: E08000035
+    local_authority_reference: LDS
+  website: https://www.leeds.gov.uk
+- authority_id: E60000072
+  name: Wakefield
+  codes:
+    local_planning_authority: E60000072
+    statistical_geography_gss: E08000036
+    local_authority_reference: WKF
+  website: https://www.wakefield.gov.uk
+- authority_id: E60000073
+  name: Derby
+  codes:
+    local_planning_authority: E60000073
+    statistical_geography_gss: E06000015
+    local_authority_reference: DER
+  website: https://www.derby.gov.uk
+- authority_id: E60000074
+  name: Leicester
+  codes:
+    local_planning_authority: E60000074
+    statistical_geography_gss: E06000016
+    local_authority_reference: LCE
+  website: https://www.leicester.gov.uk
+- authority_id: E60000075
+  name: Nottingham
+  codes:
+    local_planning_authority: E60000075
+    statistical_geography_gss: E06000018
+    local_authority_reference: NGM
+  website: https://www.nottinghamcity.gov.uk
+- authority_id: E60000076
+  name: Rutland
+  codes:
+    local_planning_authority: E60000076
+    statistical_geography_gss: E06000017
+    local_authority_reference: RUT
+  website: https://www.rutland.gov.uk
+- authority_id: E60000077
+  name: Amber Valley
+  codes:
+    local_planning_authority: E60000077
+    statistical_geography_gss: E07000032
+    local_authority_reference: AMB
+  website: https://www.ambervalley.gov.uk
+- authority_id: E60000078
+  name: Bolsover
+  codes:
+    local_planning_authority: E60000078
+    statistical_geography_gss: E07000033
+    local_authority_reference: BOS
+  website: https://www.bolsover.gov.uk
+- authority_id: E60000079
+  name: Chesterfield
+  codes:
+    local_planning_authority: E60000079
+    statistical_geography_gss: E07000034
+    local_authority_reference: CHS
+  website: https://www.chesterfield.gov.uk
+- authority_id: E60000080
+  name: Derbyshire Dales
+  codes:
+    local_planning_authority: E60000080
+    statistical_geography_gss: E07000035
+    local_authority_reference: DEB
+  website: https://www.derbyshiredales.gov.uk
+- authority_id: E60000081
+  name: Erewash
+  codes:
+    local_planning_authority: E60000081
+    statistical_geography_gss: E07000036
+    local_authority_reference: ERE
+  website: https://www.erewash.gov.uk
+- authority_id: E60000082
+  name: High Peak
+  codes:
+    local_planning_authority: E60000082
+    statistical_geography_gss: E07000037
+    local_authority_reference: HIG
+  website: https://www.highpeak.gov.uk
+- authority_id: E60000083
+  name: North East Derbyshire
+  codes:
+    local_planning_authority: E60000083
+    statistical_geography_gss: E07000038
+    local_authority_reference: NED
+  website: https://www.ne-derbyshire.gov.uk
+- authority_id: E60000084
+  name: South Derbyshire
+  codes:
+    local_planning_authority: E60000084
+    statistical_geography_gss: E07000039
+    local_authority_reference: SDE
+  website: https://www.southderbyshire.gov.uk/
+- authority_id: E60000085
+  name: Blaby
+  codes:
+    local_planning_authority: E60000085
+    statistical_geography_gss: E07000129
+    local_authority_reference: BLA
+  website: https://www.blaby.gov.uk
+- authority_id: E60000086
+  name: Charnwood
+  codes:
+    local_planning_authority: E60000086
+    statistical_geography_gss: E07000130
+    local_authority_reference: CHA
+  website: https://www.charnwood.gov.uk
+- authority_id: E60000087
+  name: Harborough
+  codes:
+    local_planning_authority: E60000087
+    statistical_geography_gss: E07000131
+    local_authority_reference: HAO
+  website: https://www.harborough.gov.uk
+- authority_id: E60000088
+  name: Hinckley and Bosworth
+  codes:
+    local_planning_authority: E60000088
+    statistical_geography_gss: E07000132
+    local_authority_reference: HIN
+  website: https://www.hinckley-bosworth.gov.uk
+- authority_id: E60000089
+  name: Melton
+  codes:
+    local_planning_authority: E60000089
+    statistical_geography_gss: E07000133
+    local_authority_reference: MEL
+  website: https://www.melton.gov.uk
+- authority_id: E60000090
+  name: North West Leicestershire
+  codes:
+    local_planning_authority: E60000090
+    statistical_geography_gss: E07000134
+    local_authority_reference: NWL
+  website: https://www.nwleics.gov.uk
+- authority_id: E60000091
+  name: Oadby and Wigston
+  codes:
+    local_planning_authority: E60000091
+    statistical_geography_gss: E07000135
+    local_authority_reference: OAD
+  website: https://oadby-wigston.gov.uk
+- authority_id: E60000092
+  name: Boston
+  codes:
+    local_planning_authority: E60000092
+    statistical_geography_gss: E07000136
+    local_authority_reference: BOT
+  website: https://www.boston.gov.uk
+- authority_id: E60000093
+  name: East Lindsey
+  codes:
+    local_planning_authority: E60000093
+    statistical_geography_gss: E07000137
+    local_authority_reference: ELI
+  website: https://www.e-lindsey.gov.uk
+- authority_id: E60000094
+  name: Lincoln
+  codes:
+    local_planning_authority: E60000094
+    statistical_geography_gss: E07000138
+    local_authority_reference: LIC
+  website: https://www.lincoln.gov.uk
+- authority_id: E60000095
+  name: North Kesteven
+  codes:
+    local_planning_authority: E60000095
+    statistical_geography_gss: E07000139
+    local_authority_reference: NKE
+  website: https://www.n-kesteven.gov.uk
+- authority_id: E60000096
+  name: South Holland
+  codes:
+    local_planning_authority: E60000096
+    statistical_geography_gss: E07000140
+    local_authority_reference: SHO
+  website: https://www.sholland.gov.uk
+- authority_id: E60000097
+  name: South Kesteven
+  codes:
+    local_planning_authority: E60000097
+    statistical_geography_gss: E07000141
+    local_authority_reference: SKE
+  website: https://www.southkesteven.gov.uk
+- authority_id: E60000098
+  name: West Lindsey
+  codes:
+    local_planning_authority: E60000098
+    statistical_geography_gss: E07000142
+    local_authority_reference: WLI
+  website: https://www.west-lindsey.gov.uk
+- authority_id: E60000106
+  name: Ashfield
+  codes:
+    local_planning_authority: E60000106
+    statistical_geography_gss: E07000170
+    local_authority_reference: ASH
+  website: https://www.ashfield.gov.uk
+- authority_id: E60000107
+  name: Bassetlaw
+  codes:
+    local_planning_authority: E60000107
+    statistical_geography_gss: E07000171
+    local_authority_reference: BAE
+  website: https://www.bassetlaw.gov.uk
+- authority_id: E60000108
+  name: Broxtowe
+  codes:
+    local_planning_authority: E60000108
+    statistical_geography_gss: E07000172
+    local_authority_reference: BRT
+  website: https://www.broxtowe.gov.uk
+- authority_id: E60000109
+  name: Gedling
+  codes:
+    local_planning_authority: E60000109
+    statistical_geography_gss: E07000173
+    local_authority_reference: GED
+  website: https://www.gedling.gov.uk
+- authority_id: E60000110
+  name: Mansfield
+  codes:
+    local_planning_authority: E60000110
+    statistical_geography_gss: E07000174
+    local_authority_reference: MAS
+  website: https://www.mansfield.gov.uk
+- authority_id: E60000111
+  name: Newark and Sherwood
+  codes:
+    local_planning_authority: E60000111
+    statistical_geography_gss: E07000175
+    local_authority_reference: NEA
+  website: https://www.newark-sherwooddc.gov.uk
+- authority_id: E60000112
+  name: Rushcliffe
+  codes:
+    local_planning_authority: E60000112
+    statistical_geography_gss: E07000176
+    local_authority_reference: RUS
+  website: https://www.rushcliffe.gov.uk
+- authority_id: E60000113
+  name: Herefordshire, County of
+  codes:
+    local_planning_authority: E60000113
+    statistical_geography_gss: E06000019
+    local_authority_reference: HEF
+  website: https://www.herefordshire.gov.uk
+- authority_id: E60000114
+  name: Shropshire
+  codes:
+    local_planning_authority: E60000114
+    statistical_geography_gss: E06000051
+    local_authority_reference: SHR
+  website: https://www.shropshire.gov.uk
+- authority_id: E60000115
+  name: Stoke-on-Trent
+  codes:
+    local_planning_authority: E60000115
+    statistical_geography_gss: E06000021
+    local_authority_reference: STE
+  website: https://www.stoke.gov.uk
+- authority_id: E60000116
+  name: Telford and Wrekin
+  codes:
+    local_planning_authority: E60000116
+    statistical_geography_gss: E06000020
+    local_authority_reference: TFW
+  website: https://www.telford.gov.uk
+- authority_id: E60000117
+  name: Cannock Chase
+  codes:
+    local_planning_authority: E60000117
+    statistical_geography_gss: E07000192
+    local_authority_reference: CAN
+  website: https://www.cannockchasedc.gov.uk
+- authority_id: E60000118
+  name: East Staffordshire
+  codes:
+    local_planning_authority: E60000118
+    statistical_geography_gss: E07000193
+    local_authority_reference: EST
+  website: https://www.eaststaffsbc.gov.uk
+- authority_id: E60000119
+  name: Lichfield
+  codes:
+    local_planning_authority: E60000119
+    statistical_geography_gss: E07000194
+    local_authority_reference: LIF
+  website: https://www.lichfielddc.gov.uk
+- authority_id: E60000120
+  name: Newcastle-under-Lyme
+  codes:
+    local_planning_authority: E60000120
+    statistical_geography_gss: E07000195
+    local_authority_reference: NEC
+  website: https://www.newcastle-staffs.gov.uk
+- authority_id: E60000121
+  name: South Staffordshire
+  codes:
+    local_planning_authority: E60000121
+    statistical_geography_gss: E07000196
+    local_authority_reference: SST
+  website: https://www.sstaffs.gov.uk
+- authority_id: E60000122
+  name: Stafford
+  codes:
+    local_planning_authority: E60000122
+    statistical_geography_gss: E07000197
+    local_authority_reference: STA
+  website: https://www.staffordbc.gov.uk
+- authority_id: E60000123
+  name: Staffordshire Moorlands
+  codes:
+    local_planning_authority: E60000123
+    statistical_geography_gss: E07000198
+    local_authority_reference: STF
+  website: https://www.staffsmoorlands.gov.uk
+- authority_id: E60000124
+  name: Tamworth
+  codes:
+    local_planning_authority: E60000124
+    statistical_geography_gss: E07000199
+    local_authority_reference: TAW
+  website: https://www.tamworth.gov.uk
+- authority_id: E60000125
+  name: North Warwickshire
+  codes:
+    local_planning_authority: E60000125
+    statistical_geography_gss: E07000218
+    local_authority_reference: NWA
+  website: https://www.northwarks.gov.uk
+- authority_id: E60000126
+  name: Nuneaton and Bedworth
+  codes:
+    local_planning_authority: E60000126
+    statistical_geography_gss: E07000219
+    local_authority_reference: NUN
+  website: https://www.nuneatonandbedworth.gov.uk
+- authority_id: E60000127
+  name: Rugby
+  codes:
+    local_planning_authority: E60000127
+    statistical_geography_gss: E07000220
+    local_authority_reference: RUG
+  website: https://www.rugby.gov.uk
+- authority_id: E60000128
+  name: Stratford-on-Avon
+  codes:
+    local_planning_authority: E60000128
+    statistical_geography_gss: E07000221
+    local_authority_reference: STR
+  website: https://www.stratford.gov.uk
+- authority_id: E60000129
+  name: Warwick
+  codes:
+    local_planning_authority: E60000129
+    statistical_geography_gss: E07000222
+    local_authority_reference: WAW
+  website: https://www.warwickdc.gov.uk
+- authority_id: E60000130
+  name: Birmingham
+  codes:
+    local_planning_authority: E60000130
+    statistical_geography_gss: E08000025
+    local_authority_reference: BIR
+  website: https://www.birmingham.gov.uk
+- authority_id: E60000186
+  name: Mid Suffolk
+  codes:
+    local_planning_authority: E60000186
+    statistical_geography_gss: E07000203
+    local_authority_reference: MSU
+  website: https://www.midsuffolk.gov.uk
+- authority_id: E60000187
+  name: West Suffolk
+  codes:
+    local_planning_authority: E60000187
+    statistical_geography_gss: E07000245
+    local_authority_reference: WSK
+  website: https://www.westsuffolk.gov.uk
+- authority_id: E60000188
+  name: Camden
+  codes:
+    local_planning_authority: E60000188
+    statistical_geography_gss: E09000007
+    local_authority_reference: CMD
+  website: https://www.camden.gov.uk
+- authority_id: E60000189
+  name: City of London
+  codes:
+    local_planning_authority: E60000189
+    statistical_geography_gss: E09000001
+    local_authority_reference: LND
+  website: https://www.cityoflondon.gov.uk/
+- authority_id: E60000190
+  name: Hackney
+  codes:
+    local_planning_authority: E60000190
+    statistical_geography_gss: E09000012
+    local_authority_reference: HCK
+  website: https://www.hackney.gov.uk
+- authority_id: E60000191
+  name: Hammersmith and Fulham
+  codes:
+    local_planning_authority: E60000191
+    statistical_geography_gss: E09000013
+    local_authority_reference: HMF
+  website: https://www.lbhf.gov.uk/
+- authority_id: E60000192
+  name: Haringey
+  codes:
+    local_planning_authority: E60000192
+    statistical_geography_gss: E09000014
+    local_authority_reference: HRY
+  website: https://www.haringey.gov.uk
+- authority_id: E60000193
+  name: Islington
+  codes:
+    local_planning_authority: E60000193
+    statistical_geography_gss: E09000019
+    local_authority_reference: ISL
+  website: https://www.islington.gov.uk
+- authority_id: E60000194
+  name: Kensington and Chelsea
+  codes:
+    statistical_geography_gss: E09000020
+    local_planning_authority: E60000194
+    local_authority_reference: KEC
+  website: https://www.rbkc.gov.uk/
+- authority_id: E60000195
+  name: Lambeth
+  codes:
+    local_planning_authority: E60000195
+    statistical_geography_gss: E09000022
+    local_authority_reference: LBH
+  website: https://www.lambeth.gov.uk
+- authority_id: E60000196
+  name: Lewisham
+  codes:
+    local_planning_authority: E60000196
+    statistical_geography_gss: E09000023
+    local_authority_reference: LEW
+  website: https://www.lewisham.gov.uk
+- authority_id: E60000197
+  name: Newham
+  codes:
+    statistical_geography_gss: E09000025
+    local_planning_authority: E60000197
+    local_authority_reference: NWM
+  website: https://www.newham.gov.uk
+- authority_id: E60000198
+  name: Southwark
+  codes:
+    local_planning_authority: E60000198
+    statistical_geography_gss: E09000028
+    local_authority_reference: SWK
+  website: https://www.southwark.gov.uk
+- authority_id: E60000199
+  name: Tower Hamlets
+  codes:
+    local_planning_authority: E60000199
+    statistical_geography_gss: E09000030
+    local_authority_reference: TWH
+  website: https://www.towerhamlets.gov.uk
+- authority_id: E60000200
+  name: Wandsworth
+  codes:
+    local_planning_authority: E60000200
+    statistical_geography_gss: E09000032
+    local_authority_reference: WND
+  website: https://www.wandsworth.gov.uk
+- authority_id: E60000201
+  name: Westminster
+  codes:
+    local_planning_authority: E60000201
+    statistical_geography_gss: E09000033
+    local_authority_reference: WSM
+  website: https://www.westminster.gov.uk
+- authority_id: E60000202
+  name: Barking and Dagenham
+  codes:
+    local_planning_authority: E60000202
+    statistical_geography_gss: E09000002
+    local_authority_reference: BDG
+  website: https://www.lbbd.gov.uk
+- authority_id: E60000203
+  name: Barnet
+  codes:
+    local_planning_authority: E60000203
+    statistical_geography_gss: E09000003
+    local_authority_reference: BNE
+  website: https://www.barnet.gov.uk
+- authority_id: E60000204
+  name: Bexley
+  codes:
+    local_planning_authority: E60000204
+    statistical_geography_gss: E09000004
+    local_authority_reference: BEX
+  website: https://www.bexley.gov.uk
+- authority_id: E60000205
+  name: Brent
+  codes:
+    local_planning_authority: E60000205
+    statistical_geography_gss: E09000005
+    local_authority_reference: BEN
+  website: https://www.brent.gov.uk
+- authority_id: E60000206
+  name: Bromley
+  codes:
+    local_planning_authority: E60000206
+    statistical_geography_gss: E09000006
+    local_authority_reference: BRY
+  website: https://www.bromley.gov.uk
+- authority_id: E60000207
+  name: Croydon
+  codes:
+    statistical_geography_gss: E09000008
+    local_planning_authority: E60000207
+    local_authority_reference: CRY
+  website: https://www.croydon.gov.uk
+- authority_id: E60000208
+  name: Ealing
+  codes:
+    local_planning_authority: E60000208
+    statistical_geography_gss: E09000009
+    local_authority_reference: EAL
+  website: https://www.ealing.gov.uk
+- authority_id: E60000209
+  name: Enfield
+  codes:
+    local_planning_authority: E60000209
+    statistical_geography_gss: E09000010
+    local_authority_reference: ENF
+  website: https://www.enfield.gov.uk
+- authority_id: E60000210
+  name: Greenwich
+  codes:
+    local_planning_authority: E60000210
+    statistical_geography_gss: E09000011
+    local_authority_reference: GRE
+  website: https://www.royalgreenwich.gov.uk
+- authority_id: E60000211
+  name: Harrow
+  codes:
+    local_planning_authority: E60000211
+    statistical_geography_gss: E09000015
+    local_authority_reference: HRW
+  website: https://www.harrow.gov.uk
+- authority_id: E60000212
+  name: Havering
+  codes:
+    local_planning_authority: E60000212
+    statistical_geography_gss: E09000016
+    local_authority_reference: HAV
+  website: https://www.havering.gov.uk
+- authority_id: E60000213
+  name: Hillingdon
+  codes:
+    local_planning_authority: E60000213
+    statistical_geography_gss: E09000017
+    local_authority_reference: HIL
+  website: https://www.hillingdon.gov.uk
+- authority_id: E60000214
+  name: Hounslow
+  codes:
+    local_planning_authority: E60000214
+    statistical_geography_gss: E09000018
+    local_authority_reference: HNS
+  website: https://www.hounslow.gov.uk
+- authority_id: E60000215
+  name: Kingston upon Thames
+  codes:
+    local_planning_authority: E60000215
+    statistical_geography_gss: E09000021
+    local_authority_reference: KTT
+  website: https://www.kingston.gov.uk
+- authority_id: E60000216
+  name: Merton
+  codes:
+    local_planning_authority: E60000216
+    statistical_geography_gss: E09000024
+    local_authority_reference: MRT
+  website: https://www.merton.gov.uk
+- authority_id: E60000217
+  name: Redbridge
+  codes:
+    local_planning_authority: E60000217
+    statistical_geography_gss: E09000026
+    local_authority_reference: RDB
+  website: https://www.redbridge.gov.uk
+- authority_id: E60000218
+  name: Richmond upon Thames
+  codes:
+    local_planning_authority: E60000218
+    statistical_geography_gss: E09000027
+    local_authority_reference: RIC
+  website: https://www.richmond.gov.uk
+- authority_id: E60000219
+  name: Sutton
+  codes:
+    local_planning_authority: E60000219
+    statistical_geography_gss: E09000029
+    local_authority_reference: STN
+  website: https://www.sutton.gov.uk
+- authority_id: E60000220
+  name: Waltham Forest
+  codes:
+    local_planning_authority: E60000220
+    statistical_geography_gss: E09000031
+    local_authority_reference: WFT
+  website: https://www.walthamforest.gov.uk/
+- authority_id: E60000221
+  name: Bracknell Forest
+  codes:
+    local_planning_authority: E60000221
+    statistical_geography_gss: E06000036
+    local_authority_reference: BRC
+  website: https://www.bracknell-forest.gov.uk/
+- authority_id: E60000222
+  name: Brighton and Hove
+  codes:
+    statistical_geography_gss: E06000043
+    local_planning_authority: E60000222
+    local_authority_reference: BNH
+  website: https://www.brighton-hove.gov.uk
+- authority_id: E60000223
+  name: Isle of Wight
+  codes:
+    local_planning_authority: E60000223
+    statistical_geography_gss: E06000046
+    local_authority_reference: IOW
+  website: https://www.iow.gov.uk/
+- authority_id: E60000224
+  name: Medway
+  codes:
+    local_planning_authority: E60000224
+    statistical_geography_gss: E06000035
+    local_authority_reference: MDW
+  website: https://www.medway.gov.uk
+- authority_id: E60000225
+  name: Milton Keynes
+  codes:
+    statistical_geography_gss: E06000042
+    local_planning_authority: E60000225
+    local_authority_reference: MIK
+  website: https://www.milton-keynes.gov.uk/
+- authority_id: E60000226
+  name: Portsmouth
+  codes:
+    local_planning_authority: E60000226
+    statistical_geography_gss: E06000044
+    local_authority_reference: POR
+  website: https://www.portsmouth.gov.uk
+- authority_id: E60000227
+  name: Reading
+  codes:
+    local_planning_authority: E60000227
+    statistical_geography_gss: E06000038
+    local_authority_reference: RDG
+  website: http://www.reading.gov.uk
+- authority_id: E60000228
+  name: Slough
+  codes:
+    local_planning_authority: E60000228
+    statistical_geography_gss: E06000039
+    local_authority_reference: SLG
+  website: https://www.slough.gov.uk
+- authority_id: E60000229
+  name: Southampton
+  codes:
+    local_planning_authority: E60000229
+    statistical_geography_gss: E06000045
+    local_authority_reference: STH
+  website: https://www.southampton.gov.uk/
+- authority_id: E60000230
+  name: West Berkshire
+  codes:
+    local_planning_authority: E60000230
+    statistical_geography_gss: E06000037
+    local_authority_reference: WBK
+  website: https://www.westberks.gov.uk
+- authority_id: E60000231
+  name: Windsor and Maidenhead
+  codes:
+    local_planning_authority: E60000231
+    statistical_geography_gss: E06000040
+    local_authority_reference: WNM
+  website: https://www.rbwm.gov.uk/
+- authority_id: E60000232
+  name: Wokingham
+  codes:
+    local_planning_authority: E60000232
+    statistical_geography_gss: E06000041
+    local_authority_reference: WOK
+  website: https://www.wokingham.gov.uk
+- authority_id: E60000237
+  name: Eastbourne
+  codes:
+    local_planning_authority: E60000237
+    statistical_geography_gss: E07000061
+    local_authority_reference: EAS
+  website: https://www.eastbourne.gov.uk
+- authority_id: E60000238
+  name: Hastings
+  codes:
+    local_planning_authority: E60000238
+    statistical_geography_gss: E07000062
+    local_authority_reference: HAS
+  website: https://www.hastings.gov.uk
+- authority_id: E60000239
+  name: Lewes
+  codes:
+    local_planning_authority: E60000239
+    statistical_geography_gss: E07000063
+    local_authority_reference: LEE
+  website: https://www.lewes-eastbourne.gov.uk
+- authority_id: E60000240
+  name: Rother
+  codes:
+    local_planning_authority: E60000240
+    statistical_geography_gss: E07000064
+    local_authority_reference: ROH
+  website: https://www.rother.gov.uk
+- authority_id: E60000241
+  name: Wealden
+  codes:
+    local_planning_authority: E60000241
+    statistical_geography_gss: E07000065
+    local_authority_reference: WEA
+  website: https://www.wealden.gov.uk
+- authority_id: E60000242
+  name: Basingstoke and Deane
+  codes:
+    local_planning_authority: E60000242
+    statistical_geography_gss: E07000084
+    local_authority_reference: BAN
+  website: https://www.basingstoke.gov.uk
+- authority_id: E60000243
+  name: East Hampshire
+  codes:
+    local_planning_authority: E60000243
+    statistical_geography_gss: E07000085
+    local_authority_reference: EHA
+  website: https://www.easthants.gov.uk
+- authority_id: E60000244
+  name: Eastleigh
+  codes:
+    local_planning_authority: E60000244
+    statistical_geography_gss: E07000086
+    local_authority_reference: EAT
+  website: https://www.eastleigh.gov.uk
+- authority_id: greater_manchester
+  name: Greater Manchester Combined Authority
+  codes:
+    statistical_geography_gss: E47000001
+    local_authority_reference: GMCA
+  website: https://www.greatermanchester-ca.gov.uk
+  notes: 'GMCA is not itself a single local planning authority; it is included here
+    to support joint plan-making (e.g., Places for Everyone) and combined authority
+    evidence contexts.
 
-  - authority_id: cornwall
-    name: "Cornwall Council"
-    codes:
-      statistical_geography_gss: "E06000052"
-      local_planning_authority: "E60000291"
-      local_authority_reference: "CON"
-    website: "https://www.cornwall.gov.uk"
-
-  - authority_id: croydon
-    name: "London Borough of Croydon"
-    codes:
-      statistical_geography_gss: "E09000008"
-      local_planning_authority: "E60000207"
-      local_authority_reference: "CRY"
-    website: "https://www.croydon.gov.uk"
-
-  - authority_id: greater_manchester
-    name: "Greater Manchester Combined Authority"
-    codes:
-      statistical_geography_gss: "E47000001"
-      local_authority_reference: "GMCA"
-    website: "https://www.greatermanchester-ca.gov.uk"
-    notes: >
-      GMCA is not itself a single local planning authority; it is included here to support
-      joint plan-making (e.g., Places for Everyone) and combined authority evidence contexts.
-
-  - authority_id: kensington_and_chelsea
-    name: "Royal Borough of Kensington and Chelsea"
-    codes:
-      statistical_geography_gss: "E09000020"
-      local_planning_authority: "E60000194"
-      local_authority_reference: "KEC"
-    website: "https://www.rbkc.gov.uk/"
-
-  - authority_id: milton_keynes
-    name: "Milton Keynes City Council"
-    codes:
-      statistical_geography_gss: "E06000042"
-      local_planning_authority: "E60000225"
-      local_authority_reference: "MIK"
-    website: "https://www.milton-keynes.gov.uk/"
-
-  - authority_id: newham
-    name: "London Borough of Newham"
-    codes:
-      statistical_geography_gss: "E09000025"
-      local_planning_authority: "E60000197"
-      local_authority_reference: "NWM"
-    website: "https://www.newham.gov.uk"
-
-  - authority_id: south_cambridgeshire
-    name: "South Cambridgeshire District Council"
-    codes:
-      statistical_geography_gss: "E07000012"
-      local_planning_authority: "E60000153"
-      local_authority_reference: "SCA"
-    website: "https://www.scambs.gov.uk"
-
-  - authority_id: south_oxfordshire
-    name: "South Oxfordshire District Council"
-    codes:
-      statistical_geography_gss: "E07000179"
-      local_planning_authority: "E60000267"
-      local_authority_reference: "SOX"
-    website: "https://www.southoxon.gov.uk"
-
+    '

@@ -5,10 +5,6 @@ BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
-DROP TABLE IF EXISTS policy_clause_embeddings;
-DROP TABLE IF EXISTS policy_clauses;
-DROP TABLE IF EXISTS policies;
-DROP TABLE IF EXISTS chunk_embeddings;
 
 -- ---------------------------------------------------------------------------
 -- Identity / lifecycle tables (planner-grade audit questions land here)
@@ -211,7 +207,8 @@ CREATE TABLE IF NOT EXISTS documents (
   raw_bytes bigint,
   raw_content_type text,
   raw_source_uri text,
-  raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL
+  raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
 );
 
 ALTER TABLE documents
@@ -231,6 +228,9 @@ ALTER TABLE documents
 
 ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL;
+
+ALTER TABLE documents
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT NOW();
 
 CREATE INDEX IF NOT EXISTS documents_authority_id_idx
   ON documents (authority_id);
@@ -440,6 +440,7 @@ CREATE TABLE IF NOT EXISTS visual_assets (
   source_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
   asset_type text NOT NULL,
   blob_path text NOT NULL,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
   metadata jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT NOW(),
   updated_at timestamptz NOT NULL DEFAULT NOW()
@@ -468,6 +469,9 @@ ALTER TABLE visual_assets
 
 ALTER TABLE visual_assets
   ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT NOW();
+
+ALTER TABLE visual_assets
+  ADD COLUMN IF NOT EXISTS evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL;
 
 ALTER TABLE visual_assets
   ADD COLUMN IF NOT EXISTS ingest_batch_id uuid REFERENCES ingest_batches (id) ON DELETE SET NULL;
@@ -513,6 +517,7 @@ CREATE TABLE IF NOT EXISTS visual_asset_regions (
   bbox_quality text,
   mask_id uuid REFERENCES segmentation_masks (id) ON DELETE SET NULL,
   caption_text text,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
   metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
@@ -1716,6 +1721,9 @@ ALTER TABLE segmentation_masks
 
 ALTER TABLE visual_asset_regions
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_asset_regions
+  ADD COLUMN IF NOT EXISTS evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL;
 
 ALTER TABLE visual_asset_links
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;

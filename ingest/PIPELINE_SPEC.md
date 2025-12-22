@@ -10,6 +10,21 @@
     * Extract "Mentions" (Site/Policy).
     * Create `CITES` and `MENTIONS` edges.
 
+### Run-step trace (engineer/inspector audit)
+Each ingestion run records pass-level status in `ingest_run_steps` with inputs/outputs:
+* `anchor_raw`
+* `docling_parse`
+* `canonical_load`
+* `visual_semantics_asset`
+* `visual_segmentation`
+* `visual_semantics_regions`
+* `visual_linking`
+* `visual_embeddings`
+* `visual_assertion_embeddings`
+* `structural_llm`
+* `edges_llm`
+* `embeddings`
+
 ## Invariant
 The pipeline must be **Multi-Pass**.
 * Pass 1: Structural extraction (fast).

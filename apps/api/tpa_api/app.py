@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from .db import init_db_pool, shutdown_db_pool
 from .routes.core import router as core_router
 from .routes.culp_artefacts import router as culp_artefacts_router
+from .routes.debug import router as debug_router
 from .routes.consultations import router as consultations_router
 from .routes.draft import router as draft_router
 from .routes.evidence_graph import router as evidence_router
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
         shutdown_db_pool()
 
     app.include_router(core_router)
+    app.include_router(debug_router)
     app.include_router(spec_router)
     app.include_router(draft_router)
     app.include_router(rulepacks_router)

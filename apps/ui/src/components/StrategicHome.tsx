@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { LayoutGrid, Calendar, AlertCircle, CheckCircle, Clock, ArrowRight, ChevronRight, MapPin, Building2, Plus, FileText } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "./ui/card";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
+import { Input } from "./ui/input";
 import { Progress } from "./ui/progress";
 import { Logo } from "./Logo";
 import { useProject } from '../contexts/AuthorityContext';
@@ -36,6 +37,16 @@ export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHom
   const { authority, setAuthority, authorities, loadingAuthorities } = useProject();
   const [planProjects, setPlanProjects] = useState<Array<{ plan_project_id: string; title: string }>>([]);
   const [loadingProjects, setLoadingProjects] = useState(false);
+  const [authorityQuery, setAuthorityQuery] = useState('');
+
+  const filteredAuthorities = useMemo(() => {
+    const query = authorityQuery.trim().toLowerCase();
+    if (!query) return authorities;
+    return authorities.filter((auth) => {
+      const haystack = `${auth.name} ${auth.id}`.toLowerCase();
+      return haystack.includes(query);
+    });
+  }, [authorities, authorityQuery]);
 
   useEffect(() => {
     if (!authority) {
@@ -121,20 +132,34 @@ export function StrategicHome({ onOpenProject, onSwitchWorkspace }: StrategicHom
               <div className="space-y-4">
                 <div className="grid gap-2 text-left">
                   <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Authority</label>
-                  <select
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                    onChange={(e) => {
-                      const auth = authorities.find(a => a.id === e.target.value);
-                      if (auth) setAuthority(auth);
-                    }}
-                    value=""
+                  <Input
+                    value={authorityQuery}
+                    onChange={(e) => setAuthorityQuery(e.target.value)}
+                    placeholder="Search local planning authority"
                     disabled={loadingAuthorities}
-                  >
-                    <option value="" disabled>Select an authority...</option>
-                    {authorities.map(auth => (
-                      <option key={auth.id} value={auth.id}>{auth.name}</option>
-                    ))}
-                  </select>
+                  />
+                </div>
+                <div
+                  className="max-h-56 overflow-y-auto rounded-md border bg-white text-left text-sm"
+                  style={{ borderColor: 'var(--color-neutral-300)' }}
+                >
+                  {loadingAuthorities ? (
+                    <div className="px-3 py-2 text-slate-500">Loading authorities...</div>
+                  ) : filteredAuthorities.length === 0 ? (
+                    <div className="px-3 py-2 text-slate-500">No authorities match that search.</div>
+                  ) : (
+                    filteredAuthorities.map((auth) => (
+                      <button
+                        key={auth.id}
+                        type="button"
+                        className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-slate-50"
+                        onClick={() => setAuthority(auth)}
+                      >
+                        <span className="font-medium text-slate-900">{auth.name}</span>
+                        <span className="text-xs text-slate-500">{auth.id}</span>
+                      </button>
+                    ))
+                  )}
                 </div>
               </div>
             </div>

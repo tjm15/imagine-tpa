@@ -95,6 +95,16 @@ Goal: allow “find similar schemes” and “find similar street character” i
 * join visual embeddings to policy + spatial context via cross-modal retrieval
 * surface results as evidence cards (precedent analogues), not as recommendations
 
+### 3.7 Two-phase visual semantics (asset → region)
+Required pass ordering for planner-legible semantics:
+* **Pass A — Asset facts**: classify asset type/subtype and extract canonical/global cues (north arrow, scale bar, legend, etc.).
+* **Pass B — Segmentation**: generate region masks + crops for local evidence targeting.
+* **Pass C — Region assertions**: emit atomic, typed assertions per region with evidence anchors.
+* **Pass D — Embeddings**: embed asset summaries and region assertions for retrieval.
+
+Traceability rule:
+* Assertions MUST carry region evidence anchors (region id + evidence refs); fall back to asset evidence only when no region match exists.
+
 ## 4) Registration and overlays (plan ↔ world / camera ↔ world)
 Registration is the bridge between “plan text” and “physical consequences”.
 

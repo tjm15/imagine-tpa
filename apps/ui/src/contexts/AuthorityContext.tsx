@@ -15,6 +15,12 @@ export interface PlanProject {
     metadata: Record<string, any>;
 }
 
+const LPA_SUFFIX_RE = /\s+LPA$/i;
+
+function stripLpaSuffix(name: string): string {
+    return name.replace(LPA_SUFFIX_RE, '').trim();
+}
+
 interface ProjectContextType {
     authority: Authority | null;
     projectId: string | null;
@@ -50,7 +56,8 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 const mapped = items
                     .map((item) => {
                         const authorityId = typeof item.authority_id === 'string' ? item.authority_id : null;
-                        const name = typeof item.name === 'string' ? item.name : authorityId || 'Unknown authority';
+                        const rawName = typeof item.name === 'string' ? item.name : authorityId || 'Unknown authority';
+                        const name = stripLpaSuffix(rawName);
                         if (!authorityId) {
                             return null;
                         }
