@@ -5,11 +5,14 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 
+export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
+
 interface MapViewProps {
   workspace: WorkspaceMode;
+  explainabilityMode?: ExplainabilityMode;
 }
 
-export function MapView({ workspace }: MapViewProps) {
+export function MapView({ workspace, explainabilityMode = 'summary' }: MapViewProps) {
   const [activeLayers, setActiveLayers] = useState({
     constraints: true,
     transport: true,

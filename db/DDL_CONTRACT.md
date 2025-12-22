@@ -33,6 +33,8 @@ All state must exist in these tables.
 * `policy_definitions` (id, policy_section_id [nullable], policy_clause_id [nullable], run_id [nullable], term, definition_text, evidence_ref_id [nullable], source_artifact_id [nullable], metadata_jsonb)
 * `policy_targets` (id, policy_section_id [nullable], policy_clause_id [nullable], run_id [nullable], metric [nullable], value [nullable], unit [nullable], timeframe [nullable], geography_ref [nullable], raw_text [nullable], evidence_ref_id [nullable], source_artifact_id [nullable], metadata_jsonb)
 * `policy_monitoring_hooks` (id, policy_section_id [nullable], policy_clause_id [nullable], run_id [nullable], indicator_text, evidence_ref_id [nullable], source_artifact_id [nullable], metadata_jsonb)
+* `policy_matrices` (id, document_id, policy_section_id [nullable], run_id [nullable], matrix_jsonb, evidence_ref_id [nullable], metadata_jsonb, created_at)
+* `policy_scopes` (id, document_id, policy_section_id [nullable], run_id [nullable], scope_jsonb, evidence_ref_id [nullable], metadata_jsonb, created_at)
 * `sites` (id, geometry_polygon, metadata)
 * `site_fingerprints` (id, site_id, plan_cycle_id [nullable], authority_id [nullable], fingerprint_jsonb, tool_run_id [nullable], created_at, updated_at, is_current, superseded_by_fingerprint_id [nullable], confidence_hint [nullable], uncertainty_note [nullable])
 * `spatial_features` (id, authority_id [nullable], ingest_batch_id [nullable], type, spatial_scope [nullable], is_active, effective_from [nullable], effective_to [nullable], confidence_hint [nullable], uncertainty_note [nullable], geometry, properties)

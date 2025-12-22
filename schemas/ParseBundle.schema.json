@@ -8,6 +8,7 @@
     "bundle_id": {"type": "string", "format": "uuid"},
     "tables_unimplemented": {"type": "boolean"},
     "parse_flags": {"type": "array", "items": {"type": "string"}},
+    "docling_errors": {"type": "array", "items": {"type": "string"}},
     "document": {
       "type": "object",
       "properties": {

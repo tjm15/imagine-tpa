@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import hashlib
 import io
@@ -92,7 +93,7 @@ def _extract_json(text: str) -> dict[str, Any] | None:
         return None
 
 
-def _call_llm_json(*, prompt: str, model_id: str | None, time_budget_seconds: float) -> tuple[dict[str, Any] | None, list[str]]:
+def _call_llm_json(*, prompt: str, model_id: str | None) -> tuple[dict[str, Any] | None, list[str]]:
     base_url = os.environ.get("TPA_LLM_BASE_URL")
     if not base_url:
         return None, ["llm_unconfigured"]
@@ -123,7 +124,7 @@ def _call_llm_json(*, prompt: str, model_id: str | None, time_budget_seconds: fl
     return obj, []
 
 
-def _call_vlm_json(*, prompt: str, image_bytes: bytes, model_id: str | None, time_budget_seconds: float) -> tuple[dict[str, Any] | None, list[str]]:
+def _call_vlm_json(*, prompt: str, image_bytes: bytes, model_id: str | None) -> tuple[dict[str, Any] | None, list[str]]:
     base_url = os.environ.get("TPA_VLM_BASE_URL")
     if not base_url:
         return None, ["vlm_unconfigured"]
@@ -668,6 +669,20 @@ def _chunk_blocks_for_llm(
     return groups
 
 
+def _normalize_block_ids(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    counters: dict[int, int] = {}
+    for block in blocks:
+        page_number = int(block.get("page_number") or 0)
+        counters[page_number] = counters.get(page_number, 0) + 1
+        new_id = f"blk-{page_number:04d}-{counters[page_number]:04d}"
+        meta = dict(block.get("metadata") or {})
+        meta.setdefault("source_block_id", block.get("block_id"))
+        meta.setdefault("block_id_scheme", "tpa_norm_v1")
+        block["metadata"] = meta
+        block["block_id"] = new_id
+    return blocks
+
+
 def _annotate_blocks_with_llm(
     blocks: list[dict[str, Any]],
     *,
@@ -676,7 +691,11 @@ def _annotate_blocks_with_llm(
     if not blocks:
         return blocks, [], [], [], []
 
-    groups = [blocks]
+    max_blocks = int(os.environ.get("TPA_DOC_PARSE_LLM_BLOCKS_PER_PASS", "120"))
+    max_chars = int(os.environ.get("TPA_DOC_PARSE_LLM_CHARS_PER_PASS", "60000"))
+    groups = _chunk_blocks_for_llm(blocks, max_blocks=max_blocks, max_chars=max_chars)
+    if not groups:
+        groups = [blocks]
 
     block_annotations: dict[str, dict[str, Any]] = {}
     policy_headings: list[dict[str, Any]] = []
@@ -721,7 +740,6 @@ def _annotate_blocks_with_llm(
         obj, errs = _call_llm_json(
             prompt=prompt + "\n\n" + json.dumps({"blocks": group}, ensure_ascii=False),
             model_id=llm_model_id,
-            time_budget_seconds=140.0,
         )
         elapsed = max(0.0, time.time() - started)
         tool_runs.append(
@@ -865,7 +883,7 @@ def _make_evidence_refs(document_id: str, blocks: list[dict[str, Any]]) -> list[
     return refs
 
 
-def _classify_visuals(
+async def _classify_visuals(
     visuals: list[dict[str, Any]],
     *,
     vlm_model_id: str | None,
@@ -885,36 +903,58 @@ def _classify_visuals(
         "\"constraint_type\":..., \"extracted_metrics\": [...], \"caption_hint\":...}."
     )
     iterable = visuals if max_visuals is None else visuals[:max_visuals]
-    for idx, item in enumerate(iterable, start=1):
+    concurrency = int(os.environ.get("TPA_VLM_CONCURRENCY", "4"))
+    semaphore = asyncio.Semaphore(concurrency if concurrency > 0 else 1)
+
+    async def _classify_one(idx: int, item: dict[str, Any]) -> tuple[int, dict[str, Any], dict[str, Any]] | None:
         data = item.get("bytes")
         if not isinstance(data, (bytes, bytearray)):
-            continue
-        started = time.time()
-        obj, errs = _call_vlm_json(prompt=prompt, image_bytes=bytes(data), model_id=vlm_model_id, time_budget_seconds=120.0)
-        elapsed = max(0.0, time.time() - started)
-        tool_runs.append(
-            {
-                "tool_name": "vlm_visual_classification",
-                "status": "success" if obj else "error",
-                "inputs": {"image_index": idx},
-                "outputs": obj or {"errors": errs},
-                "duration_seconds": elapsed,
-                "limitations_text": "VLM classification is non-deterministic; treat as indicative.",
-            }
-        )
+            return None
+        async with semaphore:
+            started = time.time()
+            obj, errs = await asyncio.to_thread(
+                _call_vlm_json,
+                prompt=prompt,
+                image_bytes=bytes(data),
+                model_id=vlm_model_id,
+            )
+            elapsed = max(0.0, time.time() - started)
         classification = obj or {}
         classification["errors"] = errs
-        classified.append({**item, "classification": classification})
+        tool_run = {
+            "tool_name": "vlm_visual_classification",
+            "status": "success" if obj else "error",
+            "inputs": {"image_index": idx},
+            "outputs": obj or {"errors": errs},
+            "duration_seconds": elapsed,
+            "limitations_text": "VLM classification is non-deterministic; treat as indicative.",
+        }
+        return idx, {**item, "classification": classification}, tool_run
+
+    tasks = [asyncio.create_task(_classify_one(idx, item)) for idx, item in enumerate(iterable, start=1)]
+    results: dict[int, tuple[dict[str, Any], dict[str, Any]]] = {}
+    for task in asyncio.as_completed(tasks):
+        res = await task
+        if not res:
+            continue
+        idx, classified_item, tool_run = res
+        results[idx] = (classified_item, tool_run)
+
+    for idx in sorted(results.keys()):
+        classified_item, tool_run = results[idx]
+        classified.append(classified_item)
+        tool_runs.append(tool_run)
     return classified, tool_runs
 
 
-def _call_vectorize(*, image_bytes: bytes, time_budget_seconds: float) -> tuple[list[dict[str, Any]], list[str]]:
+def _call_vectorize(*, image_bytes: bytes, filename: str) -> tuple[list[dict[str, Any]], list[str]]:
     base_url = os.environ.get("TPA_VECTORIZE_BASE_URL")
     if not base_url:
         return [], ["vectorize_unconfigured"]
     timeout = None
     url = base_url.rstrip("/") + "/vectorize"
-    files = {"file": ("image.png", io.BytesIO(image_bytes), "image/png")}
+    safe_name = filename if filename and filename.strip() else "image.png"
+    files = {"file": (safe_name, io.BytesIO(image_bytes), "image/png")}
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, files=files)
@@ -1041,6 +1081,7 @@ async def parse_bundle(
         block["metadata"] = block_meta
 
     blocks = [*docling_blocks_filtered, *fallback_blocks]
+    blocks = _normalize_block_ids(blocks)
     tables = docling_tables
     tables_unimplemented = (not docling_used) or bool(docling_errors)
     parse_flags: list[str] = []
@@ -1058,11 +1099,14 @@ async def parse_bundle(
         block["evidence_ref"] = f"doc::{document_id}::p{page_number}-{block_id}"
 
     evidence_refs = _make_evidence_refs(document_id, blocks)
-
-    policy_headings: list[dict[str, Any]] = []
-    standard_matrices: list[dict[str, Any]] = []
-    scope_candidates: list[dict[str, Any]] = []
-    llm_runs: list[dict[str, Any]] = []
+    llm_model_id = os.environ.get("TPA_LLM_MODEL_ID")
+    (
+        blocks,
+        policy_headings,
+        standard_matrices,
+        scope_candidates,
+        llm_runs,
+    ) = _annotate_blocks_with_llm(blocks, llm_model_id=llm_model_id)
 
     bucket = os.environ.get("TPA_S3_BUCKET") or "tpa"
     minio_client = _minio_client()
@@ -1088,7 +1132,7 @@ async def parse_bundle(
             page.update(render)
 
     vlm_model_id = os.environ.get("TPA_VLM_MODEL_ID")
-    classified_visuals, vlm_runs = _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
+    classified_visuals, vlm_runs = await _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
 
     vector_paths: list[dict[str, Any]] = []
     vector_tool_runs: list[dict[str, Any]] = []
@@ -1099,7 +1143,8 @@ async def parse_bundle(
         asset_type = _normalize_asset_type((asset.get("classification") or {}).get("asset_type"))
         if asset_type in {"map", "diagram"}:
             started = time.time()
-            paths, errs = _call_vectorize(image_bytes=bytes(data_bytes), time_budget_seconds=60.0)
+            filename = f"visual-{document_id}-{idx:04d}.png"
+            paths, errs = _call_vectorize(image_bytes=bytes(data_bytes), filename=filename)
             elapsed = max(0.0, time.time() - started)
             for p_idx, path in enumerate(paths, start=1):
                 bbox_raw = path.get("bbox") if isinstance(path, dict) else None
@@ -1118,7 +1163,7 @@ async def parse_bundle(
                 {
                     "tool_name": "vectorize_visual_asset",
                     "status": "success" if paths else "error",
-                    "inputs": {"image_index": idx, "asset_type": asset_type},
+                    "inputs": {"image_index": idx, "asset_type": asset_type, "filename": filename},
                     "outputs": {"path_count": len(paths), "errors": errs},
                     "duration_seconds": elapsed,
                     "limitations_text": "Vectorization is best-effort; verify geometry and scale.",
@@ -1195,6 +1240,13 @@ async def parse_bundle(
                 }
             )
 
+    limitations: list[str] = [
+        "BBox coordinates are best-effort and may be null for PDF text/images.",
+        "Vector extraction is best-effort; map geometry may require follow-up tools.",
+    ]
+    if docling_errors:
+        limitations.append("Docling reported errors; affected pages may rely on fallback text.")
+
     bundle = {
         "schema_version": "2.0",
         "bundle_id": str(uuid4()),
@@ -1213,6 +1265,7 @@ async def parse_bundle(
         "visual_assets": asset_items,
         "vector_paths": vector_paths,
         "evidence_refs": evidence_refs,
+        "docling_errors": docling_errors,
         "semantic": {
             "policy_headings": policy_headings,
             "standard_matrices": standard_matrices,
@@ -1220,10 +1273,7 @@ async def parse_bundle(
             "visual_constraints": visual_constraints,
         },
         "tool_runs": [*docling_runs, *render_tool_runs, *llm_runs, *vlm_runs, *vector_tool_runs],
-        "limitations": [
-            "BBox coordinates are best-effort and may be null for PDF text/images.",
-            "Vector extraction is best-effort; map geometry may require follow-up tools.",
-        ],
+        "limitations": limitations,
         "tables_unimplemented": tables_unimplemented,
         "parse_flags": parse_flags,
     }
@@ -1244,6 +1294,8 @@ async def parse_bundle(
             "asset_count": len(asset_items),
             "page_count": len(page_texts),
             "policy_heading_count": len(policy_headings),
+            "docling_errors": docling_errors,
+            "parse_flags": parse_flags,
         }
     )
 

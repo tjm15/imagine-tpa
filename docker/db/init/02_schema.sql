@@ -749,6 +749,46 @@ CREATE TABLE IF NOT EXISTS policy_monitoring_hooks (
   metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb
 );
 
+CREATE TABLE IF NOT EXISTS policy_matrices (
+  id uuid PRIMARY KEY,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  policy_section_id uuid REFERENCES policy_sections (id) ON DELETE SET NULL,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  matrix_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS policy_matrices_document_idx
+  ON policy_matrices (document_id);
+
+CREATE INDEX IF NOT EXISTS policy_matrices_section_idx
+  ON policy_matrices (policy_section_id);
+
+CREATE INDEX IF NOT EXISTS policy_matrices_jsonb_idx
+  ON policy_matrices USING GIN (matrix_jsonb);
+
+CREATE TABLE IF NOT EXISTS policy_scopes (
+  id uuid PRIMARY KEY,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  policy_section_id uuid REFERENCES policy_sections (id) ON DELETE SET NULL,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  scope_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  evidence_ref_id uuid REFERENCES evidence_refs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS policy_scopes_document_idx
+  ON policy_scopes (document_id);
+
+CREATE INDEX IF NOT EXISTS policy_scopes_section_idx
+  ON policy_scopes (policy_section_id);
+
+CREATE INDEX IF NOT EXISTS policy_scopes_jsonb_idx
+  ON policy_scopes USING GIN (scope_jsonb);
+
 CREATE TABLE IF NOT EXISTS sites (
   id uuid PRIMARY KEY,
   geometry_polygon geometry,

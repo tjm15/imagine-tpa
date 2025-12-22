@@ -1,9 +1,15 @@
 import { WorkspaceMode } from '../../App';
-import { Scale, TrendingUp, AlertTriangle, CheckCircle, FileText } from 'lucide-react';
+import { Scale, TrendingUp, AlertTriangle, CheckCircle, FileText, Sparkles, User, Info, Database, Terminal, Eye, Clock, GitBranch } from 'lucide-react';
 import { useState } from 'react';
+import { ProvenanceIndicator, ConfidenceBadge, StatusBadge } from '../ProvenanceIndicator';
+import { Badge } from '../ui/badge';
+import { Separator } from '../ui/separator';
+
+export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface JudgementViewProps {
   workspace: WorkspaceMode;
+  explainabilityMode?: ExplainabilityMode;
 }
 
 interface ScenarioTab {
@@ -13,7 +19,7 @@ interface ScenarioTab {
   color: string;
 }
 
-export function JudgementView({ workspace }: JudgementViewProps) {
+export function JudgementView({ workspace, explainabilityMode = 'summary' }: JudgementViewProps) {
   const planTabs: ScenarioTab[] = [
     { id: '1', scenario: 'Urban Intensification', framing: 'Growth-focused', color: 'blue' },
     { id: '2', scenario: 'Urban Intensification', framing: 'Heritage-balanced', color: 'amber' },
@@ -80,7 +86,24 @@ export function JudgementView({ workspace }: JudgementViewProps) {
         <div className="max-w-4xl mx-auto space-y-6">
           {/* Tab Context Banner */}
           <div className={`bg-${activeTabData.color}-50 border border-${activeTabData.color}-200 rounded-lg p-4`}>
-            <h3 className="mb-2">{activeTabData.scenario}</h3>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="mb-0">{activeTabData.scenario}</h3>
+              <div className="flex items-center gap-2">
+                <ProvenanceIndicator 
+                  provenance={{
+                    source: 'ai',
+                    confidence: 'medium',
+                    status: 'provisional',
+                    evidenceIds: ['ev-shlaa-2024', 'ev-transport-dft'],
+                    toolRunId: 'tool-2',
+                    assumptions: ['Political framing accepted by lead member', 'Evidence base current as of Dec 2024'],
+                    limitations: 'Balance is conditional on framing selection.'
+                  }}
+                  showConfidence
+                />
+                <StatusBadge status="provisional" />
+              </div>
+            </div>
             <p className="text-sm text-neutral-700 mb-2">
               Under <strong>{activeTabData.framing}</strong> framing, a reasonable position would be...
             </p>
@@ -112,13 +135,42 @@ export function JudgementView({ workspace }: JudgementViewProps) {
 
               {/* Issues & Considerations */}
               <section>
-                <h3 className="mb-3">2. What Matters Here</h3>
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="mb-0">2. What Matters Here</h3>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-xs">3 considerations</Badge>
+                    {explainabilityMode !== 'summary' && (
+                      <Badge variant="secondary" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                        <Eye className="w-3 h-3 mr-1" />
+                        {explainabilityMode} mode
+                      </Badge>
+                    )}
+                  </div>
+                </div>
                 <div className="space-y-3">
+                  {/* Consideration 1: Housing Delivery */}
                   <div className="border border-neutral-200 rounded-lg p-4">
                     <div className="flex items-start gap-3 mb-2">
                       <TrendingUp className="w-5 h-5 text-[color:var(--color-gov-blue)] flex-shrink-0 mt-0.5" />
-                      <div>
-                        <h4 className="text-sm mb-1">Housing Delivery Capacity</h4>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-sm mb-1">Housing Delivery Capacity</h4>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="secondary" className="text-[9px] h-4 bg-emerald-100 text-emerald-700">
+                              + Decisive
+                            </Badge>
+                            {explainabilityMode !== 'summary' && (
+                              <ProvenanceIndicator 
+                                provenance={{
+                                  source: 'ai',
+                                  confidence: 'medium',
+                                  status: 'settled',
+                                  evidenceIds: ['ev-shlaa-2024']
+                                }}
+                              />
+                            )}
+                          </div>
+                        </div>
                         <p className="text-sm text-neutral-600">
                           {activeTabData.scenario === 'Urban Intensification' 
                             ? 'Can achieve ~1,400 dpa through brownfield and intensification alone, leaving 400 dpa shortfall.'
@@ -126,10 +178,75 @@ export function JudgementView({ workspace }: JudgementViewProps) {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 text-xs text-neutral-500 mt-2">
-                      <FileText className="w-3 h-3" />
-                      <span>Evidence: SHLAA 2024, Urban Capacity Study</span>
-                    </div>
+                    
+                    {/* INSPECT MODE: Show evidence chain */}
+                    {explainabilityMode === 'inspect' && (
+                      <div className="mt-3 p-3 bg-slate-50 rounded border border-slate-200">
+                        <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-2">
+                          <Database className="w-3 h-3" />
+                          Evidence chain
+                        </div>
+                        <div className="text-xs text-slate-700 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">→</span>
+                            <span><strong>SHLAA 2024:</strong> Deliverable 4,200 + Developable 6,800 = 11,000 total</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">→</span>
+                            <span><strong>Target:</strong> 1,800 dpa × 15 years = 27,000 required</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-400">→</span>
+                            <span><strong>Gap:</strong> ~16,000 shortfall if relying on SHLAA sites alone</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-amber-700 mt-2 italic">
+                          ⚠️ Viability testing incomplete on some SHLAA sites.
+                        </p>
+                      </div>
+                    )}
+                    
+                    {/* FORENSIC MODE: Full tool run trace */}
+                    {explainabilityMode === 'forensic' && (
+                      <div className="mt-3 space-y-2">
+                        <div className="p-3 bg-slate-50 rounded border border-slate-200">
+                          <div className="flex items-center gap-2 text-xs font-medium text-slate-600 mb-2">
+                            <Database className="w-3 h-3" />
+                            Evidence Sources
+                          </div>
+                          <div className="text-xs text-slate-700 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span><strong>SHLAA 2024</strong> (commissioned_study)</span>
+                              <Badge variant="outline" className="text-[8px] h-4 bg-amber-50 text-amber-700 border-amber-200">Medium confidence</Badge>
+                            </div>
+                            <p className="text-slate-500 text-[10px] ml-2">Deliverability assumptions require annual review. Some sites await viability testing.</p>
+                          </div>
+                        </div>
+                        <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                          <div className="flex items-center gap-2 text-xs font-medium text-blue-700 mb-2">
+                            <Terminal className="w-3 h-3" />
+                            Tool Run: evidence_synthesis
+                          </div>
+                          <div className="font-mono text-[10px] text-slate-600 space-y-0.5">
+                            <div><span className="text-slate-400">model:</span> claude-sonnet-4-20250514</div>
+                            <div><span className="text-slate-400">prompt_version:</span> v2.3.1</div>
+                            <div><span className="text-slate-400">duration:</span> 2340ms</div>
+                            <div><span className="text-slate-400">run_id:</span> tool-2</div>
+                          </div>
+                          <Separator className="my-2" />
+                          <p className="text-[10px] text-amber-700">
+                            <strong>Limitation:</strong> Cannot independently verify primary data sources.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {explainabilityMode === 'summary' && (
+                      <div className="flex items-center gap-2 text-xs text-neutral-500 mt-2">
+                        <FileText className="w-3 h-3" />
+                        <span>Evidence: SHLAA 2024, Urban Capacity Study</span>
+                      </div>
+                    )}
                   </div>
 
                   <div className="border border-neutral-200 rounded-lg p-4">

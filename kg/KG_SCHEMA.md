@@ -7,6 +7,8 @@
 * `VisualAsset`, `VisualFeature`, `SegmentationMask`
 * `Scope`
 * `StandardMatrix`
+* `PolicyScope`
+* `PolicyMatrix`
 * `VisualConstraint`
 * `DesignExemplar`
 * `GeoLayerRef`
@@ -44,6 +46,8 @@
 * `IMPLEMENTS`: Policy -> ConformityHook
 * `APPLIES_IN`: Policy -> Scope
 * `DEFINED_BY`: Scope -> DesignationInstance
+* `CONTAINS_MATRIX`: PolicySection -> PolicyMatrix
+* `DEFINES_SCOPE`: PolicySection -> PolicyScope
 * `INSTANCE_OF`: DesignationInstance -> DesignationType
 * `REPRESENTED_BY`: DesignationInstance -> GeoLayerRef
 * `VISUALISED_ON`: SpatialStrategyElement -> VisualAsset

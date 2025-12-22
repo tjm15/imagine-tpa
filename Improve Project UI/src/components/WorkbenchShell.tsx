@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { 
   LayoutGrid, ChevronLeft, FileText, Map, Scale, Camera, 
   Sparkles, AlertCircle, Eye, Download, Play, Menu, Bell, ChevronDown, 
@@ -9,14 +9,18 @@ import { DocumentView } from './views/DocumentView';
 import { MapView } from './views/MapView';
 import { JudgementView } from './views/JudgementView';
 import { RealityView } from './views/RealityView';
-import { ContextMargin } from './ContextMargin';
-import { ProcessRail } from './ProcessRail';
+import { ContextMarginInteractive } from './layout/ContextMarginInteractive';
+import { ProcessRail } from './layout/ProcessRail';
+import { ReasoningTrayInteractive } from './ReasoningTrayInteractive';
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Separator } from "./ui/separator";
 import { Logo } from "./Logo";
+import { useAppState, useAppDispatch } from '../lib/appState';
+import { simulateDraft } from '../lib/aiSimulation';
+import { toast } from 'sonner';
 
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
@@ -34,9 +38,35 @@ export function WorkbenchShell({
   onWorkspaceChange,
   onBackToHome,
 }: WorkbenchShellProps) {
+  const dispatch = useAppDispatch();
+  const { currentStageId, aiState } = useAppState();
   const [showTraceCanvas, setShowTraceCanvas] = useState(false);
   const [explainabilityMode, setExplainabilityMode] = useState<'summary' | 'inspect' | 'forensic'>('summary');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  const handleDraftClick = useCallback(async () => {
+    dispatch({ type: 'START_AI_GENERATION', payload: { task: 'draft' } });
+    toast.info('Generating AI draft...');
+    
+    await simulateDraft(
+      currentStageId,
+      (chunk) => {
+        dispatch({ type: 'UPDATE_AI_STREAM', payload: { text: chunk } });
+      },
+      () => {
+        dispatch({ type: 'COMPLETE_AI_GENERATION' });
+        toast.success('Draft generated! Check the document view.');
+      }
+    );
+  }, [dispatch, currentStageId]);
+
+  const handleExportClick = useCallback(() => {
+    dispatch({ type: 'OPEN_MODAL', payload: { modalId: 'export', data: {} } });
+  }, [dispatch]);
+
+  const handleStageSelect = useCallback((stageId: string) => {
+    dispatch({ type: 'SET_STAGE', payload: { stageId } });
+  }, [dispatch]);
 
   const viewConfig = {
     document: { 
@@ -66,6 +96,8 @@ export function WorkbenchShell({
   };
 
   const ActiveViewComponent = viewConfig[activeView].component;
+
+  type ExplainabilityMode = typeof explainabilityMode;
 
   return (
     <div className="h-screen flex flex-col overflow-hidden font-sans" style={{ 
@@ -164,22 +196,35 @@ export function WorkbenchShell({
                 <TooltipProvider>
                     <Tooltip>
                         <TooltipTrigger asChild>
-                             <Button size="sm" variant="default" className="shadow-sm gap-2" style={{
-                               backgroundColor: 'var(--color-brand)',
-                               color: 'var(--color-ink)'
-                             }}>
-                                <Sparkles className="w-4 h-4" />
-                                <span className="hidden sm:inline">Draft</span>
+                             <Button 
+                               size="sm" 
+                               variant="default" 
+                               className="shadow-sm gap-2" 
+                               style={{
+                                 backgroundColor: 'var(--color-brand)',
+                                 color: 'var(--color-ink)'
+                               }}
+                               onClick={handleDraftClick}
+                               disabled={aiState.isGenerating}
+                             >
+                                <Sparkles className={`w-4 h-4 ${aiState.isGenerating ? 'animate-spin' : ''}`} />
+                                <span className="hidden sm:inline">{aiState.isGenerating ? 'Generating...' : 'Draft'}</span>
                             </Button>
                         </TooltipTrigger>
                         <TooltipContent>Generate content with AI</TooltipContent>
                     </Tooltip>
                 </TooltipProvider>
 
-                <Button size="sm" variant="outline" className="hidden sm:flex border gap-2" style={{
-                  borderColor: 'var(--color-neutral-300)',
-                  color: 'var(--color-text)'
-                }}>
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="hidden sm:flex border gap-2" 
+                  style={{
+                    borderColor: 'var(--color-neutral-300)',
+                    color: 'var(--color-text)'
+                  }}
+                  onClick={handleExportClick}
+                >
                     <Download className="w-4 h-4" />
                     Export
                 </Button>
@@ -221,20 +266,40 @@ export function WorkbenchShell({
             </div>
 
             <div className="flex items-center gap-3">
-                <span style={{ color: 'var(--color-text)' }}>Explainability Level:</span>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="flex items-center gap-1" style={{ color: 'var(--color-text)' }}>
+                        <Eye className="w-3.5 h-3.5" />
+                        Detail:
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-xs text-xs">
+                      <p className="font-medium mb-1">Explainability Levels</p>
+                      <p><strong>Summary:</strong> Clean narrative view for reports</p>
+                      <p><strong>Inspect:</strong> See evidence sources & assumptions</p>
+                      <p><strong>Forensic:</strong> Full audit trail with tool runs</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
                 <div className="flex p-0.5 rounded-md" style={{ backgroundColor: 'var(--color-neutral-300)' }}>
-                    {(['summary', 'inspect', 'forensic'] as const).map((mode) => (
+                    {([
+                      { id: 'summary' as const, label: 'Summary', icon: '📄' },
+                      { id: 'inspect' as const, label: 'Inspect', icon: '🔍' },
+                      { id: 'forensic' as const, label: 'Forensic', icon: '🔬' }
+                    ]).map((mode) => (
                         <button
-                            key={mode}
-                            onClick={() => setExplainabilityMode(mode)}
-                            className="px-2.5 py-0.5 rounded text-[10px] font-medium transition-all"
+                            key={mode.id}
+                            onClick={() => setExplainabilityMode(mode.id)}
+                            className="px-2.5 py-1 rounded text-[11px] font-medium transition-all flex items-center gap-1"
                             style={{
-                              backgroundColor: explainabilityMode === mode ? 'white' : 'transparent',
-                              color: explainabilityMode === mode ? 'var(--color-accent)' : 'var(--color-text)',
-                              boxShadow: explainabilityMode === mode ? '0 1px 2px rgba(0,0,0,0.05)' : 'none'
+                              backgroundColor: explainabilityMode === mode.id ? 'white' : 'transparent',
+                              color: explainabilityMode === mode.id ? 'var(--color-accent)' : 'var(--color-text)',
+                              boxShadow: explainabilityMode === mode.id ? '0 1px 2px rgba(0,0,0,0.08)' : 'none'
                             }}
                         >
-                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                            <span>{mode.icon}</span>
+                            <span>{mode.label}</span>
                         </button>
                     ))}
                 </div>
@@ -246,7 +311,7 @@ export function WorkbenchShell({
       <div className="flex-1 flex overflow-hidden relative">
         {/* Process Rail (Left Sidebar) */}
         <div className="hidden lg:block border-r bg-white z-10 w-64 flex-shrink-0" style={{ borderColor: 'var(--color-neutral-300)' }}>
-            <ProcessRail workspace={workspace} />
+            <ProcessRail onStageSelect={handleStageSelect} />
         </div>
 
         {/* Main Workspace */}
@@ -304,9 +369,15 @@ export function WorkbenchShell({
             
             <div className={`flex-1 overflow-auto transition-all duration-300 ${showTraceCanvas ? 'pt-[140px]' : ''}`}>
                <div className="h-full w-full">
-                 <ActiveViewComponent workspace={workspace} />
+                 <ActiveViewComponent workspace={workspace} explainabilityMode={explainabilityMode} />
                </div>
             </div>
+            
+            {/* Reasoning Tray */}
+            <ReasoningTrayInteractive 
+              runId="run_8a4f2e"
+              onOpenTrace={() => setShowTraceCanvas(true)}
+            />
           </div>
 
           {/* Context Margin (Right Sidebar) */}
@@ -317,7 +388,7 @@ export function WorkbenchShell({
             `}
             style={{ borderColor: 'var(--color-neutral-300)' }}
           >
-            <ContextMargin workspace={workspace} />
+            <ContextMarginInteractive />
           </div>
         </div>
 

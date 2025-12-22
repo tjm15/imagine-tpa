@@ -1,16 +1,21 @@
 import { WorkspaceMode } from '../../App';
-import { FileText, Plus, Link2, MessageSquare, Sparkles, AlertCircle, Info, ChevronRight, CheckCircle } from 'lucide-react';
+import { FileText, Plus, Link2, MessageSquare, Sparkles, AlertCircle, Info, ChevronRight, CheckCircle, Eye, Clock, GitBranch, Zap, Database, Terminal } from 'lucide-react';
 import { Card, CardContent } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
+import { mockToolRuns, mockInterpretations, mockEvidenceCards } from '../../fixtures/mockData';
+
+export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface DocumentViewProps {
   workspace: WorkspaceMode;
+  explainabilityMode?: ExplainabilityMode;
 }
 
-export function DocumentView({ workspace }: DocumentViewProps) {
+export function DocumentView({ workspace, explainabilityMode = 'summary' }: DocumentViewProps) {
   const title = workspace === 'plan' 
     ? 'Place Portrait: Baseline Evidence' 
     : 'Officer Report: 24/0456/FUL';
@@ -98,7 +103,120 @@ export function DocumentView({ workspace }: DocumentViewProps) {
               <p>
                 Cambridge faces acute housing pressure. The affordability ratio of 12.8x significantly exceeds both the regional 
                 average (8.2x) and represents a deterioration from 10.5x in 2015.
+                
+                {/* Mode-aware provenance indicator */}
+                {explainabilityMode === 'summary' && (
+                  <sup className="ml-1 text-blue-500 cursor-help" title="AI-generated from ONS data">
+                    <Sparkles className="inline w-3 h-3" />
+                  </sup>
+                )}
+                
+                {explainabilityMode === 'inspect' && (
+                  <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <CheckCircle className="w-3 h-3" />
+                    High confidence · 2 sources
+                  </span>
+                )}
               </p>
+              
+              {/* INSPECT MODE: Inline evidence panel */}
+              {explainabilityMode === 'inspect' && (
+                <div className="mt-4 p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Eye className="w-4 h-4 text-slate-500" />
+                    <span className="text-sm font-medium text-slate-700">Evidence Sources</span>
+                  </div>
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-3 p-2 bg-white rounded border border-slate-200">
+                      <Database className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800">ONS House Price Statistics</p>
+                        <p className="text-xs text-slate-500">Official statistics · Q3 2024 · High confidence</p>
+                      </div>
+                    </div>
+                    <div className="flex items-start gap-3 p-2 bg-white rounded border border-slate-200">
+                      <Database className="w-4 h-4 text-blue-500 mt-0.5 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-slate-800">Census 2021 Data</p>
+                        <p className="text-xs text-slate-500">Official statistics · March 2021 · High confidence</p>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-xs text-slate-600 italic">
+                    💡 <strong>Assumption:</strong> Regional average uses ONS defined East of England boundary.
+                  </p>
+                </div>
+              )}
+              
+              {/* FORENSIC MODE: Full tool run audit */}
+              {explainabilityMode === 'forensic' && (
+                <div className="mt-4 space-y-3">
+                  {/* Evidence panel */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Database className="w-4 h-4 text-slate-500" />
+                      <span className="text-sm font-medium text-slate-700">Evidence Chain</span>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-start gap-3 p-2 bg-white rounded border border-slate-200">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-800">ONS House Price Statistics</p>
+                            <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">High</Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Source: official_statistics · Date: 2024-09-30</p>
+                          <p className="text-xs text-slate-600 mt-1">Affordability ratio: 12.8 · Regional avg: 8.2 · Change since 2015: +22%</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-2 bg-white rounded border border-slate-200">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-slate-800">Census 2021: Housing Stock & Tenure</p>
+                            <Badge variant="outline" className="text-[9px] bg-emerald-50 text-emerald-700 border-emerald-200">High</Badge>
+                          </div>
+                          <p className="text-xs text-slate-500 mt-1">Source: official_statistics · Date: 2021-03-21</p>
+                          <p className="text-xs text-slate-600 mt-1">Total dwellings: 52,400 · Owner-occupied: 48% · Private rented: 28%</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Tool run audit */}
+                  <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <div className="flex items-center gap-2 mb-3">
+                      <Terminal className="w-4 h-4 text-blue-600" />
+                      <span className="text-sm font-medium text-blue-800">Tool Run Audit</span>
+                    </div>
+                    <div className="bg-white rounded border border-blue-100 p-3 font-mono text-xs">
+                      <div className="grid grid-cols-2 gap-y-1.5 text-slate-700">
+                        <div className="text-slate-500">tool:</div>
+                        <div>evidence_synthesis</div>
+                        <div className="text-slate-500">model:</div>
+                        <div>claude-sonnet-4-20250514</div>
+                        <div className="text-slate-500">prompt_version:</div>
+                        <div>v2.3.1</div>
+                        <div className="text-slate-500">run_id:</div>
+                        <div>tool-2</div>
+                        <div className="text-slate-500">timestamp:</div>
+                        <div>2024-12-18T09:08:00Z</div>
+                        <div className="text-slate-500">duration:</div>
+                        <div>2340ms</div>
+                      </div>
+                      <Separator className="my-2" />
+                      <div className="text-slate-500 mb-1">inputs:</div>
+                      <div className="pl-2 text-slate-700">
+                        evidence_ids: ["ev-census-2021", "ev-affordability"]<br/>
+                        question: "What is the housing need situation?"
+                      </div>
+                      <Separator className="my-2" />
+                      <div className="text-slate-500 mb-1">limitations:</div>
+                      <div className="pl-2 text-amber-700">
+                        Cannot independently verify primary data sources.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
               
                <div className="flex items-center gap-2 pl-4 border-l-2 border-blue-200 py-1">
                    <Link2 className="w-3.5 h-3.5 text-blue-500" />

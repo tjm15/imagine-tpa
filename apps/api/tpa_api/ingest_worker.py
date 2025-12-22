@@ -2538,6 +2538,55 @@ def _slice_blocks_for_llm(
     return [blocks]
 
 
+def _build_sections_from_headings(
+    *,
+    policy_headings: list[dict[str, Any]],
+    block_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not policy_headings or not block_rows:
+        return []
+    block_order = [b for b in block_rows if b.get("block_id")]
+    index_by_id = {b["block_id"]: idx for idx, b in enumerate(block_order)}
+    block_ids_in_order = [b["block_id"] for b in block_order]
+    block_lookup = {b.get("block_id"): b for b in block_order if b.get("block_id")}
+
+    headings = [
+        h
+        for h in policy_headings
+        if isinstance(h, dict) and isinstance(h.get("block_id"), str) and h.get("block_id") in index_by_id
+    ]
+    headings = sorted(headings, key=lambda h: index_by_id[h["block_id"]])
+    if not headings:
+        return []
+
+    sections: list[dict[str, Any]] = []
+    for idx, heading in enumerate(headings):
+        heading_block_id = heading.get("block_id")
+        if not isinstance(heading_block_id, str):
+            continue
+        start_idx = index_by_id[heading_block_id]
+        end_idx = index_by_id[headings[idx + 1]["block_id"]] if idx + 1 < len(headings) else len(block_ids_in_order)
+        section_block_ids = block_ids_in_order[start_idx:end_idx]
+        heading_block = block_lookup.get(heading_block_id) or {}
+        sections.append(
+            {
+                "section_id": f"docparse:{heading_block_id}",
+                "policy_code": heading.get("policy_code"),
+                "title": heading.get("policy_title"),
+                "heading_text": heading_block.get("text"),
+                "section_path": heading_block.get("section_path"),
+                "block_ids": section_block_ids,
+                "clauses": [],
+                "definitions": [],
+                "targets": [],
+                "monitoring": [],
+                "confidence_hint": heading.get("confidence_hint"),
+                "uncertainty_note": heading.get("uncertainty_note"),
+            }
+        )
+    return sections
+
+
 def _llm_extract_policy_structure(
     *,
     ingest_batch_id: str,
@@ -2545,9 +2594,100 @@ def _llm_extract_policy_structure(
     document_id: str,
     document_title: str,
     blocks: list[dict[str, Any]],
+    policy_headings: list[dict[str, Any]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[str], list[str]]:
     if not blocks:
         return [], [], ["no_blocks"]
+
+    if policy_headings:
+        sections = _build_sections_from_headings(policy_headings=policy_headings, block_rows=blocks)
+        if not sections:
+            return [], [], ["no_sections_from_headings"]
+
+        prompt_id = "policy_clause_split_v1"
+        system_template = (
+            "You are a planning policy clause splitter. Return ONLY JSON with the following shape:\n"
+            "{\n"
+            '  "clauses": [\n'
+            "    {\n"
+            '      "clause_id": "string",\n'
+            '      "clause_ref": "string|null",\n'
+            '      "text": "string",\n'
+            '      "block_ids": ["block_id", "..."],\n'
+            '      "speech_act": {"normative_force": "...", "strength_hint": "...", "ambiguity_flags": [], "key_terms": [], "officer_interpretation_space": "...", "limitations_text": "..."},\n'
+            '      "subject": "string|null",\n'
+            '      "object": "string|null"\n'
+            "    }\n"
+            "  ],\n"
+            '  "definitions": [\n'
+            '    {"term": "string", "definition_text": "string", "block_ids": ["block_id", "..."]}\n'
+            "  ],\n"
+            '  "targets": [\n'
+            '    {"metric": "string|null", "value": "number|null", "unit": "string|null", "timeframe": "string|null", "geography_ref": "string|null", "raw_text": "string", "block_ids": ["block_id", "..."]}\n'
+            "  ],\n"
+            '  "monitoring": [\n'
+            '    {"indicator_text": "string", "block_ids": ["block_id", "..."]}\n'
+            "  ],\n"
+            '  "deliberate_omissions": [],\n'
+            '  "limitations": []\n'
+            "}\n"
+            "Rules:\n"
+            "- Use ONLY provided block_ids for evidence.\n"
+            "- Do not invent clauses without block_ids.\n"
+            "- If unsure, return empty lists and use unknown speech_act values.\n"
+        )
+
+        block_lookup = {b.get("block_id"): b for b in blocks if b.get("block_id")}
+        tool_run_ids: list[str] = []
+        errors: list[str] = []
+        for section in sections:
+            block_ids = section.get("block_ids") if isinstance(section.get("block_ids"), list) else []
+            section_blocks = [
+                {
+                    "block_id": block_id,
+                    "type": block_lookup.get(block_id, {}).get("type"),
+                    "text": block_lookup.get(block_id, {}).get("text"),
+                    "page_number": block_lookup.get(block_id, {}).get("page_number"),
+                    "section_path": block_lookup.get(block_id, {}).get("section_path"),
+                }
+                for block_id in block_ids
+                if block_lookup.get(block_id) and block_lookup.get(block_id).get("text")
+            ]
+            payload = {
+                "document_id": document_id,
+                "document_title": document_title,
+                "policy_section": {
+                    "section_id": section.get("section_id"),
+                    "policy_code": section.get("policy_code"),
+                    "title": section.get("title"),
+                    "heading_text": section.get("heading_text"),
+                    "section_path": section.get("section_path"),
+                },
+                "blocks": section_blocks,
+            }
+            obj, tool_run_id, errs = _llm_structured_sync(
+                prompt_id=prompt_id,
+                prompt_version=1,
+                prompt_name="Policy clause splitter",
+                purpose="Split policy section text into clauses and extract definitions, targets, and monitoring hooks.",
+                system_template=system_template,
+                user_payload=payload,
+                time_budget_seconds=120.0,
+                output_schema_ref="schemas/PolicySectionClauseParseResult.schema.json",
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+            )
+            if tool_run_id:
+                tool_run_ids.append(tool_run_id)
+            errors.extend(errs)
+            if not isinstance(obj, dict):
+                continue
+            for key in ("clauses", "definitions", "targets", "monitoring"):
+                items = obj.get(key)
+                if isinstance(items, list):
+                    section[key] = [item for item in items if isinstance(item, dict)]
+        return sections, tool_run_ids, errors
+
     prompt_id = "policy_structure_parse_v1"
     system_template = (
         "You are a planning policy parser. Return ONLY JSON with the following shape:\n"
@@ -2668,6 +2808,171 @@ def _confidence_hint_score(value: str | None) -> float:
     if lowered == "low":
         return 0.3
     return 0.0
+
+
+def _block_id_from_section_ref(section_ref: str | None) -> str | None:
+    if not isinstance(section_ref, str) or not section_ref:
+        return None
+    if section_ref.startswith("p"):
+        idx = 1
+        while idx < len(section_ref) and section_ref[idx].isdigit():
+            idx += 1
+        if idx < len(section_ref) and section_ref[idx] == "-":
+            return section_ref[idx + 1 :] or None
+    return section_ref
+
+
+def _persist_policy_logic_assets(
+    *,
+    document_id: str,
+    run_id: str | None,
+    sections: list[dict[str, Any]],
+    policy_sections: list[dict[str, Any]],
+    standard_matrices: list[dict[str, Any]],
+    scope_candidates: list[dict[str, Any]],
+    evidence_ref_map: dict[str, str],
+    block_rows: list[dict[str, Any]],
+) -> tuple[int, int]:
+    section_by_source = {
+        s.get("source_section_id"): s.get("policy_section_id")
+        for s in policy_sections
+        if s.get("source_section_id") and s.get("policy_section_id")
+    }
+    block_to_section: dict[str, str] = {}
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        source_section_id = section.get("section_id")
+        policy_section_id = section_by_source.get(source_section_id)
+        if not policy_section_id:
+            continue
+        block_ids = section.get("block_ids") if isinstance(section.get("block_ids"), list) else []
+        for block_id in block_ids:
+            if isinstance(block_id, str):
+                block_to_section[block_id] = policy_section_id
+
+    matrix_count = 0
+    for matrix in standard_matrices or []:
+        if not isinstance(matrix, dict):
+            continue
+        evidence_ref = matrix.get("evidence_ref")
+        section_ref = None
+        if isinstance(evidence_ref, str):
+            parsed = _parse_evidence_ref(evidence_ref)
+            if parsed:
+                section_ref = parsed[2]
+        block_id = _block_id_from_section_ref(section_ref) if section_ref else None
+        policy_section_id = block_to_section.get(block_id) if block_id else None
+        evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else None
+        matrix_id = str(uuid4())
+        matrix_jsonb = {
+            "matrix_id": matrix.get("matrix_id"),
+            "inputs": matrix.get("inputs"),
+            "outputs": matrix.get("outputs"),
+            "logic_type": matrix.get("logic_type"),
+            "evidence_ref": evidence_ref,
+        }
+        _db_execute(
+            """
+            INSERT INTO policy_matrices (
+              id, document_id, policy_section_id, run_id, matrix_jsonb, evidence_ref_id, metadata_jsonb, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s::jsonb, %s::uuid, %s::jsonb, %s)
+            """,
+            (
+                matrix_id,
+                document_id,
+                policy_section_id,
+                run_id,
+                json.dumps(matrix_jsonb, ensure_ascii=False),
+                evidence_ref_id,
+                json.dumps({}, ensure_ascii=False),
+                _utc_now(),
+            ),
+        )
+        _ensure_kg_node(
+            node_id=f"policy_matrix::{matrix_id}",
+            node_type="PolicyMatrix",
+            canonical_fk=matrix_id,
+            props={"logic_type": matrix.get("logic_type"), "matrix_id": matrix.get("matrix_id")},
+        )
+        if policy_section_id:
+            _insert_kg_edge(
+                src_id=f"policy_section::{policy_section_id}",
+                dst_id=f"policy_matrix::{matrix_id}",
+                edge_type="CONTAINS_MATRIX",
+                run_id=run_id,
+                edge_class="docparse",
+                resolve_method="docparse_standard_matrix",
+                props={},
+                evidence_ref_id=evidence_ref_id,
+                tool_run_id=None,
+            )
+        matrix_count += 1
+
+    scope_count = 0
+    for scope in scope_candidates or []:
+        if not isinstance(scope, dict):
+            continue
+        evidence_ref = scope.get("evidence_ref")
+        section_ref = None
+        if isinstance(evidence_ref, str):
+            parsed = _parse_evidence_ref(evidence_ref)
+            if parsed:
+                section_ref = parsed[2]
+        block_id = _block_id_from_section_ref(section_ref) if section_ref else None
+        policy_section_id = block_to_section.get(block_id) if block_id else None
+        evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else None
+        scope_id = str(uuid4())
+        scope_jsonb = {
+            "scope_id": scope.get("id"),
+            "geography_refs": scope.get("geography_refs"),
+            "development_types": scope.get("development_types"),
+            "use_classes": scope.get("use_classes"),
+            "use_class_regime": scope.get("use_class_regime"),
+            "temporal_scope": scope.get("temporal_scope"),
+            "conditions": scope.get("conditions"),
+            "evidence_ref": evidence_ref,
+        }
+        _db_execute(
+            """
+            INSERT INTO policy_scopes (
+              id, document_id, policy_section_id, run_id, scope_jsonb, evidence_ref_id, metadata_jsonb, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s::jsonb, %s::uuid, %s::jsonb, %s)
+            """,
+            (
+                scope_id,
+                document_id,
+                policy_section_id,
+                run_id,
+                json.dumps(scope_jsonb, ensure_ascii=False),
+                evidence_ref_id,
+                json.dumps({}, ensure_ascii=False),
+                _utc_now(),
+            ),
+        )
+        _ensure_kg_node(
+            node_id=f"policy_scope::{scope_id}",
+            node_type="PolicyScope",
+            canonical_fk=scope_id,
+            props={},
+        )
+        if policy_section_id:
+            _insert_kg_edge(
+                src_id=f"policy_section::{policy_section_id}",
+                dst_id=f"policy_scope::{scope_id}",
+                edge_type="DEFINES_SCOPE",
+                run_id=run_id,
+                edge_class="docparse",
+                resolve_method="docparse_scope_candidate",
+                props={},
+                evidence_ref_id=evidence_ref_id,
+                tool_run_id=None,
+            )
+        scope_count += 1
+
+    return matrix_count, scope_count
 
 
 def _merge_policy_headings(
@@ -3253,6 +3558,11 @@ def _persist_policy_structure(
         span_quality = "approx" if span_start is not None and span_end is not None else "none"
         evidence_ref_id = str(uuid4())
 
+        metadata_jsonb = {
+            "source_section_id": section.get("section_id"),
+            "confidence_hint": section.get("confidence_hint"),
+            "uncertainty_note": section.get("uncertainty_note"),
+        }
         _db_execute(
             """
             INSERT INTO policy_sections (
@@ -3280,7 +3590,7 @@ def _persist_policy_structure(
                 span_end,
                 span_quality,
                 evidence_ref_id,
-                json.dumps({}, ensure_ascii=False),
+                json.dumps(metadata_jsonb, ensure_ascii=False),
             ),
         )
         _db_execute(
@@ -3296,6 +3606,7 @@ def _persist_policy_structure(
         policy_sections.append(
             {
                 "policy_section_id": section_id,
+                "source_section_id": section.get("section_id"),
                 "policy_code": section.get("policy_code"),
                 "title": section.get("title"),
                 "section_path": section.get("section_path"),
@@ -3303,6 +3614,7 @@ def _persist_policy_structure(
                 "page_start": page_start,
                 "page_end": page_end,
                 "evidence_ref_id": evidence_ref_id,
+                "block_ids": block_ids,
             }
         )
 
@@ -4270,15 +4582,27 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
 
             step_counts["canonical_load"] = step_counts.get("canonical_load", 0) + 1
 
+            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
             sections, _, struct_errors = _llm_extract_policy_structure(
                 ingest_batch_id=ingest_batch_id,
                 run_id=run_id,
                 document_id=document_id,
                 document_title=doc_metadata.get("title") or filename,
                 blocks=block_rows,
+                policy_headings=policy_headings,
             )
-            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
-            sections = _merge_policy_headings(sections=sections, policy_headings=policy_headings, block_rows=block_rows)
+            if policy_headings and not sections:
+                fallback_sections, _, fallback_errors = _llm_extract_policy_structure(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    document_id=document_id,
+                    document_title=doc_metadata.get("title") or filename,
+                    blocks=block_rows,
+                )
+                sections = fallback_sections
+                struct_errors.extend([f"policy_structure_fallback:{err}" for err in fallback_errors])
+            if not policy_headings:
+                sections = _merge_policy_headings(sections=sections, policy_headings=policy_headings, block_rows=block_rows)
             if struct_errors:
                 errors.extend([f"policy_structure:{err}" for err in struct_errors])
             policy_sections, policy_clauses, definitions, targets, monitoring = _persist_policy_structure(
@@ -4295,6 +4619,25 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             counts["targets"] += len(targets)
             counts["monitoring"] += len(monitoring)
             step_counts["structural_llm"] = step_counts.get("structural_llm", 0) + 1
+
+            matrix_count, scope_count = _persist_policy_logic_assets(
+                document_id=document_id,
+                run_id=run_id,
+                sections=sections,
+                policy_sections=policy_sections,
+                standard_matrices=semantic.get("standard_matrices")
+                if isinstance(semantic.get("standard_matrices"), list)
+                else [],
+                scope_candidates=semantic.get("scope_candidates")
+                if isinstance(semantic.get("scope_candidates"), list)
+                else [],
+                evidence_ref_map=evidence_ref_map,
+                block_rows=block_rows,
+            )
+            counts["policy_matrices"] = counts.get("policy_matrices", 0) + matrix_count
+            counts["policy_scopes"] = counts.get("policy_scopes", 0) + scope_count
+            if matrix_count or scope_count:
+                step_counts["policy_logic_assets"] = step_counts.get("policy_logic_assets", 0) + 1
 
             policy_codes = [s.get("policy_code") for s in policy_sections if s.get("policy_code")]
             citations, mentions, conditions, edge_tool_run_ids, edge_errors = _llm_extract_edges(

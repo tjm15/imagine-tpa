@@ -1,11 +1,14 @@
 import { WorkspaceMode } from '../../App';
-import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2 } from 'lucide-react';
+import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2, Database, Terminal, Sparkles } from 'lucide-react';
+
+export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface RealityViewProps {
   workspace: WorkspaceMode;
+  explainabilityMode?: ExplainabilityMode;
 }
 
-export function RealityView({ workspace }: RealityViewProps) {
+export function RealityView({ workspace, explainabilityMode = 'summary' }: RealityViewProps) {
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
