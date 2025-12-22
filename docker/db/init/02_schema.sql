@@ -153,11 +153,30 @@ CREATE TABLE IF NOT EXISTS evidence_refs (
   run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
   source_type text NOT NULL,
   source_id text NOT NULL,
-  fragment_id text NOT NULL
+  fragment_id text NOT NULL,
+  document_id uuid,
+  locator_type text,
+  locator_value text,
+  excerpt text
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS evidence_refs_unique
   ON evidence_refs (source_type, source_id, fragment_id);
+
+ALTER TABLE evidence_refs
+  ADD COLUMN IF NOT EXISTS document_id uuid;
+
+ALTER TABLE evidence_refs
+  ADD COLUMN IF NOT EXISTS locator_type text;
+
+ALTER TABLE evidence_refs
+  ADD COLUMN IF NOT EXISTS locator_value text;
+
+ALTER TABLE evidence_refs
+  ADD COLUMN IF NOT EXISTS excerpt text;
+
+CREATE INDEX IF NOT EXISTS evidence_refs_document_locator_idx
+  ON evidence_refs (document_id, locator_type, locator_value);
 
 CREATE TABLE IF NOT EXISTS tool_runs (
   id uuid PRIMARY KEY,
@@ -210,6 +229,24 @@ CREATE TABLE IF NOT EXISTS documents (
   raw_artifact_id uuid REFERENCES artifacts (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS document_identity_status (
+  id uuid PRIMARY KEY,
+  document_id uuid NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  identity_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  status_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  weight_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS document_identity_status_document_idx
+  ON document_identity_status (document_id);
+
+CREATE INDEX IF NOT EXISTS document_identity_status_run_idx
+  ON document_identity_status (run_id);
 
 ALTER TABLE documents
   ADD COLUMN IF NOT EXISTS raw_blob_path text;
@@ -552,6 +589,7 @@ CREATE TABLE IF NOT EXISTS visual_semantic_outputs (
   visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
   run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
   schema_version text NOT NULL,
+  output_kind text NOT NULL DEFAULT 'classification',
   asset_type text,
   asset_subtype text,
   canonical_facts_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -1730,6 +1768,9 @@ ALTER TABLE visual_asset_links
 
 ALTER TABLE visual_semantic_outputs
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE visual_semantic_outputs
+  ADD COLUMN IF NOT EXISTS output_kind text NOT NULL DEFAULT 'classification';
 
 ALTER TABLE evidence_refs
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;

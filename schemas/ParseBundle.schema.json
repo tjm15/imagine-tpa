@@ -36,7 +36,9 @@
           "render_width": {"type": ["integer", "null"]},
           "render_height": {"type": ["integer", "null"]},
           "render_tier": {"type": ["string", "null"]},
-          "render_reason": {"type": ["string", "null"]}
+          "render_reason": {"type": ["string", "null"]},
+          "text_source": {"type": ["string", "null"]},
+          "text_source_reason": {"type": ["string", "null"]}
         },
         "required": ["page_number", "text"]
       }
@@ -53,7 +55,8 @@
           "section_path": {"type": ["string", "null"]},
           "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},
           "bbox_quality": {"type": ["string", "null"]},
-          "evidence_ref": {"type": ["string", "null"]}
+          "evidence_ref": {"type": ["string", "null"]},
+          "metadata": {"type": ["object", "null"]}
         },
         "required": ["block_id", "type", "text", "page_number"]
       }

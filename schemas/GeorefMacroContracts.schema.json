@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GeorefMacroContracts",
+  "type": "object",
+  "$defs": {
+    "CandidateGcp": {
+      "type": "object",
+      "required": ["pixel", "world_guess"],
+      "properties": {
+        "pixel": { "type": "array", "items": { "type": "number" } },
+        "world_guess": { "type": "array", "items": { "type": "number" } },
+        "confidence": { "type": ["number", "null"] }
+      }
+    },
+    "ControlPoint": {
+      "type": "object",
+      "required": ["src", "dst"],
+      "properties": {
+        "src": { "type": "object" },
+        "dst": { "type": "object" },
+        "residual": { "type": ["number", "null"] },
+        "weight": { "type": ["number", "null"] }
+      }
+    },
+    "GeorefTransform": {
+      "type": "object",
+      "required": ["method", "matrix", "matrix_shape"],
+      "properties": {
+        "method": { "type": "string" },
+        "matrix": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } },
+        "matrix_shape": { "type": "array", "items": { "type": "integer" } },
+        "uncertainty_score": { "type": ["number", "null"] },
+        "metadata": { "type": "object" },
+        "control_points": { "type": "array", "items": { "$ref": "#/$defs/ControlPoint" } }
+      }
+    },
+    "ExportMapObservationRequest": {
+      "type": "object",
+      "required": ["image_base64"],
+      "properties": {
+        "image_base64": { "type": "string" },
+        "target_epsg": { "type": ["integer", "null"] },
+        "extent": { "type": ["object", "null"] },
+        "layers_on": { "type": ["array", "null"], "items": { "type": "string" } }
+      }
+    },
+    "ExportMapObservationResponse": {
+      "type": "object",
+      "required": ["ok", "limitations_text"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "observation_png_base64": { "type": ["string", "null"] },
+        "limitations_text": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "DetectCandidateGcpsRequest": {
+      "type": "object",
+      "required": ["image_base64"],
+      "properties": {
+        "image_base64": { "type": "string" },
+        "method": { "type": "string" },
+        "target_epsg": { "type": "integer" }
+      }
+    },
+    "DetectCandidateGcpsResponse": {
+      "type": "object",
+      "required": ["ok", "gcps", "limitations_text"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "gcps": { "type": "array", "items": { "$ref": "#/$defs/CandidateGcp" } },
+        "limitations_text": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "ApplyGcpsRequest": {
+      "type": "object",
+      "required": ["image_base64", "gcps"],
+      "properties": {
+        "image_base64": { "type": "string" },
+        "gcps": { "type": "array", "items": { "$ref": "#/$defs/CandidateGcp" } },
+        "method": { "type": "string" },
+        "target_epsg": { "type": "integer" }
+      }
+    },
+    "ApplyGcpsResponse": {
+      "type": "object",
+      "required": ["ok", "status", "errors", "limitations_text"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "status": { "type": "string" },
+        "transform": { "$ref": "#/$defs/GeorefTransform" },
+        "errors": { "type": "array", "items": { "type": "string" } },
+        "limitations_text": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "EvaluateGeorefRequest": {
+      "type": "object",
+      "required": ["image_base64"],
+      "properties": {
+        "image_base64": { "type": "string" },
+        "target_epsg": { "type": "integer" },
+        "metrics": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "EvaluateGeorefResponse": {
+      "type": "object",
+      "required": ["ok", "metrics", "limitations_text"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "metrics": { "type": "object" },
+        "limitations_text": { "type": "string" }
+      }
+    },
+    "PublishOutputsRequest": {
+      "type": "object",
+      "required": ["artifact_base64"],
+      "properties": {
+        "artifact_base64": { "type": "string" },
+        "artifact_type": { "type": "string" },
+        "metadata": { "type": "object" }
+      }
+    },
+    "PublishOutputsResponse": {
+      "type": "object",
+      "required": ["ok", "artifact_path", "limitations_text"],
+      "properties": {
+        "ok": { "type": "boolean" },
+        "artifact_path": { "type": "string" },
+        "metadata": { "type": "object" },
+        "limitations_text": { "type": "string" }
+      }
+    }
+  }
+}

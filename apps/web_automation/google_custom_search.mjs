@@ -85,12 +85,15 @@ export async function googleCustomSearch(options = {}) {
   if (excludeTerms) params.set("excludeTerms", excludeTerms);
 
   const requestUrl = `${endpoint}?${params.toString()}`;
-  const timeoutMs = Number(options.timeoutMs || options.timeout_ms || 15000);
+  const timeoutMsRaw = options.timeoutMs ?? options.timeout_ms;
+  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
 
   try {
-    const resp = await fetch(requestUrl, {
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    const fetchOptions = {};
+    if (typeof timeoutMs === "number" && Number.isFinite(timeoutMs)) {
+      fetchOptions.signal = AbortSignal.timeout(timeoutMs);
+    }
+    const resp = await fetch(requestUrl, fetchOptions);
     const data = await resp.json();
     if (!resp.ok || data.error) {
       return {

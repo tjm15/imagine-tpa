@@ -139,6 +139,7 @@ services:
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
+      TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
       TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
       TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
       TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
@@ -165,6 +166,8 @@ services:
       tpa-redis:
         condition: service_started
       tpa-docparse:
+        condition: service_started
+      tpa-georef-agent:
         condition: service_started
     ports:
       - "${TPA_API_PORT:-8000}:8000"
@@ -219,6 +222,7 @@ services:
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
+      TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
       TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
       TPA_EMBEDDINGS_MM_BASE_URL: ${TPA_EMBEDDINGS_MM_BASE_URL:-http://tpa-embeddings:8080}
       TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
@@ -431,6 +435,22 @@ services:
       TOOL_MODE: vectorization
     ports:
       - "${TPA_VECTORIZE_PORT:-8087}:8087"
+    <<: *service_defaults
+
+  # --- Agentic georeferencing (macro toolchain scaffold) ---
+  tpa-georef-agent:
+    build:
+      context: ../
+      dockerfile: apps/georef_agent/Dockerfile
+    environment:
+      PORT: "8090"
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_GEOREF_MACRO_BASE_URL: ${TPA_GEOREF_MACRO_BASE_URL:-}
+    ports:
+      - "${TPA_GEOREF_PORT:-8090}:8090"
     <<: *service_defaults
 
 volumes:

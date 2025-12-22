@@ -22,7 +22,7 @@ from .evidence import _ensure_evidence_ref_row, _parse_evidence_ref
 from .model_clients import _embed_multimodal_sync, _embed_texts_sync, _vlm_json_sync
 from .prompting import _llm_structured_sync, _prompt_upsert
 from .policy_utils import _normalize_policy_speech_act
-from .time_utils import _utc_now
+from .time_utils import _utc_now, _utc_now_iso
 from .vector_utils import _vector_literal
 from .services.ingest import (
     _authority_packs_root,
@@ -456,7 +456,7 @@ def _persist_pages(
         render_tier = page.get("render_tier")
         render_reason = page.get("render_reason")
         metadata: dict[str, Any] = {}
-        for key in ("width", "height"):
+        for key in ("width", "height", "text_source", "text_source_reason"):
             if key in page:
                 metadata[key] = page.get(key)
         _db_execute(
@@ -506,7 +506,16 @@ def _persist_bundle_evidence_refs(
         if not isinstance(source_doc_id, str) or not isinstance(section_ref, str):
             continue
         evidence_ref = f"doc::{source_doc_id}::{section_ref}"
-        evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+        locator_type = "figure" if section_ref.startswith("visual::") else "paragraph"
+        locator_value = section_ref
+        evidence_ref_id = _ensure_evidence_ref_row(
+            evidence_ref,
+            run_id=run_id,
+            document_id=source_doc_id,
+            locator_type=locator_type,
+            locator_value=locator_value,
+            excerpt=ref.get("snippet_text"),
+        )
         if evidence_ref_id:
             mapping[section_ref] = evidence_ref_id
     return mapping
@@ -582,6 +591,15 @@ def _persist_layout_blocks(
                     used_external_ref = bool(evidence_ref_id)
         if not evidence_ref_id:
             evidence_ref_id = str(uuid4())
+        metadata = {}
+        raw_meta = block.get("metadata") if isinstance(block.get("metadata"), dict) else {}
+        if raw_meta:
+            metadata.update(raw_meta)
+        if "text_source" in block:
+            metadata.setdefault("text_source", block.get("text_source"))
+        if "text_source_reason" in block:
+            metadata.setdefault("text_source_reason", block.get("text_source_reason"))
+
         _db_execute(
             """
             INSERT INTO layout_blocks (
@@ -608,7 +626,7 @@ def _persist_layout_blocks(
                 span_end,
                 span_quality,
                 evidence_ref_id,
-                json.dumps({}, ensure_ascii=False),
+                json.dumps(metadata, ensure_ascii=False),
             ),
         )
         if not used_external_ref:
@@ -904,34 +922,6 @@ def _persist_visual_semantic_features(
         return
     blob_map = {row.get("blob_path"): row for row in visual_assets if row.get("blob_path")}
 
-    exemplars = semantic.get("design_exemplars") if isinstance(semantic.get("design_exemplars"), list) else []
-    for ex in exemplars:
-        if not isinstance(ex, dict):
-            continue
-        image_ref = ex.get("image_ref")
-        row = blob_map.get(image_ref)
-        if not row:
-            continue
-        _db_execute(
-            """
-            INSERT INTO visual_features (
-              id, visual_asset_id, run_id, feature_type,
-              geometry_jsonb, confidence, evidence_ref_id, metadata_jsonb
-            )
-            VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s::uuid, %s::jsonb)
-            """,
-            (
-                str(uuid4()),
-                row.get("visual_asset_id"),
-                run_id,
-                "design_exemplar",
-                None,
-                None,
-                row.get("evidence_ref_id"),
-                json.dumps(ex, ensure_ascii=False),
-            ),
-        )
-
     constraints = semantic.get("visual_constraints") if isinstance(semantic.get("visual_constraints"), list) else []
     for vc in constraints:
         if not isinstance(vc, dict):
@@ -1040,6 +1030,7 @@ def _upsert_visual_semantic_output(
     visual_asset_id: str,
     run_id: str | None,
     schema_version: str,
+    output_kind: str = "classification",
     tool_run_id: str | None,
     asset_type: str | None = None,
     asset_subtype: str | None = None,
@@ -1068,7 +1059,8 @@ def _upsert_visual_semantic_output(
         _db_execute(
             """
             UPDATE visual_semantic_outputs
-            SET asset_type = COALESCE(%s, asset_type),
+            SET output_kind = COALESCE(%s, output_kind),
+                asset_type = COALESCE(%s, asset_type),
                 asset_subtype = COALESCE(%s, asset_subtype),
                 canonical_facts_jsonb = COALESCE(%s::jsonb, canonical_facts_jsonb),
                 asset_specific_facts_jsonb = COALESCE(%s::jsonb, asset_specific_facts_jsonb),
@@ -1080,6 +1072,7 @@ def _upsert_visual_semantic_output(
             WHERE id = %s::uuid
             """,
             (
+                output_kind,
                 asset_type,
                 asset_subtype,
                 json.dumps(canonical_facts, ensure_ascii=False) if canonical_facts is not None else None,
@@ -1097,12 +1090,12 @@ def _upsert_visual_semantic_output(
     _db_execute(
         """
         INSERT INTO visual_semantic_outputs (
-          id, visual_asset_id, run_id, schema_version, asset_type, asset_subtype,
+          id, visual_asset_id, run_id, schema_version, output_kind, asset_type, asset_subtype,
           canonical_facts_jsonb, asset_specific_facts_jsonb, assertions_jsonb,
           agent_findings_jsonb, material_index_jsonb, metadata_jsonb, tool_run_id, created_at
         )
         VALUES (
-          %s, %s::uuid, %s::uuid, %s, %s, %s,
+          %s, %s::uuid, %s::uuid, %s, %s, %s, %s,
           %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::uuid, %s
         )
         """,
@@ -1111,6 +1104,7 @@ def _upsert_visual_semantic_output(
             visual_asset_id,
             run_id,
             schema_version,
+            output_kind,
             asset_type,
             asset_subtype,
             json.dumps(canonical_facts or {}, ensure_ascii=False),
@@ -1217,6 +1211,7 @@ def _extract_visual_asset_facts(
             visual_asset_id=visual_asset_id,
             run_id=run_id,
             schema_version="1.0",
+            output_kind="classification",
             tool_run_id=tool_run_id,
             asset_type=asset_type,
             asset_subtype=asset_subtype,
@@ -1303,6 +1298,7 @@ def _extract_visual_region_assertions(
             prompt = (
                 "You are a planning visual assertion instrument. Return ONLY valid JSON.\n"
                 "Given a cropped region from a planning visual, produce atomic assertions anchored to this region.\n"
+                "Do NOT assess policy compliance or planning balance; describe what the region appears to show or claim.\n"
                 "Output shape:\n"
                 "{\n"
                 '  "assertions": [\n'
@@ -1320,6 +1316,24 @@ def _extract_visual_region_assertions(
                 "    }\n"
                 "  ]\n"
                 "}\n"
+                "Use assertion_type from this vocabulary when possible:\n"
+                "design_scale_massing, design_form_roofline, design_materiality, design_frontage_and_activation,\n"
+                "design_rhythm_grain, townscape_subordination_or_dominance, townscape_skyline_effect,\n"
+                "townscape_view_corridor_effect, townscape_street_enclosure, heritage_setting_effect,\n"
+                "heritage_harm_signal, heritage_view_of_designated_asset, amenity_overlooking_signal,\n"
+                "amenity_enclosure_outlook_signal, amenity_daylight_sunlight_signal, amenity_noise_activity_signal,\n"
+                "access_point_and_visibility_signal, servicing_feasibility_signal, parking_cycle_provision_signal,\n"
+                "trees_retention_or_loss_signal, landscape_character_signal, drainage_strategy_signal, flood_risk_signal,\n"
+                "context_omission_risk, scale_presentation_risk, idealisation_risk, viewpoint_bias_risk.\n"
+                "Material consideration tags should be chosen from:\n"
+                "design.scale_massing, design.form_roofline, design.materials_detailing, design.public_realm_frontage,\n"
+                "townscape.character_appearance, townscape.views_skyline, townscape.street_enclosure,\n"
+                "heritage.setting_significance, heritage.views_assets,\n"
+                "amenity.privacy_overlooking, amenity.daylight_sunlight, amenity.outlook_enclosure,\n"
+                "transport.access_highway_safety, transport.parking_cycle, transport.servicing,\n"
+                "landscape.trees_planting, landscape.open_space, ecology.habitat_cues,\n"
+                "water.flood_risk, water.drainage_suds, construction.phasing_logistics,\n"
+                "evidence.representation_limits.\n"
                 f"Asset type: {asset_type or 'unknown'}; asset subtype: {asset_subtype or 'null'}.\n"
                 f"Canonical facts: {json.dumps(canonical_facts, ensure_ascii=False)}\n"
                 f"Asset-specific facts: {json.dumps(asset_specific, ensure_ascii=False)}\n"
@@ -1387,6 +1401,7 @@ def _extract_visual_region_assertions(
                 "- Only reference assertion_id values that exist in the provided assertions list.\n"
                 "- If there is nothing to add, return empty arrays and empty omissions.\n"
                 "- Keep commentary concise and in officer-report language.\n"
+                "- Do not decide compliance or planning balance; focus on evidence quality and visual signals.\n"
             )
             obj, tool_run_id, _ = _llm_structured_sync(
                 prompt_id="visual_agent_findings_v1",
@@ -1430,6 +1445,7 @@ def _extract_visual_region_assertions(
                     visual_asset_id=visual_asset_id,
                     run_id=run_id,
                     schema_version="1.0",
+                    output_kind="classification",
                     tool_run_id=tool_run_id,
                     agent_findings=agent_findings,
                     metadata_update={"agent_findings_tool_run_id": tool_run_id},
@@ -1439,6 +1455,7 @@ def _extract_visual_region_assertions(
             visual_asset_id=visual_asset_id,
             run_id=run_id,
             schema_version="1.0",
+            output_kind="classification",
             tool_run_id=None,
             assertions=assertions,
             agent_findings=agent_findings,
@@ -1675,6 +1692,397 @@ def _segment_visual_assets(
     return mask_total, region_total
 
 
+def _should_attempt_georef(asset_type: str | None, canonical_facts: dict[str, Any]) -> bool:
+    if isinstance(asset_type, str):
+        normalized = asset_type.strip().lower()
+        if normalized in {
+            "location_plan",
+            "site_plan_existing",
+            "site_plan_proposed",
+            "diagram_access_transport",
+            "diagram_landscape_trees",
+            "diagram_daylight_sunlight",
+            "diagram_heritage_townscape",
+            "diagram_flood_drainage",
+            "diagram_phasing_construction",
+        }:
+            return True
+    depiction = canonical_facts.get("depiction") if isinstance(canonical_facts, dict) else None
+    if isinstance(depiction, dict):
+        if depiction.get("depiction_kind") == "map":
+            return True
+    return False
+
+
+def _merge_visual_asset_metadata(*, visual_asset_id: str, patch: dict[str, Any]) -> None:
+    _db_execute(
+        """
+        UPDATE visual_assets
+        SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb,
+            updated_at = NOW()
+        WHERE id = %s::uuid
+        """,
+        (json.dumps(patch, ensure_ascii=False), visual_asset_id),
+    )
+
+
+def _ensure_world_frame(*, epsg: int) -> str:
+    row = _db_fetch_one(
+        "SELECT id FROM frames WHERE frame_type = %s AND epsg = %s",
+        ("world", epsg),
+    )
+    if row:
+        return str(row["id"])
+    frame_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO frames (id, frame_type, epsg, description, metadata_jsonb, created_at)
+        VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+        """,
+        (frame_id, "world", epsg, f"EPSG:{epsg}", json.dumps({}, ensure_ascii=False), _utc_now()),
+    )
+    return frame_id
+
+
+def _create_image_frame(*, visual_asset_id: str, blob_path: str, page_number: int | None) -> str:
+    frame_id = str(uuid4())
+    metadata = {"visual_asset_id": visual_asset_id, "blob_path": blob_path, "page_number": page_number}
+    _db_execute(
+        """
+        INSERT INTO frames (id, frame_type, epsg, description, metadata_jsonb, created_at)
+        VALUES (%s, %s, %s, %s, %s::jsonb, %s)
+        """,
+        (
+            frame_id,
+            "image",
+            None,
+            f"visual_asset::{visual_asset_id}",
+            json.dumps(metadata, ensure_ascii=False),
+            _utc_now(),
+        ),
+    )
+    return frame_id
+
+
+def _persist_georef_outputs(
+    *,
+    run_id: str | None,
+    tool_run_id: str,
+    image_frame_id: str,
+    target_epsg: int,
+    payload: dict[str, Any],
+) -> tuple[str | None, int, int, list[str]]:
+    errors: list[str] = []
+    transform_id: str | None = None
+    transform_count = 0
+    projection_count = 0
+
+    transform = payload.get("transform") if isinstance(payload, dict) else None
+    control_points = payload.get("control_points") if isinstance(payload, dict) else None
+    if not isinstance(control_points, list) and isinstance(transform, dict):
+        control_points = transform.get("control_points")
+
+    if isinstance(transform, dict):
+        matrix = transform.get("matrix")
+        matrix_shape = transform.get("matrix_shape")
+        method = transform.get("method") if isinstance(transform.get("method"), str) else "unknown"
+        uncertainty_score = transform.get("uncertainty_score")
+        if isinstance(matrix, list) and isinstance(matrix_shape, list):
+            world_frame_id = _ensure_world_frame(epsg=target_epsg)
+            transform_id = str(uuid4())
+            cp_ids: list[str] = []
+            if isinstance(control_points, list):
+                for cp in control_points:
+                    if not isinstance(cp, dict):
+                        continue
+                    cp_id = str(uuid4())
+                    cp_ids.append(cp_id)
+            _db_execute(
+                """
+                INSERT INTO transforms (
+                  id, from_frame_id, to_frame_id, method, matrix, matrix_shape,
+                  uncertainty_score, control_point_ids_jsonb, tool_run_id, metadata_jsonb, created_at
+                )
+                VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s::jsonb, %s::uuid, %s::jsonb, %s)
+                """,
+                (
+                    transform_id,
+                    image_frame_id,
+                    world_frame_id,
+                    method,
+                    json.dumps(matrix, ensure_ascii=False),
+                    json.dumps(matrix_shape, ensure_ascii=False),
+                    float(uncertainty_score) if isinstance(uncertainty_score, (int, float)) else None,
+                    json.dumps(cp_ids, ensure_ascii=False),
+                    tool_run_id,
+                    json.dumps(transform.get("metadata") if isinstance(transform.get("metadata"), dict) else {}, ensure_ascii=False),
+                    _utc_now(),
+                ),
+            )
+            transform_count += 1
+
+            if isinstance(control_points, list):
+                for cp_id, cp in zip(cp_ids, control_points, strict=False):
+                    if not isinstance(cp, dict):
+                        continue
+                    _db_execute(
+                        """
+                        INSERT INTO control_points (id, transform_id, src_jsonb, dst_jsonb, residual, weight, created_at)
+                        VALUES (%s, %s::uuid, %s::jsonb, %s::jsonb, %s, %s, %s)
+                        """,
+                        (
+                            cp_id,
+                            transform_id,
+                            json.dumps(cp.get("src") or {}, ensure_ascii=False),
+                            json.dumps(cp.get("dst") or {}, ensure_ascii=False),
+                            float(cp.get("residual")) if isinstance(cp.get("residual"), (int, float)) else None,
+                            float(cp.get("weight")) if isinstance(cp.get("weight"), (int, float)) else None,
+                            _utc_now(),
+                        ),
+                    )
+        else:
+            errors.append("transform_missing_matrix")
+    else:
+        errors.append("transform_missing")
+
+    artifacts = payload.get("projection_artifacts") if isinstance(payload, dict) else None
+    if isinstance(artifacts, list):
+        for art in artifacts:
+            if not isinstance(art, dict):
+                continue
+            artifact_path = art.get("artifact_path") or art.get("path")
+            if not isinstance(artifact_path, str) or not artifact_path:
+                continue
+            evidence_ref = art.get("evidence_ref")
+            evidence_ref_id = None
+            if isinstance(evidence_ref, str) and evidence_ref:
+                evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+            _db_execute(
+                """
+                INSERT INTO projection_artifacts (
+                  id, transform_id, artifact_type, artifact_path, evidence_ref_id, tool_run_id, metadata_jsonb, created_at
+                )
+                VALUES (%s, %s::uuid, %s, %s, %s::uuid, %s::uuid, %s::jsonb, %s)
+                """,
+                (
+                    str(uuid4()),
+                    transform_id,
+                    art.get("artifact_type") if isinstance(art.get("artifact_type"), str) else "image_overlay",
+                    artifact_path,
+                    evidence_ref_id,
+                    tool_run_id,
+                    json.dumps(art.get("metadata") if isinstance(art.get("metadata"), dict) else {}, ensure_ascii=False),
+                    _utc_now(),
+                ),
+            )
+            projection_count += 1
+
+    return transform_id, transform_count, projection_count, errors
+
+
+def _auto_georef_visual_assets(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_assets: list[dict[str, Any]],
+    target_epsg: int,
+) -> tuple[int, int, int, int]:
+    base_url = os.environ.get("TPA_GEOREF_BASE_URL")
+    attempts = 0
+    successes = 0
+    transform_count = 0
+    projection_count = 0
+
+    asset_ids = [a.get("visual_asset_id") for a in visual_assets if a.get("visual_asset_id")]
+    semantic_rows = []
+    if asset_ids:
+        semantic_rows = _db_fetch_all(
+            """
+            SELECT DISTINCT ON (visual_asset_id)
+              visual_asset_id, asset_type, asset_subtype, canonical_facts_jsonb, asset_specific_facts_jsonb
+            FROM visual_semantic_outputs
+            WHERE visual_asset_id = ANY(%s::uuid[])
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY visual_asset_id, created_at DESC
+            """,
+            (asset_ids, run_id, run_id),
+        )
+    semantic_by_id = {str(r.get("visual_asset_id")): r for r in semantic_rows if r.get("visual_asset_id")}
+
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        blob_path = asset.get("blob_path")
+        if not visual_asset_id or not isinstance(blob_path, str):
+            continue
+
+        semantic_row = semantic_by_id.get(visual_asset_id) or {}
+        asset_type = semantic_row.get("asset_type") if isinstance(semantic_row.get("asset_type"), str) else None
+        asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row.get("asset_subtype"), str) else None
+        if not asset_type or not asset_subtype:
+            meta = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+            if not asset_type and isinstance(meta.get("asset_type"), str):
+                asset_type = meta.get("asset_type")
+            if not asset_subtype and isinstance(meta.get("asset_subtype"), str):
+                asset_subtype = meta.get("asset_subtype")
+        canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row.get("canonical_facts_jsonb"), dict) else {}
+        asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row.get("asset_specific_facts_jsonb"), dict) else {}
+
+        if not _should_attempt_georef(asset_type, canonical_facts):
+            continue
+
+        attempts += 1
+        tool_run_id = str(uuid4())
+        started = _utc_now()
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+              started_at, ended_at, confidence_hint, uncertainty_note
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+            """,
+            (
+                tool_run_id,
+                ingest_batch_id,
+                run_id,
+                "auto_georef",
+                json.dumps(
+                    {
+                        "visual_asset_id": visual_asset_id,
+                        "blob_path": blob_path,
+                        "asset_type": asset_type,
+                        "asset_subtype": asset_subtype,
+                        "target_epsg": target_epsg,
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps({}, ensure_ascii=False),
+                "running",
+                started,
+                "medium",
+                "Auto-georeferencing attempted; downstream overlays are best-effort.",
+            ),
+        )
+
+        page_number = asset.get("page_number") if isinstance(asset.get("page_number"), int) else None
+        image_frame_id = _create_image_frame(visual_asset_id=visual_asset_id, blob_path=blob_path, page_number=page_number)
+        _merge_visual_asset_metadata(
+            visual_asset_id=visual_asset_id,
+            patch={"image_frame_id": image_frame_id, "georef_tool_run_id": tool_run_id, "georef_status": "running"},
+        )
+
+        if not base_url:
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                ("error", json.dumps({"error": "georef_unconfigured"}, ensure_ascii=False), _utc_now(), tool_run_id),
+            )
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={"georef_status": "unconfigured"},
+            )
+            continue
+
+        image_bytes, _, err = read_blob_bytes(blob_path)
+        if err or not image_bytes:
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                ("error", json.dumps({"error": f"visual_asset_read_failed:{err or 'no_bytes'}"}, ensure_ascii=False), _utc_now(), tool_run_id),
+            )
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={"georef_status": "error", "georef_error": "visual_asset_read_failed"},
+            )
+            continue
+
+        payload = {
+            "visual_asset_id": visual_asset_id,
+            "asset_type": asset_type,
+            "asset_subtype": asset_subtype,
+            "target_epsg": target_epsg,
+            "image_base64": base64.b64encode(image_bytes).decode("ascii"),
+            "canonical_facts": canonical_facts,
+            "asset_specific_facts": asset_specific,
+        }
+        try:
+            with httpx.Client(timeout=None) as client:
+                resp = client.post(base_url.rstrip("/") + "/auto-georef", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                ("error", json.dumps({"error": str(exc)}, ensure_ascii=False), _utc_now(), tool_run_id),
+            )
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={"georef_status": "error", "georef_error": str(exc)},
+            )
+            continue
+
+        if not isinstance(data, dict):
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                ("error", json.dumps({"error": "georef_invalid_response"}, ensure_ascii=False), _utc_now(), tool_run_id),
+            )
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={"georef_status": "error", "georef_error": "invalid_response"},
+            )
+            continue
+
+        data_status = data.get("status") if isinstance(data.get("status"), str) else None
+        transform_id, t_count, p_count, georef_errors = _persist_georef_outputs(
+            run_id=run_id,
+            tool_run_id=tool_run_id,
+            image_frame_id=image_frame_id,
+            target_epsg=target_epsg,
+            payload=data,
+        )
+        transform_count += t_count
+        projection_count += p_count
+        if transform_id or p_count > 0 or data.get("ok") is True:
+            successes += 1
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={
+                    "georef_status": "success",
+                    "transform_id": transform_id,
+                    "projection_artifact_count": p_count,
+                },
+            )
+            status = "success" if not georef_errors else "partial"
+        else:
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={
+                    "georef_status": data_status or "error",
+                    "georef_error": "no_transform",
+                },
+            )
+            status = "error"
+
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            (
+                status,
+                json.dumps(
+                    {
+                        "ok": data.get("ok") if isinstance(data.get("ok"), bool) else None,
+                        "transform_id": transform_id,
+                        "projection_artifact_count": p_count,
+                        "status": data_status,
+                        "errors": georef_errors[:10],
+                    },
+                    ensure_ascii=False,
+                ),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+
+    return attempts, successes, transform_count, projection_count
+
+
 def _link_visual_assets_to_policies(
     *,
     ingest_batch_id: str,
@@ -1685,55 +2093,93 @@ def _link_visual_assets_to_policies(
 ) -> tuple[dict[str, list[str]], int]:
     if not visual_assets:
         return {}, 0
-    candidates = [
+    candidates_all = [
         {
             "policy_code": s.get("policy_code"),
             "title": s.get("title"),
+            "section_path": s.get("section_path"),
+            "page_start": s.get("page_start"),
+            "page_end": s.get("page_end"),
             "snippet": _truncate_text(s.get("text"), 240),
         }
         for s in policy_sections
         if s.get("policy_code")
     ]
-    if not candidates:
+    if not candidates_all:
         return {}, 0
 
     section_by_code = {s.get("policy_code"): s for s in policy_sections if s.get("policy_code")}
     links_by_asset: dict[str, list[str]] = {}
     link_count = 0
 
-    prompt_id = "visual_asset_link_v1"
-    system_template = (
-        "You are linking visual assets to planning policies. "
-        "Return ONLY JSON with shape: "
-        '{ "links": [ { "policy_code": "string", "confidence": "low|medium|high", "rationale": "string" } ] }. '
-        "Only include codes that are explicitly referenced or clearly relevant."
-    )
+    prompt_id = "visual_asset_link_v2"
+
+    def _select_candidates(page_number: int) -> tuple[list[dict[str, Any]], str]:
+        if page_number <= 0:
+            return candidates_all, "all"
+        page_candidates = [
+            c
+            for c in candidates_all
+            if isinstance(c.get("page_start"), int)
+            and isinstance(c.get("page_end"), int)
+            and c["page_start"] <= page_number <= c["page_end"]
+        ]
+        if page_candidates:
+            return page_candidates, "page_range"
+        return candidates_all, "all"
 
     for asset in visual_assets:
         visual_asset_id = asset.get("visual_asset_id")
-        if not visual_asset_id:
+        blob_path = asset.get("blob_path")
+        if not visual_asset_id or not isinstance(blob_path, str):
             continue
         metadata = asset.get("metadata") or {}
         page_number = int(asset.get("page_number") or 0)
         caption = metadata.get("caption") or (metadata.get("classification") or {}).get("caption_hint")
         page_text = _truncate_text(page_texts.get(page_number), 1200)
+        asset_type = metadata.get("asset_type") or (metadata.get("classification") or {}).get("asset_type")
+        semantic_row = _db_fetch_one(
+            """
+            SELECT asset_type, asset_subtype
+            FROM visual_semantic_outputs
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        if semantic_row and not asset_type:
+            asset_type = semantic_row.get("asset_type")
+        asset_subtype = semantic_row.get("asset_subtype") if semantic_row else None
 
-        payload = {
-            "asset_id": visual_asset_id,
-            "asset_type": metadata.get("asset_type"),
-            "caption": caption,
-            "page_text": page_text,
-            "policy_candidates": candidates,
-        }
-        obj, tool_run_id, errs = _llm_structured_sync(
+        image_bytes, _, err = read_blob_bytes(blob_path)
+        if err or not image_bytes:
+            raise RuntimeError(f"visual_asset_read_failed:{err or 'no_bytes'}")
+
+        candidates, candidate_scope = _select_candidates(page_number)
+        prompt = (
+            "You are a planning visual linker. Return ONLY valid JSON.\n"
+            "Text may appear inside the image; use it if present. Some links are implied by the visual content.\n"
+            "Only link to policies listed in policy_candidates. Do not invent codes.\n"
+            "Output shape:\n"
+            '{ "links": [ { "policy_code": "string", "confidence": "low|medium|high", '
+            '"rationale": "string", "basis": "in_image_text|caption|visual_implied|page_context" } ] }\n'
+            f"Asset type: {asset_type or 'unknown'}.\n"
+            f"Asset subtype: {asset_subtype or 'unknown'}.\n"
+            f"Caption (if any): {caption or ''}\n"
+            f"Page text (if any): {page_text or ''}\n"
+            f"Policy candidates: {json.dumps(candidates, ensure_ascii=False)}\n"
+        )
+
+        obj, tool_run_id, errs = _run_vlm_structured(
             prompt_id=prompt_id,
-            prompt_version=1,
+            prompt_version=2,
             prompt_name="Visual policy linker",
-            purpose="Link visual assets to relevant policy sections.",
-            system_template=system_template,
-            user_payload=payload,
-            time_budget_seconds=60.0,
-            output_schema_ref="schemas/VisualAssetLinkParseResult.schema.json",
+            purpose="Link visual assets to relevant policy sections using the visual content.",
+            tool_name="vlm_visual_policy_link",
+            prompt=prompt,
+            image_bytes=image_bytes,
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
         )
@@ -1774,6 +2220,9 @@ def _link_visual_assets_to_policies(
                             "policy_code": policy_code,
                             "confidence": link.get("confidence"),
                             "rationale": link.get("rationale"),
+                            "basis": link.get("basis") or "unspecified",
+                            "candidate_scope": candidate_scope,
+                            "page_number": page_number,
                         },
                         ensure_ascii=False,
                     ),
@@ -2086,21 +2535,7 @@ def _slice_blocks_for_llm(
     max_chars: int = 12000,
     max_blocks: int = 140,
 ) -> list[list[dict[str, Any]]]:
-    slices: list[list[dict[str, Any]]] = []
-    current: list[dict[str, Any]] = []
-    current_chars = 0
-    for block in blocks:
-        text = str(block.get("text") or "")
-        block_len = len(text)
-        if current and (current_chars + block_len > max_chars or len(current) >= max_blocks):
-            slices.append(current)
-            current = []
-            current_chars = 0
-        current.append(block)
-        current_chars += block_len
-    if current:
-        slices.append(current)
-    return slices
+    return [blocks]
 
 
 def _llm_extract_policy_structure(
@@ -2302,6 +2737,442 @@ def _merge_policy_headings(
     return merged
 
 
+def _infer_source_kind(filename: str | None, content_type: str | None) -> str:
+    if isinstance(content_type, str):
+        lowered = content_type.lower()
+        if "pdf" in lowered:
+            return "PDF"
+        if "word" in lowered or "docx" in lowered:
+            return "DOCX"
+        if "html" in lowered:
+            return "HTML"
+        if "image" in lowered:
+            return "IMAGE"
+    if not isinstance(filename, str):
+        return "OTHER"
+    ext = Path(filename).suffix.lower()
+    if ext == ".pdf":
+        return "PDF"
+    if ext in {".doc", ".docx"}:
+        return "DOCX"
+    if ext in {".html", ".htm"}:
+        return "HTML"
+    if ext in {".png", ".jpg", ".jpeg", ".tif", ".tiff"}:
+        return "IMAGE"
+    return "OTHER"
+
+
+def _normalize_status_confidence(value: str | None) -> str:
+    if not isinstance(value, str):
+        return "LOW"
+    upper = value.strip().upper()
+    if upper in {"HIGH", "MEDIUM", "LOW"}:
+        return upper
+    return "LOW"
+
+
+def _status_confidence_at_least(value: str, minimum: str) -> bool:
+    order = {"LOW": 1, "MEDIUM": 2, "HIGH": 3}
+    return order.get(value, 1) >= order.get(minimum, 2)
+
+
+def _build_identity_evidence_options(
+    *,
+    document_id: str,
+    block_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    options: list[dict[str, Any]] = []
+    for block in block_rows:
+        block_id = block.get("block_id")
+        page_number = block.get("page_number")
+        text = block.get("text")
+        if not isinstance(block_id, str) or not isinstance(page_number, int):
+            continue
+        if not isinstance(text, str) or not text.strip():
+            continue
+        locator_value = f"p{page_number}-{block_id}"
+        options.append(
+            {
+                "document_id": document_id,
+                "locator_type": "paragraph",
+                "locator_value": locator_value,
+                "excerpt": text,
+            }
+        )
+    return options
+
+
+def _filter_identity_evidence(
+    evidence: Any,
+    *,
+    document_id: str,
+    options_by_key: dict[tuple[str, str], dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not isinstance(evidence, list):
+        return []
+    filtered: list[dict[str, Any]] = []
+    for item in evidence:
+        if not isinstance(item, dict):
+            continue
+        locator_type = item.get("locator_type")
+        locator_value = item.get("locator_value")
+        if not isinstance(locator_type, str) or not isinstance(locator_value, str):
+            continue
+        key = (locator_type, locator_value)
+        option = options_by_key.get(key)
+        if not option:
+            continue
+        filtered.append(
+            {
+                "document_id": document_id,
+                "locator_type": locator_type,
+                "locator_value": locator_value,
+                "excerpt": option.get("excerpt") or "",
+            }
+        )
+    return filtered
+
+
+def _apply_document_weight_rules(
+    *,
+    identity: dict[str, Any],
+    status: dict[str, Any],
+) -> tuple[dict[str, Any], dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    applied_rules: list[str] = []
+    doc_family = identity.get("document_family") if isinstance(identity.get("document_family"), str) else "UNKNOWN"
+    status_claim = status.get("status_claim") if isinstance(status.get("status_claim"), str) else "NOT_STATED"
+    status_confidence = _normalize_status_confidence(status.get("status_confidence"))
+    status_evidence = status.get("status_evidence") if isinstance(status.get("status_evidence"), list) else []
+    status_evidence_missing = len(status_evidence) == 0
+    status_claim_raw = status_claim
+
+    if status_claim in {"ADOPTED", "MADE", "APPROVED"} and status_evidence_missing:
+        status["status_claim"] = "NOT_STATED"
+        status["status_confidence"] = "LOW"
+        status["status_note"] = "Status claim lacked explicit evidence; downgraded to NOT_STATED."
+        status_claim = "NOT_STATED"
+        status_confidence = "LOW"
+        warnings.append("NO_STATUS_EVIDENCE")
+        applied_rules.append("R8_NO_EVIDENCE_DEGRADE")
+
+    weight_class = "UNKNOWN"
+    legal_assertion_level = "ASSERT_NONE"
+    phrasing_guidance = "SAY_SYSTEM_CLASSIFIES_FOR_NAVIGATION_ONLY"
+    basis: list[dict[str, Any]] = []
+
+    if (
+        doc_family in {"LOCAL_PLAN_DPD", "SPATIAL_DEVELOPMENT_STRATEGY", "NEIGHBOURHOOD_PLAN"}
+        and status_claim in {"ADOPTED", "MADE", "APPROVED"}
+        and _status_confidence_at_least(status_confidence, "MEDIUM")
+        and not status_evidence_missing
+    ):
+        weight_class = "DEVELOPMENT_PLAN"
+        legal_assertion_level = "ASSERT_CLAIMED_BY_DOCUMENT"
+        phrasing_guidance = "SAY_DOCUMENT_PRESENTS_ITSELF_AS"
+        applied_rules.append("R1_DEV_PLAN_EXPLICIT")
+    elif (
+        doc_family in {"LOCAL_PLAN_DPD", "SPATIAL_DEVELOPMENT_STRATEGY", "NEIGHBOURHOOD_PLAN"}
+        and status_claim
+        in {
+            "REGULATION_18",
+            "REGULATION_19",
+            "PUBLICATION_DRAFT",
+            "SUBMISSION",
+            "EXAMINATION",
+            "PROPOSED_MODIFICATIONS",
+            "CONSULTATION_DRAFT",
+        }
+        and not status_evidence_missing
+    ):
+        weight_class = "EMERGING_POLICY"
+        legal_assertion_level = "ASSERT_CLAIMED_BY_DOCUMENT"
+        phrasing_guidance = "SAY_DOCUMENT_PRESENTS_ITSELF_AS"
+        applied_rules.append("R2_EMERGING_POLICY_EXPLICIT")
+    elif doc_family in {"SPD", "DESIGN_CODE"} and status_claim in {"ADOPTED", "APPROVED"} and not status_evidence_missing:
+        weight_class = "SPD_GUIDANCE"
+        legal_assertion_level = "ASSERT_CLAIMED_BY_DOCUMENT"
+        phrasing_guidance = "SAY_DOCUMENT_PRESENTS_ITSELF_AS"
+        applied_rules.append("R3_SPD_EXPLICIT")
+    elif doc_family in {"NPPF_PPG_NATIONAL_POLICY"}:
+        weight_class = "MATERIAL_CONSIDERATION"
+        applied_rules.append("R4_NATIONAL_POLICY")
+    elif doc_family
+    in {
+        "EVIDENCE_BASE",
+        "TECHNICAL_REPORT",
+        "CONSULTEE_RESPONSE",
+        "PUBLIC_REPRESENTATION",
+        "OFFICER_REPORT",
+        "DECISION_NOTICE",
+        "COMMITTEE_MINUTES",
+        "APPEAL_DECISION",
+        "S106_HEADS_OR_AGREEMENT",
+        "APPLICANT_STATEMENT",
+        "DRAWING_SET",
+    }:
+        weight_class = "MATERIAL_CONSIDERATION"
+        applied_rules.append("R5_MATERIAL_CONSIDERATION_DEFAULT")
+    elif doc_family in {"MARKETING_OR_ILLUSTRATIVE"}:
+        weight_class = "ILLUSTRATIVE_LOW_WEIGHT"
+        applied_rules.append("R6_ILLUSTRATIVE_LOW_WEIGHT")
+
+    if weight_class == "UNKNOWN":
+        plan_families = {"LOCAL_PLAN_DPD", "SPATIAL_DEVELOPMENT_STRATEGY", "NEIGHBOURHOOD_PLAN"}
+        emerging_statuses = {
+            "REGULATION_18",
+            "REGULATION_19",
+            "PUBLICATION_DRAFT",
+            "SUBMISSION",
+            "EXAMINATION",
+            "PROPOSED_MODIFICATIONS",
+            "CONSULTATION_DRAFT",
+        }
+        adopted_statuses = {"ADOPTED", "MADE", "APPROVED"}
+        if doc_family in plan_families:
+            if status_claim_raw in adopted_statuses:
+                weight_class = "DEVELOPMENT_PLAN"
+                applied_rules.append("R10_IMPLICIT_DEV_PLAN")
+            elif status_claim_raw in emerging_statuses:
+                weight_class = "EMERGING_POLICY"
+                applied_rules.append("R11_IMPLICIT_EMERGING_POLICY")
+            else:
+                weight_class = "EMERGING_POLICY"
+                applied_rules.append("R12_PLAN_FAMILY_ONLY")
+            legal_assertion_level = "ASSERT_NONE"
+            phrasing_guidance = "SAY_SYSTEM_CLASSIFIES_FOR_NAVIGATION_ONLY"
+            if "LOW_PROVENANCE" not in warnings:
+                warnings.append("LOW_PROVENANCE")
+        elif doc_family in {"SPD", "DESIGN_CODE"}:
+            weight_class = "SPD_GUIDANCE"
+            applied_rules.append("R13_SPD_FAMILY_ONLY")
+            legal_assertion_level = "ASSERT_NONE"
+            phrasing_guidance = "SAY_SYSTEM_CLASSIFIES_FOR_NAVIGATION_ONLY"
+            if "LOW_PROVENANCE" not in warnings:
+                warnings.append("LOW_PROVENANCE")
+
+    if status_claim in {"SUPERSEDED", "WITHDRAWN"}:
+        warnings.append("TIME_SENSITIVE_STATUS")
+        applied_rules.append("R7_SUPERSEDED_OR_WITHDRAWN_WARNING")
+
+    basis_note: str | None = None
+    basis_type: str | None = None
+    if weight_class != "UNKNOWN" and applied_rules:
+        last_rule = applied_rules[-1]
+        if last_rule in {"R10_IMPLICIT_DEV_PLAN", "R11_IMPLICIT_EMERGING_POLICY"}:
+            basis_type = "DERIVED_RULE"
+            basis_note = "Status implied from document signals; explicit evidence missing."
+        elif last_rule in {"R12_PLAN_FAMILY_ONLY", "R13_SPD_FAMILY_ONLY"}:
+            basis_type = "DOCUMENT_FAMILY_ONLY"
+            basis_note = "Document family indicates category; status not evidenced."
+
+    if status_evidence and weight_class != "UNKNOWN":
+        basis.append(
+            {
+                "basis_type": "EXPLICIT_IN_DOCUMENT",
+                "evidence": status_evidence,
+                "rule_id": applied_rules[-1] if applied_rules else None,
+            }
+        )
+    elif basis_type:
+        basis.append(
+            {
+                "basis_type": basis_type,
+                "evidence": identity.get("identity_evidence") if isinstance(identity.get("identity_evidence"), list) else [],
+                "rule_id": applied_rules[-1] if applied_rules else None,
+                "note": basis_note,
+            }
+        )
+    elif identity.get("identity_evidence"):
+        basis.append(
+            {
+                "basis_type": "DOCUMENT_FAMILY_ONLY",
+                "evidence": identity.get("identity_evidence"),
+                "rule_id": applied_rules[-1] if applied_rules else None,
+            }
+        )
+
+    weight = {
+        "document_id": identity.get("document_id"),
+        "weight_class": weight_class,
+        "classification_basis": basis,
+        "legal_assertion_level": legal_assertion_level,
+        "phrasing_guidance": phrasing_guidance,
+        "warnings": warnings,
+    }
+    return weight, status, applied_rules
+
+
+def _extract_document_identity_status(
+    *,
+    ingest_batch_id: str | None,
+    run_id: str | None,
+    document_id: str,
+    title: str,
+    filename: str | None,
+    content_type: str | None,
+    block_rows: list[dict[str, Any]],
+    evidence_ref_map: dict[str, str] | None = None,
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    evidence_options = _build_identity_evidence_options(document_id=document_id, block_rows=block_rows)
+    options_by_key = {
+        (opt.get("locator_type"), opt.get("locator_value")): opt
+        for opt in evidence_options
+        if isinstance(opt.get("locator_type"), str) and isinstance(opt.get("locator_value"), str)
+    }
+    source_kind = _infer_source_kind(filename, content_type)
+    system_template = (
+        "You are a planning document classifier. Return ONLY valid JSON.\n"
+        "Output shape:\n"
+        "{\n"
+        '  "identity": {\n'
+        '    "document_id": "string",\n'
+        '    "title": "string",\n'
+        '    "author": "string",\n'
+        '    "publisher": "string",\n'
+        '    "jurisdiction": "UK-England|UK-Scotland|UK-Wales|UK-NI|Unknown",\n'
+        '    "lpa_name": "string",\n'
+        '    "lpa_code": "string",\n'
+        '    "document_family": "LOCAL_PLAN_DPD|SPATIAL_DEVELOPMENT_STRATEGY|NEIGHBOURHOOD_PLAN|SPD|NPPF_PPG_NATIONAL_POLICY|EVIDENCE_BASE|TECHNICAL_REPORT|DESIGN_CODE|APPLICANT_STATEMENT|DRAWING_SET|CONSULTEE_RESPONSE|PUBLIC_REPRESENTATION|OFFICER_REPORT|DECISION_NOTICE|COMMITTEE_MINUTES|APPEAL_DECISION|S106_HEADS_OR_AGREEMENT|MARKETING_OR_ILLUSTRATIVE|UNKNOWN",\n'
+        '    "source_kind": "PDF|DOCX|HTML|EMAIL|GIS|IMAGE|OTHER",\n'
+        '    "version_label": "string",\n'
+        '    "publication_date": "YYYY-MM-DD",\n'
+        '    "revision_date": "YYYY-MM-DD",\n'
+        '    "identity_evidence": [ {"document_id": "string", "locator_type": "paragraph", "locator_value": "string", "excerpt": "string"} ],\n'
+        '    "notes": "string"\n'
+        "  },\n"
+        '  "status": {\n'
+        '    "document_id": "string",\n'
+        '    "status_claim": "ADOPTED|MADE|APPROVED|PUBLICATION_DRAFT|REGULATION_18|REGULATION_19|SUBMISSION|EXAMINATION|PROPOSED_MODIFICATIONS|CONSULTATION_DRAFT|WITHDRAWN|SUPERSEDED|NOT_STATED",\n'
+        '    "status_confidence": "HIGH|MEDIUM|LOW",\n'
+        '    "status_evidence": [ {"document_id": "string", "locator_type": "paragraph", "locator_value": "string", "excerpt": "string"} ],\n'
+        '    "checked_at": "YYYY-MM-DDTHH:MM:SSZ",\n'
+        '    "status_note": "string"\n'
+        "  }\n"
+        "}\n"
+        "Rules:\n"
+        "- Only use evidence refs from evidence_options.\n"
+        "- Use locator_type \"paragraph\".\n"
+        "- If status is not stated, set status_claim to NOT_STATED and status_confidence LOW.\n"
+    )
+    payload = {
+        "document_id": document_id,
+        "title": title,
+        "source_kind_hint": source_kind,
+        "evidence_options": evidence_options,
+    }
+    obj, tool_run_id, errs = _llm_structured_sync(
+        prompt_id="document_identity_status_v1",
+        prompt_version=1,
+        prompt_name="Document identity/status classifier",
+        purpose="Classify document identity, status, and planning weight with explicit evidence.",
+        system_template=system_template,
+        user_payload=payload,
+        time_budget_seconds=120.0,
+        output_schema_ref="schemas/DocumentIdentityStatusBundle.schema.json",
+        ingest_batch_id=ingest_batch_id,
+        run_id=run_id,
+    )
+    if not isinstance(obj, dict):
+        return None, tool_run_id, errs
+
+    identity = obj.get("identity") if isinstance(obj.get("identity"), dict) else {}
+    status = obj.get("status") if isinstance(obj.get("status"), dict) else {}
+
+    identity.setdefault("document_id", document_id)
+    if not identity.get("title"):
+        identity["title"] = title
+    identity.setdefault("source_kind", source_kind)
+    identity.setdefault("document_family", "UNKNOWN")
+    identity.setdefault("jurisdiction", "Unknown")
+    identity_evidence = _filter_identity_evidence(
+        identity.get("identity_evidence"),
+        document_id=document_id,
+        options_by_key=options_by_key,
+    )
+    identity["identity_evidence"] = identity_evidence
+
+    status.setdefault("document_id", document_id)
+    status.setdefault("status_claim", "NOT_STATED")
+    status["status_confidence"] = _normalize_status_confidence(status.get("status_confidence"))
+    status_evidence = _filter_identity_evidence(
+        status.get("status_evidence"),
+        document_id=document_id,
+        options_by_key=options_by_key,
+    )
+    status["status_evidence"] = status_evidence
+    status["checked_at"] = _utc_now_iso()
+
+    weight, status, rules_applied = _apply_document_weight_rules(identity=identity, status=status)
+    bundle = {"identity": identity, "status": status, "weight": weight}
+
+    identity_ref_ids: list[str] = []
+    status_ref_ids: list[str] = []
+    if evidence_ref_map:
+        for ev in identity_evidence:
+            locator_value = ev.get("locator_value")
+            if isinstance(locator_value, str):
+                ref_id = evidence_ref_map.get(locator_value)
+                if ref_id:
+                    identity_ref_ids.append(ref_id)
+        for ev in status_evidence:
+            locator_value = ev.get("locator_value")
+            if isinstance(locator_value, str):
+                ref_id = evidence_ref_map.get(locator_value)
+                if ref_id:
+                    status_ref_ids.append(ref_id)
+
+    _db_execute(
+        """
+        INSERT INTO document_identity_status (
+          id, document_id, run_id, identity_jsonb, status_jsonb, weight_jsonb, metadata_jsonb, tool_run_id, created_at
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::uuid, %s)
+        """,
+        (
+            str(uuid4()),
+            document_id,
+            run_id,
+            json.dumps(identity, ensure_ascii=False),
+            json.dumps(status, ensure_ascii=False),
+            json.dumps(weight, ensure_ascii=False),
+            json.dumps(
+                {
+                    "rules_applied": rules_applied,
+                    "identity_evidence_ref_ids": identity_ref_ids,
+                    "status_evidence_ref_ids": status_ref_ids,
+                },
+                ensure_ascii=False,
+            ),
+            tool_run_id,
+            _utc_now(),
+        ),
+    )
+    _db_execute(
+        """
+        UPDATE documents
+        SET document_status = %s,
+            weight_hint = %s,
+            metadata = metadata || %s::jsonb
+        WHERE id = %s::uuid
+        """,
+        (
+            status.get("status_claim"),
+            weight.get("weight_class"),
+            json.dumps(
+                {
+                    "document_family": identity.get("document_family"),
+                    "status_confidence": status.get("status_confidence"),
+                },
+                ensure_ascii=False,
+            ),
+            document_id,
+        ),
+    )
+
+    return bundle, tool_run_id, errs
+
+
 def _ensure_kg_node(*, node_id: str, node_type: str, canonical_fk: str | None = None, props: dict[str, Any] | None = None) -> None:
     _db_execute(
         """
@@ -2427,7 +3298,10 @@ def _persist_policy_structure(
                 "policy_section_id": section_id,
                 "policy_code": section.get("policy_code"),
                 "title": section.get("title"),
+                "section_path": section.get("section_path"),
                 "text": section_text,
+                "page_start": page_start,
+                "page_end": page_end,
                 "evidence_ref_id": evidence_ref_id,
             }
         )
@@ -3081,6 +3955,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
 
         counts = {
             "documents_seen": 0,
+            "document_identity_status": 0,
             "pages": 0,
             "layout_blocks": 0,
             "tables": 0,
@@ -3092,6 +3967,10 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "visual_asset_links": 0,
             "visual_semantic_assets": 0,
             "visual_semantic_assertions": 0,
+            "georef_attempts": 0,
+            "georef_success": 0,
+            "transforms": 0,
+            "projection_artifacts": 0,
             "policy_sections": 0,
             "policy_clauses": 0,
             "definitions": 0,
@@ -3128,6 +4007,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             _start_run_step(
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
+                step_name="document_identity_status",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
                 step_name="visual_semantics_asset",
                 inputs={"document_count": len(documents)},
             )
@@ -3141,6 +4026,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
                 step_name="visual_semantics_regions",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
+                step_name="visual_georef",
                 inputs={"document_count": len(documents)},
             )
             _start_run_step(
@@ -3310,6 +4201,22 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             counts["layout_blocks"] += len(block_rows)
 
+            identity_bundle, identity_tool_run_id, identity_errors = _extract_document_identity_status(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                title=doc_metadata.get("title") or filename,
+                filename=filename,
+                content_type=content_type,
+                block_rows=block_rows,
+                evidence_ref_map=evidence_ref_map,
+            )
+            if identity_errors:
+                errors.extend([f"document_identity:{err}" for err in identity_errors])
+            if identity_bundle:
+                counts["document_identity_status"] += 1
+                step_counts["document_identity_status"] = step_counts.get("document_identity_status", 0) + 1
+
             tables = bundle.get("tables") if isinstance(bundle.get("tables"), list) else []
             _persist_document_tables(
                 document_id=document_id,
@@ -3438,12 +4345,26 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 counts["visual_asset_regions"] += region_count
                 step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
 
-                counts["visual_semantic_assertions"] = counts.get("visual_semantic_assertions", 0) + _extract_visual_region_assertions(
+                assertion_count = _extract_visual_region_assertions(
                     ingest_batch_id=ingest_batch_id,
                     run_id=run_id,
                     visual_assets=visual_rows,
                 )
+                counts["visual_semantic_assertions"] += assertion_count
                 step_counts["visual_semantics_regions"] = step_counts.get("visual_semantics_regions", 0) + 1
+
+                target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
+                georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                    target_epsg=target_epsg,
+                )
+                counts["georef_attempts"] += georef_attempts
+                counts["georef_success"] += georef_success
+                counts["transforms"] += transform_count
+                counts["projection_artifacts"] += projection_count
+                step_counts["visual_georef"] = step_counts.get("visual_georef", 0) + 1
 
                 links_by_asset, link_count = _link_visual_assets_to_policies(
                     ingest_batch_id=ingest_batch_id,
@@ -3464,11 +4385,6 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 )
                 step_counts["visual_embeddings"] = step_counts.get("visual_embeddings", 0) + 1
 
-                counts["unit_embeddings_visual_assertion"] = counts.get("unit_embeddings_visual_assertion", 0) + _embed_visual_assertions(
-                    ingest_batch_id=ingest_batch_id,
-                    run_id=run_id,
-                )
-                step_counts["visual_assertion_embeddings"] = step_counts.get("visual_assertion_embeddings", 0) + 1
 
             counts["unit_embeddings_chunk"] += _embed_units(
                 ingest_batch_id=ingest_batch_id,
@@ -3495,6 +4411,13 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 id_key="policy_clause_id",
             )
             step_counts["embeddings"] = step_counts.get("embeddings", 0) + 1
+
+        if counts.get("visual_semantic_assertions", 0) > 0:
+            counts["unit_embeddings_visual_assertion"] += _embed_visual_assertions(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+            )
+            step_counts["visual_assertion_embeddings"] = step_counts.get("visual_assertion_embeddings", 0) + 1
 
         completed = _utc_now()
         if ingest_batch_id:
@@ -3527,6 +4450,14 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             _finish_run_step(
                 run_id=run_id,
+                step_name="document_identity_status",
+                status="success" if step_counts.get("document_identity_status", 0) > 0 else "partial",
+                outputs={
+                    "documents": step_counts.get("document_identity_status", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
                 step_name="visual_semantics_asset",
                 status="success" if (not visuals_present or step_counts.get("visual_semantics_asset", 0) > 0) else "partial",
                 outputs={
@@ -3547,10 +4478,23 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             _finish_run_step(
                 run_id=run_id,
                 step_name="visual_semantics_regions",
-                status="success" if (not visuals_present or step_counts.get("visual_semantics_regions", 0) > 0) else "partial",
+                status="success"
+                if (not visuals_present or step_counts.get("visual_semantics_regions", 0) > 0)
+                else "partial",
                 outputs={
                     "visual_assets": counts.get("visual_assets", 0),
                     "visual_semantic_assertions": counts.get("visual_semantic_assertions", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
+                step_name="visual_georef",
+                status="success" if (not visuals_present or step_counts.get("visual_georef", 0) > 0) else "partial",
+                outputs={
+                    "georef_attempts": counts.get("georef_attempts", 0),
+                    "georef_success": counts.get("georef_success", 0),
+                    "transforms": counts.get("transforms", 0),
+                    "projection_artifacts": counts.get("projection_artifacts", 0),
                 },
             )
             _finish_run_step(
@@ -3574,7 +4518,9 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             _finish_run_step(
                 run_id=run_id,
                 step_name="visual_assertion_embeddings",
-                status="success" if (not visuals_present or step_counts.get("visual_assertion_embeddings", 0) > 0) else "partial",
+                status="success"
+                if (not visuals_present or step_counts.get("visual_assertion_embeddings", 0) > 0)
+                else "partial",
                 outputs={
                     "unit_embeddings_visual_assertion": counts.get("unit_embeddings_visual_assertion", 0),
                 },

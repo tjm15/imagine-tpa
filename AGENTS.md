@@ -40,7 +40,7 @@ Source of truth: `grammar/GRAMMAR.md` + `grammar/MOVE_IO_CATALOGUE.yaml` + `sche
 - **Agent orchestration:** `agents/GRAMMAR_ORCHESTRATION_SPEC.md`
 - **Render pipeline:** `render/FACT_TABLE_SPEC.md`, `render/FIGURE_SPEC.schema.json`, `render/HTML_COMPOSER_SPEC.md`
 - **Governance/linting:** `governance/REASONABLENESS_LINTER_SPEC.md`
-- **Test contracts:** `tests/INVARIANT_TESTS_SPEC.md`, `tests/FIXTURES_SPEC.md`, `tests/REPLAYABILITY_SPEC.md`
+- **Test contracts:** `tests/INVARIANT_TESTS_SPEC.md`, `tests/FIXTURES_SPEC.md`
 
 ### Legacy spec
 

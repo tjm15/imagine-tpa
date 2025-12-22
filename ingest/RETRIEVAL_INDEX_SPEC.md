@@ -28,7 +28,7 @@ Most retrieval is not “free text search”; it is a **retrieval frame** assemb
 * `site_geometry` / spatial filters (buffers, zones, admin area)
 * `document_type` / adoption status / effective date filters
 
-The frame must be logged as part of the retrieval `ToolRun.inputs_logged` to support replay and contestability.
+The frame must be logged as part of the retrieval `ToolRun.inputs_logged` to support traceability and contestability.
 
 ## Context assembly (multimodal, very-large-context)
 Hybrid retrieval is a **candidate generator**, not the whole answer.
@@ -62,4 +62,4 @@ Recommended pattern:
 ## Chunking policy (authority documents)
 To support planner-shaped retrieval, ingestion should favor:
 * heading-/clause-aware chunks for policy documents (instead of fixed-size windows)
-* stable `section_path` and clause identifiers that can be cited and replayed
+* stable `section_path` and clause identifiers that can be cited and traced

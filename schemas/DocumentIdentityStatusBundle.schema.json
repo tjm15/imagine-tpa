@@ -1,0 +1,173 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "DocumentIdentityStatusBundle",
+  "type": "object",
+  "required": ["identity", "status", "weight"],
+  "properties": {
+    "identity": { "$ref": "#/$defs/DocumentIdentityCard" },
+    "status": { "$ref": "#/$defs/DocumentStatusStatement" },
+    "weight": { "$ref": "#/$defs/WeightClassification" }
+  },
+  "$defs": {
+    "EvidenceRef": {
+      "type": "object",
+      "required": ["document_id", "locator_type", "locator_value"],
+      "properties": {
+        "document_id": { "type": "string" },
+        "locator_type": {
+          "type": "string",
+          "enum": ["page", "section", "paragraph", "figure", "table", "drawing", "appendix", "url"]
+        },
+        "locator_value": { "type": "string" },
+        "excerpt": { "type": "string" }
+      }
+    },
+    "DocumentIdentityCard": {
+      "type": "object",
+      "required": ["document_id", "title", "document_family", "source_kind", "identity_evidence"],
+      "properties": {
+        "document_id": { "type": "string" },
+        "title": { "type": "string" },
+        "author": { "type": "string" },
+        "publisher": { "type": "string" },
+        "jurisdiction": {
+          "type": "string",
+          "enum": ["UK-England", "UK-Scotland", "UK-Wales", "UK-NI", "Unknown"]
+        },
+        "lpa_name": { "type": "string" },
+        "lpa_code": { "type": "string" },
+        "document_family": {
+          "type": "string",
+          "enum": [
+            "LOCAL_PLAN_DPD",
+            "SPATIAL_DEVELOPMENT_STRATEGY",
+            "NEIGHBOURHOOD_PLAN",
+            "SPD",
+            "NPPF_PPG_NATIONAL_POLICY",
+            "EVIDENCE_BASE",
+            "TECHNICAL_REPORT",
+            "DESIGN_CODE",
+            "APPLICANT_STATEMENT",
+            "DRAWING_SET",
+            "CONSULTEE_RESPONSE",
+            "PUBLIC_REPRESENTATION",
+            "OFFICER_REPORT",
+            "DECISION_NOTICE",
+            "COMMITTEE_MINUTES",
+            "APPEAL_DECISION",
+            "S106_HEADS_OR_AGREEMENT",
+            "MARKETING_OR_ILLUSTRATIVE",
+            "UNKNOWN"
+          ]
+        },
+        "source_kind": {
+          "type": "string",
+          "enum": ["PDF", "DOCX", "HTML", "EMAIL", "GIS", "IMAGE", "OTHER"]
+        },
+        "version_label": { "type": "string" },
+        "publication_date": { "type": "string", "format": "date" },
+        "revision_date": { "type": "string", "format": "date" },
+        "identity_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceRef" }
+        },
+        "notes": { "type": "string" }
+      }
+    },
+    "DocumentStatusStatement": {
+      "type": "object",
+      "required": ["document_id", "status_claim", "status_confidence", "status_evidence"],
+      "properties": {
+        "document_id": { "type": "string" },
+        "status_claim": {
+          "type": "string",
+          "enum": [
+            "ADOPTED",
+            "MADE",
+            "APPROVED",
+            "PUBLICATION_DRAFT",
+            "REGULATION_18",
+            "REGULATION_19",
+            "SUBMISSION",
+            "EXAMINATION",
+            "PROPOSED_MODIFICATIONS",
+            "CONSULTATION_DRAFT",
+            "WITHDRAWN",
+            "SUPERSEDED",
+            "NOT_STATED"
+          ]
+        },
+        "status_confidence": { "type": "string", "enum": ["HIGH", "MEDIUM", "LOW"] },
+        "status_evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/EvidenceRef" }
+        },
+        "checked_at": { "type": "string", "format": "date-time" },
+        "status_note": { "type": "string" }
+      }
+    },
+    "PlanningWeightClass": {
+      "type": "string",
+      "enum": [
+        "DEVELOPMENT_PLAN",
+        "EMERGING_POLICY",
+        "SPD_GUIDANCE",
+        "MATERIAL_CONSIDERATION",
+        "ILLUSTRATIVE_LOW_WEIGHT",
+        "UNKNOWN"
+      ]
+    },
+    "WeightClassification": {
+      "type": "object",
+      "required": ["document_id", "weight_class", "classification_basis", "legal_assertion_level"],
+      "properties": {
+        "document_id": { "type": "string" },
+        "weight_class": { "$ref": "#/$defs/PlanningWeightClass" },
+        "classification_basis": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["basis_type"],
+            "properties": {
+              "basis_type": {
+                "type": "string",
+                "enum": ["EXPLICIT_IN_DOCUMENT", "DOCUMENT_FAMILY_ONLY", "EXTERNAL_REGISTER", "DERIVED_RULE"]
+              },
+              "evidence": {
+                "type": "array",
+                "items": { "$ref": "#/$defs/EvidenceRef" }
+              },
+              "rule_id": { "type": "string" },
+              "note": { "type": "string" }
+            }
+          }
+        },
+        "legal_assertion_level": {
+          "type": "string",
+          "enum": ["ASSERT_NONE", "ASSERT_CLAIMED_BY_DOCUMENT", "ASSERT_VERIFIED_EXTERNALLY"]
+        },
+        "phrasing_guidance": {
+          "type": "string",
+          "enum": [
+            "SAY_DOCUMENT_PRESENTS_ITSELF_AS",
+            "SAY_SYSTEM_CLASSIFIES_FOR_NAVIGATION_ONLY",
+            "SAY_VERIFIED_STATUS"
+          ]
+        },
+        "warnings": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "NO_STATUS_EVIDENCE",
+              "CONFLICTING_STATUS_SIGNALS",
+              "TIME_SENSITIVE_STATUS",
+              "LOW_PROVENANCE",
+              "ILLUSTRATIVE_MARKERS_PRESENT"
+            ]
+          }
+        }
+      }
+    }
+  }
+}

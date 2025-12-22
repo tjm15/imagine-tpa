@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutoGeorefRequest",
+  "type": "object",
+  "required": ["visual_asset_id", "target_epsg", "image_base64"],
+  "properties": {
+    "visual_asset_id": { "type": "string" },
+    "asset_type": { "type": ["string", "null"] },
+    "asset_subtype": { "type": ["string", "null"] },
+    "target_epsg": { "type": "integer" },
+    "image_base64": { "type": "string" },
+    "canonical_facts": { "type": "object" },
+    "asset_specific_facts": { "type": "object" }
+  }
+}

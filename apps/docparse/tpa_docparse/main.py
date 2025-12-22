@@ -306,13 +306,9 @@ def _render_page_images(
     minio_client: Minio,
     bucket: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    render_dpi = int(os.environ.get("TPA_DOCPARSE_RENDER_DPI", "300"))
-    render_format = (os.environ.get("TPA_DOCPARSE_RENDER_FORMAT", "png") or "png").lower()
-    jpeg_quality = int(os.environ.get("TPA_DOCPARSE_RENDER_JPEG_QUALITY", "88"))
-    if render_format not in {"png", "jpeg", "jpg"}:
-        raise HTTPException(status_code=500, detail=f"Unsupported render format: {render_format}")
-    fmt = "jpeg" if render_format in {"jpeg", "jpg"} else "png"
-    ext = "jpg" if fmt == "jpeg" else "png"
+    render_dpi = 300
+    fmt = "png"
+    ext = "png"
 
     render_runs: list[dict[str, Any]] = []
     rendered_pages: list[dict[str, Any]] = []
@@ -366,10 +362,7 @@ def _render_page_images(
 
         img = images[0]
         out = io.BytesIO()
-        if fmt == "jpeg":
-            img.convert("RGB").save(out, format="JPEG", quality=jpeg_quality, optimize=True)
-        else:
-            img.save(out, format="PNG")
+        img.save(out, format="PNG")
         img_bytes = out.getvalue()
 
         base_prefix = f"docparse/{authority_id}/{plan_cycle_id or 'none'}/{document_id}"
@@ -379,7 +372,7 @@ def _render_page_images(
             bucket=bucket,
             blob_path=blob_path,
             data=img_bytes,
-            content_type="image/jpeg" if fmt == "jpeg" else "image/png",
+            content_type="image/png",
         )
 
         rendered_pages.append(
@@ -509,6 +502,71 @@ def _extract_page_texts(reader: PdfReader, *, max_pages: int | None) -> list[dic
     return pages
 
 
+def _choose_page_text_source(
+    *,
+    docling_page: dict[str, Any] | None,
+    fallback_page: dict[str, Any] | None,
+    docling_errors: list[str],
+) -> tuple[dict[str, Any] | None, str, str]:
+    if not docling_page and not fallback_page:
+        return None, "unknown", "no_pages"
+    if not docling_page:
+        return fallback_page, "pypdf", "docling_missing"
+    if not fallback_page:
+        return docling_page, "docling", "fallback_missing"
+
+    doc_text = str(docling_page.get("text") or "").strip()
+    fallback_text = str(fallback_page.get("text") or "").strip()
+    doc_len = len(doc_text)
+    fallback_len = len(fallback_text)
+
+    if doc_len == 0 and fallback_len == 0:
+        return fallback_page, "pypdf", "both_empty"
+    if doc_len == 0:
+        return fallback_page, "pypdf", "docling_empty"
+    if fallback_len == 0:
+        return docling_page, "docling", "fallback_empty"
+
+    ratio = doc_len / max(1, fallback_len)
+    if docling_errors and ratio < 0.9:
+        return fallback_page, "pypdf", f"docling_errors_ratio_{ratio:.2f}"
+    if ratio >= 0.6:
+        return docling_page, "docling", f"ratio_{ratio:.2f}"
+    return fallback_page, "pypdf", f"ratio_{ratio:.2f}"
+
+
+def _merge_page_texts(
+    *,
+    docling_pages: list[dict[str, Any]],
+    fallback_pages: list[dict[str, Any]],
+    docling_errors: list[str],
+) -> tuple[list[dict[str, Any]], dict[int, str]]:
+    merged: list[dict[str, Any]] = []
+    sources: dict[int, str] = {}
+    docling_by_page = {int(p.get("page_number") or 0): p for p in docling_pages if p.get("page_number")}
+    fallback_by_page = {int(p.get("page_number") or 0): p for p in fallback_pages if p.get("page_number")}
+    page_numbers = sorted({*docling_by_page.keys(), *fallback_by_page.keys()})
+
+    for page_number in page_numbers:
+        docling_page = docling_by_page.get(page_number)
+        fallback_page = fallback_by_page.get(page_number)
+        chosen, source, reason = _choose_page_text_source(
+            docling_page=docling_page,
+            fallback_page=fallback_page,
+            docling_errors=docling_errors,
+        )
+        if not chosen:
+            continue
+        page_item = dict(chosen)
+        page_item["page_number"] = page_number
+        page_item["text_source"] = source
+        page_item["text_source_reason"] = reason
+        merged.append(page_item)
+        sources[page_number] = source
+
+    return merged, sources
+
+
 def _extract_images(reader: PdfReader, *, max_pages: int | None, max_visuals: int | None) -> list[dict[str, Any]]:
     visuals: list[dict[str, Any]] = []
     for idx, page in enumerate(reader.pages, start=1):
@@ -618,9 +676,7 @@ def _annotate_blocks_with_llm(
     if not blocks:
         return blocks, [], [], [], []
 
-    max_blocks = int(os.environ.get("TPA_DOCPARSE_LLM_BLOCKS", "60"))
-    max_chars = int(os.environ.get("TPA_DOCPARSE_LLM_CHARS", "12000"))
-    groups = _chunk_blocks_for_llm(blocks, max_blocks=max_blocks, max_chars=max_chars)
+    groups = [blocks]
 
     block_annotations: dict[str, dict[str, Any]] = {}
     policy_headings: list[dict[str, Any]] = []
@@ -820,13 +876,12 @@ def _classify_visuals(
     prompt = (
         "Classify this visual into one of: map, diagram, photo, render, decorative. "
         "Assign role: governance, context, exemplar. "
-        "If exemplar, provide judgment: positive|negative|neutral and a short description. "
         "If diagram-like, extract any quantitative metrics as extracted_metrics: "
         "[{\"label\": \"...\", \"value\": number, \"unit\": \"...\"}]. "
         "Optionally provide constraint_type for diagrams (e.g., BuildingHeight, DaylightAngle). "
         "Optionally provide caption_hint if you can read a caption. "
         "Return JSON only: {"
-        "\"asset_type\":..., \"role\":..., \"judgment\":..., \"description\":..., "
+        "\"asset_type\":..., \"role\":..., "
         "\"constraint_type\":..., \"extracted_metrics\": [...], \"caption_hint\":...}."
     )
     iterable = visuals if max_visuals is None else visuals[:max_visuals]
@@ -934,12 +989,14 @@ async def parse_bundle(
         filename=file.filename or "document.pdf",
         max_pages=None,
     )
-    docling_used = bool(docling_pages or docling_blocks)
 
-    if docling_pages:
-        page_texts = docling_pages
-    else:
-        page_texts = _extract_page_texts(reader, max_pages=None)
+    fallback_pages = _extract_page_texts(reader, max_pages=None)
+    page_texts, page_sources = _merge_page_texts(
+        docling_pages=docling_pages,
+        fallback_pages=fallback_pages,
+        docling_errors=docling_errors,
+    )
+    docling_used = any(source == "docling" for source in page_sources.values()) or bool(docling_blocks)
 
     visuals = _extract_images(reader, max_pages=None, max_visuals=None)
     visuals_by_page: dict[int, int] = {}
@@ -949,12 +1006,48 @@ async def parse_bundle(
             continue
         visuals_by_page[page_number] = visuals_by_page.get(page_number, 0) + 1
 
-    blocks = docling_blocks if docling_blocks else _lines_to_blocks(page_texts)
+    page_source_reason = {
+        int(p.get("page_number") or 0): p.get("text_source_reason") for p in page_texts if p.get("page_number")
+    }
+    docling_blocks_by_page: dict[int, list[dict[str, Any]]] = {}
+    for block in docling_blocks:
+        page_number = int(block.get("page_number") or 0)
+        if page_number <= 0:
+            continue
+        docling_blocks_by_page.setdefault(page_number, []).append(block)
+
+    docling_blocks_filtered: list[dict[str, Any]] = []
+    for page_number, items in docling_blocks_by_page.items():
+        if page_sources.get(page_number) != "docling":
+            continue
+        for block in items:
+            block_meta = dict(block.get("metadata") or {})
+            block_meta.setdefault("text_source", "docling")
+            block_meta.setdefault("text_source_reason", page_source_reason.get(page_number))
+            block["metadata"] = block_meta
+            docling_blocks_filtered.append(block)
+
+    fallback_pages_for_blocks = [
+        p
+        for p in fallback_pages
+        if page_sources.get(int(p.get("page_number") or 0)) != "docling"
+        or int(p.get("page_number") or 0) not in docling_blocks_by_page
+    ]
+    fallback_blocks = _lines_to_blocks(fallback_pages_for_blocks)
+    for block in fallback_blocks:
+        block_meta = dict(block.get("metadata") or {})
+        block_meta.setdefault("text_source", "pypdf")
+        block_meta.setdefault("text_source_reason", page_source_reason.get(int(block.get("page_number") or 0)))
+        block["metadata"] = block_meta
+
+    blocks = [*docling_blocks_filtered, *fallback_blocks]
     tables = docling_tables
     tables_unimplemented = (not docling_used) or bool(docling_errors)
     parse_flags: list[str] = []
     if not docling_used:
         parse_flags.append("docling_fallback")
+    elif any(source == "pypdf" for source in page_sources.values()):
+        parse_flags.append("docling_hybrid_merge")
     if docling_errors:
         parse_flags.append("docling_errors")
     if tables_unimplemented:
@@ -1085,25 +1178,12 @@ async def parse_bundle(
         )
     evidence_refs.extend(visual_evidence_refs)
 
-    design_exemplars: list[dict[str, Any]] = []
     visual_constraints: list[dict[str, Any]] = []
     for asset in asset_items:
         classification = asset.get("classification") if isinstance(asset.get("classification"), dict) else {}
-        judgment = classification.get("judgment") if isinstance(classification.get("judgment"), str) else None
-        description = classification.get("description") if isinstance(classification.get("description"), str) else None
         constraint_type = classification.get("constraint_type") if isinstance(classification.get("constraint_type"), str) else None
         metrics = asset.get("metrics") if isinstance(asset.get("metrics"), list) else []
         evidence_ref = f"visual::{asset.get('asset_id')}"
-
-        if judgment:
-            design_exemplars.append(
-                {
-                    "image_ref": asset.get("blob_path"),
-                    "judgment": judgment,
-                    "description": description,
-                    "evidence_ref": evidence_ref,
-                }
-            )
 
         if metrics or constraint_type:
             visual_constraints.append(
@@ -1138,7 +1218,6 @@ async def parse_bundle(
             "standard_matrices": standard_matrices,
             "scope_candidates": scope_candidates,
             "visual_constraints": visual_constraints,
-            "design_exemplars": design_exemplars,
         },
         "tool_runs": [*docling_runs, *render_tool_runs, *llm_runs, *vlm_runs, *vector_tool_runs],
         "limitations": [

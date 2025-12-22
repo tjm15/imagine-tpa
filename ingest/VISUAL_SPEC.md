@@ -16,7 +16,7 @@ This spec defines the visual context layer as an evidence substrate and reasonin
 All model outputs must be **structured JSON**, logged as `ToolRun` with prompt versioning where applicable.
 
 ## 2) Canonical objects (what must be storable and citeable)
-Visual reasoning requires first-class, replayable artefacts:
+Visual reasoning requires first-class, traceable artefacts:
 * `VisualAsset` (plans/photos/photomontages): `schemas/VisualAsset.schema.json`
 * `VisualFeature` (north arrow, scale bar, viewpoint marker, etc.): `schemas/VisualFeature.schema.json`
 * `SegmentationMask` (SAM2 outputs): `schemas/SegmentationMask.schema.json`
@@ -115,7 +115,7 @@ Minimum:
 Optional (advanced):
 * camera pose estimation for viewpoint‑anchored overlays (photomontage reasoning), always caveated.
 
-## 5) Provenance and replayability
+## 5) Provenance and traceability
 * Every model/tool call is logged as `ToolRun`.
 * Any derived image/overlay is stored as an artefact and referenced via `EvidenceRef`.
-* Replayability is achieved by re-rendering from stored artefacts/outputs (no need to re-run models).
+* Output verbosity is controlled at the UI layer (summary/inspect/forensic); no deterministic replay requirement.

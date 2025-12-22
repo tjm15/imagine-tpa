@@ -128,8 +128,6 @@ def run_scenario_inspector(body: ScenarioInspectorRequest) -> JSONResponse:
         system_template=system,
         user_payload=payload,
         time_budget_seconds=40.0,
-        temperature=0.3,
-        max_tokens=1200,
         output_schema_ref="schemas/InspectorReport.schema.json",
     )
 

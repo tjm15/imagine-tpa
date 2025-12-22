@@ -97,6 +97,9 @@ type ToolRun = {
   started_at?: string | null;
   ended_at?: string | null;
   confidence_hint?: string | null;
+  uncertainty_note?: string | null;
+  inputs_logged?: Record<string, any> | null;
+  outputs_logged?: Record<string, any> | null;
 };
 
 type PromptRow = {
@@ -121,6 +124,34 @@ type RunSummary = {
   profile?: string | null;
   culp_stage_id?: string | null;
   created_at?: string | null;
+};
+
+type VisualAssetSummary = {
+  id: string;
+  document_id?: string | null;
+  page_number?: number | null;
+  asset_type?: string | null;
+  blob_path?: string | null;
+  created_at?: string | null;
+  semantic_asset_type?: string | null;
+  semantic_asset_subtype?: string | null;
+  assertion_count?: number | null;
+  mask_count?: number | null;
+  region_count?: number | null;
+  semantic_count?: number | null;
+  georef_status?: string | null;
+  georef_tool_run_id?: string | null;
+  transform_id?: string | null;
+  metadata_jsonb?: Record<string, any> | null;
+};
+
+type VisualAssetDetail = {
+  visual_asset?: Record<string, any> | null;
+  semantic_outputs?: Array<Record<string, any>>;
+  regions?: Array<Record<string, any>>;
+  masks?: Array<Record<string, any>>;
+  transform?: Record<string, any> | null;
+  projection_artifacts?: Array<Record<string, any>>;
 };
 
 const API_PREFIX = '/api';
@@ -216,6 +247,8 @@ export function DebugView() {
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [documentCoverage, setDocumentCoverage] = useState<DocumentCoverage | null>(null);
   const [toolRuns, setToolRuns] = useState<ToolRun[]>([]);
+  const [georefRuns, setGeorefRuns] = useState<ToolRun[]>([]);
+  const [selectedToolRunId, setSelectedToolRunId] = useState<string | null>(null);
   const [prompts, setPrompts] = useState<PromptRow[]>([]);
   const [promptVersions, setPromptVersions] = useState<PromptVersion[]>([]);
   const [traceRuns, setTraceRuns] = useState<RunSummary[]>([]);
@@ -227,6 +260,10 @@ export function DebugView() {
   const [kgLoading, setKgLoading] = useState(false);
   const [kgNodeTypeFilter, setKgNodeTypeFilter] = useState('');
   const [kgLimit, setKgLimit] = useState('500');
+  const [visualAssets, setVisualAssets] = useState<VisualAssetSummary[]>([]);
+  const [selectedVisualAssetId, setSelectedVisualAssetId] = useState<string | null>(null);
+  const [visualAssetDetail, setVisualAssetDetail] = useState<VisualAssetDetail | null>(null);
+  const [selectedRunStepId, setSelectedRunStepId] = useState<string | null>(null);
 
   const envLabel = useMemo(() => (import.meta.env.DEV ? 'dev' : 'prod'), []);
   const latestPromptVersion = useMemo(() => {
@@ -239,6 +276,25 @@ export function DebugView() {
     });
     return map;
   }, [promptVersions]);
+
+  const toolRunById = useMemo(() => {
+    const map = new Map<string, ToolRun>();
+    [...toolRuns, ...georefRuns].forEach((run) => {
+      map.set(run.id, run);
+    });
+    return map;
+  }, [toolRuns, georefRuns]);
+
+  const selectedToolRun = selectedToolRunId ? toolRunById.get(selectedToolRunId) || null : null;
+  const selectedRunStep = selectedRunStepId
+    ? ingestRunSteps.find((step) => step.id === selectedRunStepId) || null
+    : null;
+
+  useEffect(() => {
+    if (selectedToolRunId && !toolRunById.has(selectedToolRunId)) {
+      setSelectedToolRunId(null);
+    }
+  }, [selectedToolRunId, toolRunById]);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
@@ -253,8 +309,10 @@ export function DebugView() {
       ingestRunsRes,
       documentsRes,
       toolRunsRes,
+      georefRunsRes,
       promptsRes,
       traceRunsRes,
+      visualAssetsRes,
     ] = await Promise.all([
       fetchJson<HealthPayload>('/healthz', signal),
       fetchJson<HealthPayload>('/readyz', signal),
@@ -265,8 +323,10 @@ export function DebugView() {
       fetchJson<{ ingest_runs: IngestRun[] }>('/debug/ingest/runs?limit=20', signal),
       fetchJson<{ documents: DebugDocument[] }>('/debug/documents?limit=25', signal),
       fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?limit=30', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=auto_georef&limit=50', signal),
       fetchJson<{ prompts: PromptRow[]; prompt_versions: PromptVersion[] }>('/debug/prompts', signal),
       fetchJson<{ runs: RunSummary[] }>('/debug/runs?limit=20', signal),
+      fetchJson<{ visual_assets: VisualAssetSummary[] }>('/debug/visual-assets?limit=40', signal),
     ]);
 
     const nextErrors: string[] = [];
@@ -279,8 +339,10 @@ export function DebugView() {
     if (!ingestRunsRes.ok) nextErrors.push(`ingest runs: ${ingestRunsRes.error || 'unavailable'}`);
     if (!documentsRes.ok) nextErrors.push(`documents: ${documentsRes.error || 'unavailable'}`);
     if (!toolRunsRes.ok) nextErrors.push(`tool runs: ${toolRunsRes.error || 'unavailable'}`);
+    if (!georefRunsRes.ok) nextErrors.push(`georef attempts: ${georefRunsRes.error || 'unavailable'}`);
     if (!promptsRes.ok) nextErrors.push(`prompts: ${promptsRes.error || 'unavailable'}`);
     if (!traceRunsRes.ok) nextErrors.push(`runs: ${traceRunsRes.error || 'unavailable'}`);
+    if (!visualAssetsRes.ok) nextErrors.push(`visual assets: ${visualAssetsRes.error || 'unavailable'}`);
 
     setHealth(healthRes.data);
     setReady(readyRes.data);
@@ -291,9 +353,11 @@ export function DebugView() {
     setIngestRuns(ingestRunsRes.data?.ingest_runs || []);
     setDocuments(documentsRes.data?.documents || []);
     setToolRuns(toolRunsRes.data?.tool_runs || []);
+    setGeorefRuns(georefRunsRes.data?.tool_runs || []);
     setPrompts(promptsRes.data?.prompts || []);
     setPromptVersions(promptsRes.data?.prompt_versions || []);
     setTraceRuns(traceRunsRes.data?.runs || []);
+    setVisualAssets(visualAssetsRes.data?.visual_assets || []);
     setErrors(nextErrors);
     setLastUpdated(new Date().toLocaleString());
     setLoading(false);
@@ -312,6 +376,18 @@ export function DebugView() {
   }, [ingestRuns, selectedIngestRunId]);
 
   useEffect(() => {
+    if (!selectedRunStepId && ingestRunSteps.length > 0) {
+      setSelectedRunStepId(ingestRunSteps[0].id);
+    }
+  }, [ingestRunSteps, selectedRunStepId]);
+
+  useEffect(() => {
+    if (!selectedVisualAssetId && visualAssets.length > 0) {
+      setSelectedVisualAssetId(visualAssets[0].id);
+    }
+  }, [visualAssets, selectedVisualAssetId]);
+
+  useEffect(() => {
     if (!selectedTraceRunId && traceRuns.length > 0) {
       setSelectedTraceRunId(traceRuns[0].id);
     }
@@ -320,8 +396,10 @@ export function DebugView() {
   useEffect(() => {
     if (!selectedIngestRunId) {
       setIngestRunSteps([]);
+      setSelectedRunStepId(null);
       return;
     }
+    setSelectedRunStepId(null);
     const controller = new AbortController();
     fetchJson<{ steps: IngestRunStep[] }>(`/debug/ingest/run-steps?run_id=${selectedIngestRunId}`, controller.signal)
       .then((res) => {
@@ -348,6 +426,40 @@ export function DebugView() {
       .catch(() => undefined);
     return () => controller.abort();
   }, [selectedDocumentId]);
+
+  useEffect(() => {
+    if (!selectedDocumentId) {
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<{ visual_assets: VisualAssetSummary[] }>(
+      `/debug/visual-assets?document_id=${selectedDocumentId}&limit=40`,
+      controller.signal,
+    )
+      .then((res) => {
+        if (res.ok) {
+          setVisualAssets(res.data?.visual_assets || []);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedDocumentId]);
+
+  useEffect(() => {
+    if (!selectedVisualAssetId) {
+      setVisualAssetDetail(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<VisualAssetDetail>(`/debug/visual-assets/${selectedVisualAssetId}`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setVisualAssetDetail(res.data || null);
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedVisualAssetId]);
 
   useEffect(() => {
     if (!selectedTraceRunId) {
@@ -672,7 +784,12 @@ export function DebugView() {
                     </TableRow>
                   ) : (
                     ingestRunSteps.map((step) => (
-                      <TableRow key={step.id}>
+                      <TableRow
+                        key={step.id}
+                        className={selectedRunStepId === step.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedRunStepId(step.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <TableCell className="text-xs">{step.step_name}</TableCell>
                         <TableCell>
                           <StatusBadge label={step.status || 'unknown'} />
@@ -683,6 +800,26 @@ export function DebugView() {
                   )}
                 </TableBody>
               </Table>
+              {selectedRunStep && (
+                <div className="mt-4 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                    Step detail
+                  </div>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(
+                      {
+                        step_name: selectedRunStep.step_name,
+                        status: selectedRunStep.status,
+                        error_text: selectedRunStep.error_text,
+                        inputs: selectedRunStep.inputs_jsonb,
+                        outputs: selectedRunStep.outputs_jsonb,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
@@ -778,6 +915,105 @@ export function DebugView() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
             <CardHeader>
+              <CardTitle>Visual assets</CardTitle>
+              <CardDescription>Detected visuals with semantic + georef status.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Georef</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visualAssets.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>No visual assets found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    visualAssets.map((asset) => (
+                      <TableRow
+                        key={asset.id}
+                        className={selectedVisualAssetId === asset.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedVisualAssetId(asset.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="font-mono text-xs">{asset.id.slice(0, 8)}</TableCell>
+                        <TableCell className="text-xs">
+                          {asset.semantic_asset_type || asset.asset_type || 'unknown'}
+                          {asset.semantic_asset_subtype ? ` · ${asset.semantic_asset_subtype}` : ''}
+                        </TableCell>
+                        <TableCell>
+                          <StatusBadge label={asset.georef_status || 'pending'} />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Visual asset detail</CardTitle>
+              <CardDescription>Selection drill-down across masks, assertions, and transforms.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {!visualAssetDetail ? (
+                <div>Select a visual asset to inspect details.</div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                        Assertions
+                      </div>
+                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
+                        {visualAssetDetail.semantic_outputs?.[0]?.assertions_jsonb?.length ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                        Regions
+                      </div>
+                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
+                        {visualAssetDetail.regions?.length ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                        Masks
+                      </div>
+                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
+                        {visualAssetDetail.masks?.length ?? 0}
+                      </div>
+                    </div>
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-xs uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                        Projections
+                      </div>
+                      <div className="text-base font-semibold" style={{ color: 'var(--color-ink)' }}>
+                        {visualAssetDetail.projection_artifacts?.length ?? 0}
+                      </div>
+                    </div>
+                  </div>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(visualAssetDetail, null, 2)}
+                  </pre>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
               <CardTitle>Tool runs</CardTitle>
               <CardDescription>Recent model/tool invocations.</CardDescription>
             </CardHeader>
@@ -797,7 +1033,12 @@ export function DebugView() {
                     </TableRow>
                   ) : (
                     toolRuns.map((run) => (
-                      <TableRow key={run.id}>
+                      <TableRow
+                        key={run.id}
+                        className={selectedToolRunId === run.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedToolRunId(run.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <TableCell className="text-xs">{run.tool_name || 'tool'}</TableCell>
                         <TableCell>
                           <StatusBadge label={run.status || 'unknown'} />
@@ -808,6 +1049,63 @@ export function DebugView() {
                   )}
                 </TableBody>
               </Table>
+              <div className="mt-6">
+                <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                  Georef attempts
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Asset</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Started</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {georefRuns.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3}>No georef attempts logged.</TableCell>
+                      </TableRow>
+                    ) : (
+                      georefRuns.map((run) => (
+                        <TableRow
+                          key={run.id}
+                          className={selectedToolRunId === run.id ? 'bg-slate-50' : undefined}
+                          onClick={() => setSelectedToolRunId(run.id)}
+                          style={{ cursor: 'pointer' }}
+                        >
+                          <TableCell className="text-xs font-mono">{run.id.slice(0, 8)}</TableCell>
+                          <TableCell>
+                            <StatusBadge label={run.status || 'unknown'} />
+                          </TableCell>
+                          <TableCell>{formatDate(run.started_at)}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              {selectedToolRun && (
+                <div className="mt-4 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                    Tool run detail
+                  </div>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(
+                      {
+                        tool_name: selectedToolRun.tool_name,
+                        status: selectedToolRun.status,
+                        confidence_hint: selectedToolRun.confidence_hint,
+                        uncertainty_note: selectedToolRun.uncertainty_note,
+                        inputs: selectedToolRun.inputs_logged,
+                        outputs: selectedToolRun.outputs_logged,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </div>
+              )}
             </CardContent>
           </Card>
 

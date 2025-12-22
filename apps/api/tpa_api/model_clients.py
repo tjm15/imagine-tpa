@@ -400,10 +400,9 @@ def _generate_completion_sync(
     messages.append({"role": "user", "content": prompt})
 
     payload: dict[str, Any] = {"model": model_id, "messages": messages}
-    if max_tokens is not None:
-        payload["max_tokens"] = max_tokens
-    if temperature is not None:
-        payload["temperature"] = temperature
+    _ = max_tokens
+    _ = temperature
+    _ = time_budget_seconds
 
     try:
         with httpx.Client(timeout=timeout) as client:

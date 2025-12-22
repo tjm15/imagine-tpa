@@ -10,7 +10,8 @@
         "properties": {
           "policy_code": {"type": "string"},
           "confidence": {"type": ["string", "null"]},
-          "rationale": {"type": ["string", "null"]}
+          "rationale": {"type": ["string", "null"]},
+          "basis": {"type": ["string", "null"]}
         },
         "required": ["policy_code"]
       }

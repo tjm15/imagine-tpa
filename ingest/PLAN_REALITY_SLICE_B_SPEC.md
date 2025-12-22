@@ -12,6 +12,17 @@ This is a **slice acceptance test spec**; see `tests/SLICES_SPEC.md` for how sli
   * If raster features must be digitised into **vector geometry** (e.g., turn a redline boundary into GeoJSON), treat this as a separate evidence instrument (optional `VectorizationProvider`), log it as a `ToolRun`, and store the vector output as an artefact with explicit limitations.
 * **Overlays**: Must produce `ProjectionArtifact` (the plan warped onto the map).
 
+## Agentic georeferencing loop
+Every map-like visual asset must trigger an auto-georef attempt. The agentic loop is executed via a macro toolchain:
+* `export-map-observation` (snapshot for visual QA)
+* `detect-candidate-gcps` (grid/road/label anchors)
+* `apply-gcps` (warp with TPS/affine/polynomial as appropriate)
+* `evaluate-georef` (RMSE + alignment metrics)
+* `publish-outputs` (GeoTIFF + overlays + provenance)
+
+Hard failures are allowed but must be logged in `tool_runs` with explicit reasons. The output is only valid if a
+`Transform` exists; otherwise the attempt is reported as an unsuccessful registration.
+
 ## Uncertainty
 * Every transform has an `uncertainty_score` (0.0 - 1.0).
 * If > 0.5, UI must show a warning: "This overlay is approximate."

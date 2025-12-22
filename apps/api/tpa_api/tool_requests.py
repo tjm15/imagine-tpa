@@ -234,14 +234,15 @@ def _run_townscape_vlm_assessment_sync(
         return None, None, ["vlm_unconfigured"]
 
     model_id = os.environ.get("TPA_VLM_MODEL_ID") or _vlm_model_id()
-    timeout = min(max(time_budget_seconds, 5.0), 600.0)
+    timeout = None
+    _ = time_budget_seconds
     url = base_url.rstrip("/") + "/chat/completions"
 
     # Assemble image parts.
     image_parts: list[dict[str, Any]] = []
     used_refs: list[str] = []
     errors: list[str] = []
-    for ref in visual_asset_refs[:6]:
+    for ref in visual_asset_refs:
         parsed = _parse_evidence_ref(ref) if isinstance(ref, str) else None
         if not parsed:
             continue
@@ -289,8 +290,6 @@ def _run_townscape_vlm_assessment_sync(
                 "content": [{"type": "text", "text": json.dumps(user_payload, ensure_ascii=False)}, *image_parts],
             },
         ],
-        "temperature": 0.4,
-        "max_tokens": 1800,
     }
 
     raw_text: str | None = None

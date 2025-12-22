@@ -98,10 +98,8 @@ def _llm_structured_sync(
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
         ],
     }
-    if temperature is not None:
-        payload["temperature"] = float(temperature)
-    if max_tokens is not None:
-        payload["max_tokens"] = int(max_tokens)
+    _ = temperature
+    _ = max_tokens
 
     try:
         with httpx.Client(timeout=timeout) as client:
@@ -125,10 +123,6 @@ def _llm_structured_sync(
         "output_schema_ref": output_schema_ref,
         "messages": payload.get("messages"),
     }
-    if temperature is not None:
-        inputs_logged["temperature"] = temperature
-    if max_tokens is not None:
-        inputs_logged["max_tokens"] = max_tokens
 
     _db_execute(
         """

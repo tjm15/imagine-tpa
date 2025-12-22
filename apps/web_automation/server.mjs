@@ -3,10 +3,11 @@ import { URL } from "node:url";
 import { buildAuthorityDocumentQuery, googleCustomSearch } from "./google_custom_search.mjs";
 
 const port = Number(process.env.PORT || "8085");
-const maxHtmlBytes = process.env.MAX_HTML_BYTES ? Number(process.env.MAX_HTML_BYTES) : null;
-const maxScreenshotBytes = process.env.MAX_SCREENSHOT_BYTES ? Number(process.env.MAX_SCREENSHOT_BYTES) : null;
-const maxFetchBytes = process.env.MAX_FETCH_BYTES ? Number(process.env.MAX_FETCH_BYTES) : null;
-const defaultTimeoutMs = process.env.DEFAULT_TIMEOUT_MS ? Number(process.env.DEFAULT_TIMEOUT_MS) : null;
+// Limits/timeouts are intentionally disabled for professional ingest workloads.
+const maxHtmlBytes = null;
+const maxScreenshotBytes = null;
+const maxFetchBytes = null;
+const defaultTimeoutMs = null;
 const defaultUserAgent =
   "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
@@ -133,7 +134,7 @@ async function dismissCookieBanners(page) {
     try {
       const loc = page.locator(sel).first();
       if (await loc.isVisible()) {
-        await loc.click({ timeout: 1000 });
+        await loc.click();
         await page.waitForTimeout(1000);
         break;
       }
@@ -230,8 +231,7 @@ async function handleRender(body) {
   }
 
   const waitUntil = body?.wait_until || "load";
-  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
-  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
+  const timeoutMs = null;
   const screenshot = body?.screenshot !== false;
   const viewport = body?.viewport || { width: 1280, height: 720 };
   const dismissCookies = body?.dismiss_cookies !== false;
@@ -272,10 +272,8 @@ async function handleFetch(body) {
     return { status: 400, json: { error: "Missing required field: url" } };
   }
 
-  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
-  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
-  const maxBytesRaw = body?.max_bytes ?? maxFetchBytes;
-  const maxBytes = maxBytesRaw == null ? null : Number(maxBytesRaw);
+  const timeoutMs = null;
+  const maxBytes = null;
   const out = await fetchBytesWithLimit(url, timeoutMs, maxBytes);
 
   if (out.error) {
@@ -343,7 +341,6 @@ async function handleDiscover(body) {
       query,
       num: body?.num,
       start: body?.start,
-      timeout_ms: body?.timeout_ms,
       safe: body?.safe,
       gl: body?.gl,
       lr: body?.lr,
@@ -381,7 +378,6 @@ async function handleGoogleSearch(body) {
     query,
     num: body?.num,
     start: body?.start,
-    timeout_ms: body?.timeout_ms,
     safe: body?.safe,
     gl: body?.gl,
     lr: body?.lr,
@@ -401,16 +397,14 @@ async function handleIngest(body) {
     return { status: 400, json: { error: "Missing required field: url" } };
   }
 
-  const timeoutMsRaw = body?.timeout_ms ?? defaultTimeoutMs;
-  const timeoutMs = timeoutMsRaw == null ? null : Number(timeoutMsRaw);
+  const timeoutMs = null;
   const head = await headUrl(url, timeoutMs);
   const contentType = head.ok ? String(head.content_type || "").toLowerCase() : "";
   const urlLower = url.toLowerCase();
   const isPdf = contentType.includes("application/pdf") || urlLower.endsWith(".pdf");
 
   if (isPdf) {
-    const maxBytesRaw = body?.max_bytes ?? maxFetchBytes;
-    const maxBytes = maxBytesRaw == null ? null : Number(maxBytesRaw);
+    const maxBytes = null;
     const fetched = await fetchBytesWithLimit(url, timeoutMs, maxBytes);
     if (fetched.error) {
       return { status: fetched.status || 500, json: { ...fetched, requested_url: url } };

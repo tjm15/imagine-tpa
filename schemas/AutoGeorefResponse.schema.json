@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AutoGeorefResponse",
+  "type": "object",
+  "required": ["ok", "status", "attempts", "errors", "limitations_text"],
+  "properties": {
+    "ok": { "type": "boolean" },
+    "status": { "type": "string" },
+    "attempts": { "type": "integer" },
+    "errors": { "type": "array", "items": { "type": "string" } },
+    "limitations_text": { "type": "string" },
+    "transform": { "$ref": "#/$defs/GeorefTransform" },
+    "control_points": { "type": "array", "items": { "$ref": "#/$defs/ControlPoint" } },
+    "projection_artifacts": { "type": "array", "items": { "$ref": "#/$defs/ProjectionArtifact" } },
+    "metrics": { "type": "object" },
+    "provenance": { "type": "object" }
+  },
+  "$defs": {
+    "ControlPoint": {
+      "type": "object",
+      "required": ["src", "dst"],
+      "properties": {
+        "src": { "type": "object" },
+        "dst": { "type": "object" },
+        "residual": { "type": ["number", "null"] },
+        "weight": { "type": ["number", "null"] }
+      }
+    },
+    "GeorefTransform": {
+      "type": "object",
+      "required": ["method", "matrix", "matrix_shape"],
+      "properties": {
+        "method": { "type": "string" },
+        "matrix": { "type": "array", "items": { "type": "array", "items": { "type": "number" } } },
+        "matrix_shape": { "type": "array", "items": { "type": "integer" } },
+        "uncertainty_score": { "type": ["number", "null"] },
+        "metadata": { "type": "object" },
+        "control_points": { "type": "array", "items": { "$ref": "#/$defs/ControlPoint" } }
+      }
+    },
+    "ProjectionArtifact": {
+      "type": "object",
+      "required": ["artifact_type", "artifact_path"],
+      "properties": {
+        "artifact_type": { "type": "string" },
+        "artifact_path": { "type": "string" },
+        "evidence_ref": { "type": ["string", "null"] },
+        "metadata": { "type": "object" }
+      }
+    }
+  }
+}

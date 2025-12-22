@@ -453,8 +453,6 @@ def create_scenario_set_auto(body: ScenarioSetAutoCreate) -> JSONResponse:
         system_template=scenario_prompt,
         user_payload=user_payload,
         time_budget_seconds=60.0,
-        temperature=0.6,
-        max_tokens=1600,
         output_schema_ref="schemas/ScenarioAutoSet.schema.json",
     )
 
@@ -897,8 +895,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "max_issues": body.max_issues,
         },
         time_budget_seconds=per_call_budget,
-        temperature=0.7,
-        max_tokens=1100,
         output_schema_ref="schemas/Issue.schema.json",
     )
     if issue_llm_tool_run_id:
@@ -1123,8 +1119,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             ],
         },
         time_budget_seconds=per_call_budget,
-        temperature=0.6,
-        max_tokens=1300,
         output_schema_ref="schemas/Interpretation.schema.json",
     )
     if interp_tool_run_id:
@@ -1212,8 +1206,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "interpretations": [{"claim": it["claim"], "evidence_refs": it["evidence_refs"]} for it in interpretations],
         },
         time_budget_seconds=per_call_budget,
-        temperature=0.55,
-        max_tokens=1500,
         output_schema_ref="schemas/ConsiderationLedgerEntry.schema.json",
     )
     if ledger_tool_run_id:
@@ -1322,8 +1314,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
         },
         time_budget_seconds=per_call_budget,
-        temperature=0.55,
-        max_tokens=1200,
         output_schema_ref="schemas/WeighingRecord.schema.json",
     )
     if weighing_tool_run_id:
@@ -1383,8 +1373,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
         },
         time_budget_seconds=per_call_budget,
-        temperature=0.6,
-        max_tokens=1100,
         output_schema_ref="schemas/NegotiationMove.schema.json",
     )
     if negotiation_tool_run_id:
@@ -1460,8 +1448,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "negotiation_moves": negotiation_moves,
         },
         time_budget_seconds=max(per_call_budget, 10.0),
-        temperature=0.7,
-        max_tokens=1400,
         output_schema_ref="schemas/Trajectory.schema.json",
     )
     if position_tool_run_id:
@@ -1523,8 +1509,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         system_template=figure_prompt,
         user_payload=figure_payload,
         time_budget_seconds=25.0,
-        temperature=0.2,
-        max_tokens=600,
         output_schema_ref="schemas/FigureSpec.schema.json",
     )
     if figure_tool_run_id:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
@@ -22,6 +23,7 @@ def debug_overview() -> JSONResponse:
         "ingest_runs": _count("SELECT COUNT(*) AS count FROM ingest_runs"),
         "ingest_run_steps": _count("SELECT COUNT(*) AS count FROM ingest_run_steps"),
         "documents": _count("SELECT COUNT(*) AS count FROM documents"),
+        "document_identity_status": _count("SELECT COUNT(*) AS count FROM document_identity_status"),
         "pages": _count("SELECT COUNT(*) AS count FROM pages"),
         "layout_blocks": _count("SELECT COUNT(*) AS count FROM layout_blocks"),
         "chunks": _count("SELECT COUNT(*) AS count FROM chunks"),
@@ -29,6 +31,8 @@ def debug_overview() -> JSONResponse:
         "visual_asset_regions": _count("SELECT COUNT(*) AS count FROM visual_asset_regions"),
         "segmentation_masks": _count("SELECT COUNT(*) AS count FROM segmentation_masks"),
         "visual_semantic_outputs": _count("SELECT COUNT(*) AS count FROM visual_semantic_outputs"),
+        "transforms": _count("SELECT COUNT(*) AS count FROM transforms"),
+        "projection_artifacts": _count("SELECT COUNT(*) AS count FROM projection_artifacts"),
         "policy_sections": _count("SELECT COUNT(*) AS count FROM policy_sections"),
         "policy_clauses": _count("SELECT COUNT(*) AS count FROM policy_clauses"),
         "unit_embeddings": _count("SELECT COUNT(*) AS count FROM unit_embeddings"),
@@ -106,6 +110,142 @@ def list_documents(authority_id: str | None = None, plan_cycle_id: str | None = 
         tuple(params),
     )
     return JSONResponse(content=jsonable_encoder({"documents": rows}))
+
+
+def list_visual_assets(
+    *,
+    document_id: str | None = None,
+    run_id: str | None = None,
+    limit: int = 50,
+) -> JSONResponse:
+    clauses: list[str] = []
+    params: list[Any] = [run_id, run_id]
+    if document_id:
+        clauses.append("va.document_id = %s::uuid")
+        params.append(document_id)
+    if run_id:
+        clauses.append("va.run_id = %s::uuid")
+        params.append(run_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    params.append(limit)
+    rows = _db_fetch_all(
+        f"""
+        SELECT
+          va.id,
+          va.document_id,
+          va.page_number,
+          va.asset_type,
+          va.blob_path,
+          va.metadata AS metadata_jsonb,
+          va.created_at,
+          vs.asset_type AS semantic_asset_type,
+          vs.asset_subtype AS semantic_asset_subtype,
+          COALESCE(jsonb_array_length(vs.assertions_jsonb), 0) AS assertion_count,
+          (SELECT COUNT(*) FROM segmentation_masks sm WHERE sm.visual_asset_id = va.id) AS mask_count,
+          (SELECT COUNT(*) FROM visual_asset_regions vr WHERE vr.visual_asset_id = va.id) AS region_count,
+          (SELECT COUNT(*) FROM visual_semantic_outputs vso WHERE vso.visual_asset_id = va.id) AS semantic_count,
+          (va.metadata->>'georef_status') AS georef_status,
+          (va.metadata->>'georef_tool_run_id') AS georef_tool_run_id,
+          (va.metadata->>'transform_id') AS transform_id
+        FROM visual_assets va
+        LEFT JOIN LATERAL (
+          SELECT asset_type, asset_subtype, assertions_jsonb
+          FROM visual_semantic_outputs
+          WHERE visual_asset_id = va.id
+            AND (%s::uuid IS NULL OR run_id = %s::uuid)
+          ORDER BY created_at DESC
+          LIMIT 1
+        ) vs ON TRUE
+        {where}
+        ORDER BY va.created_at DESC
+        LIMIT %s
+        """,
+        tuple(params),
+    )
+    return JSONResponse(content=jsonable_encoder({"visual_assets": rows}))
+
+
+def visual_asset_detail(visual_asset_id: str) -> JSONResponse:
+    asset = _db_fetch_one(
+        """
+        SELECT id, document_id, run_id, page_number, asset_type, blob_path, evidence_ref_id,
+               metadata AS metadata_jsonb, created_at
+        FROM visual_assets
+        WHERE id = %s::uuid
+        """,
+        (visual_asset_id,),
+    )
+    if not asset:
+        raise HTTPException(status_code=404, detail="Visual asset not found")
+
+    semantic_outputs = _db_fetch_all(
+        """
+        SELECT id, run_id, schema_version, output_kind, asset_type, asset_subtype,
+               canonical_facts_jsonb, asset_specific_facts_jsonb, assertions_jsonb,
+               agent_findings_jsonb, material_index_jsonb, metadata_jsonb, tool_run_id, created_at
+        FROM visual_semantic_outputs
+        WHERE visual_asset_id = %s::uuid
+        ORDER BY created_at DESC
+        LIMIT 5
+        """,
+        (visual_asset_id,),
+    )
+
+    regions = _db_fetch_all(
+        """
+        SELECT id, run_id, region_type, bbox, bbox_quality, mask_id, caption_text,
+               evidence_ref_id, metadata_jsonb, created_at
+        FROM visual_asset_regions
+        WHERE visual_asset_id = %s::uuid
+        ORDER BY created_at DESC
+        LIMIT 50
+        """,
+        (visual_asset_id,),
+    )
+
+    masks = _db_fetch_all(
+        """
+        SELECT id, run_id, label, bbox, bbox_quality, confidence, mask_artifact_path, created_at
+        FROM segmentation_masks
+        WHERE visual_asset_id = %s::uuid
+        ORDER BY created_at DESC
+        LIMIT 50
+        """,
+        (visual_asset_id,),
+    )
+
+    meta = asset.get("metadata_jsonb") if isinstance(asset.get("metadata_jsonb"), dict) else {}
+    transform_id = meta.get("transform_id") if isinstance(meta.get("transform_id"), str) else None
+    transform = None
+    projection_artifacts: list[dict[str, Any]] = []
+    if transform_id:
+        transform = _db_fetch_one(
+            """
+            SELECT id, method, matrix, matrix_shape, uncertainty_score, control_point_ids_jsonb, metadata_jsonb, created_at
+            FROM transforms
+            WHERE id = %s::uuid
+            """,
+            (transform_id,),
+        )
+        projection_artifacts = _db_fetch_all(
+            """
+            SELECT id, artifact_type, artifact_path, metadata_jsonb, created_at
+            FROM projection_artifacts
+            WHERE transform_id = %s::uuid
+            ORDER BY created_at DESC
+            """,
+            (transform_id,),
+        )
+
+    payload = {
+        "visual_asset": asset,
+        "semantic_outputs": semantic_outputs,
+        "regions": regions,
+        "masks": masks,
+        "transform": transform,
+        "projection_artifacts": projection_artifacts,
+    }
+    return JSONResponse(content=jsonable_encoder(payload))
 
 
 def list_tool_runs(

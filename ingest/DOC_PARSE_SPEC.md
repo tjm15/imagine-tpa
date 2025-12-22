@@ -6,7 +6,7 @@
 
 ## Output Contract
 Docparse outputs a versioned ParseBundle (schema: `schemas/ParseBundle.schema.json`). This bundle is the only
-payload persisted by the ingest worker; it is **provider-agnostic** and carries provenance for replayability.
+payload persisted by the ingest worker; it is **provider-agnostic** and carries provenance for traceability.
 
 Minimum fields:
 ```json

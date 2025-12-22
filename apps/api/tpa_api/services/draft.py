@@ -25,7 +25,8 @@ async def _llm_blocks(
         return None
 
     model = _llm_model_id()
-    timeout = min(max(time_budget_seconds, 1.0), 60.0)
+    timeout = None
+    _ = time_budget_seconds
 
     system = (
         "You are The Planner's Assistant. Produce a quick first draft for a UK planning professional. "
@@ -44,8 +45,6 @@ async def _llm_blocks(
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "temperature": 0.7,
-        "max_tokens": 900,
     }
 
     url = base_url.rstrip("/") + "/chat/completions"

@@ -307,8 +307,6 @@ def build_or_refine_retrieval_frame_sync(
         system_template=sys,
         user_payload=user_payload,
         time_budget_seconds=min(90.0, max(10.0, time_budget_seconds)),
-        temperature=0.5,
-        max_tokens=1400,
         output_schema_ref="schemas/RetrievalFrame.schema.json",
     )
 
@@ -1016,8 +1014,6 @@ def assemble_curated_evidence_set_sync(
         system_template=sys,
         user_payload=selection_payload,
         time_budget_seconds=min(120.0, max(10.0, time_budget_seconds)),
-        temperature=0.65,
-        max_tokens=1700,
         output_schema_ref="schemas/ContextAssemblySelection.schema.json",
     )
     selection_errs = selection_errs if isinstance(selection_errs, list) else []
@@ -1118,8 +1114,6 @@ def assemble_curated_evidence_set_sync(
             system_template=rerun_sys,
             user_payload=rerun_payload,
             time_budget_seconds=min(90.0, max(10.0, time_budget_seconds)),
-            temperature=0.55,
-            max_tokens=1200,
             output_schema_ref="schemas/ContextAssemblySelection.schema.json",
         )
         if isinstance(rerun_tool_run_id, str):
