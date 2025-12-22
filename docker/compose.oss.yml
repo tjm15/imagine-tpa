@@ -137,7 +137,7 @@ services:
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_DOCPARSE_PROVIDER: ${TPA_DOCPARSE_PROVIDER:-docling}
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
-      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-sam2-segmentation:8088}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
       TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
       TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
@@ -221,7 +221,7 @@ services:
       TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
-      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-sam2-segmentation:8088}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
       TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
       TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
@@ -422,6 +422,22 @@ services:
       TOOL_MODE: segmentation
     ports:
       - "${TPA_SEGMENTATION_PORT:-8086}:8086"
+    <<: *service_defaults
+
+  tpa-sam2-segmentation:
+    profiles: ["vision", "full"]
+    build:
+      context: ../
+      dockerfile: apps/vision_tools/Dockerfile
+      args:
+        PYTHON_IMAGE: ${TPA_VISION_PYTHON_IMAGE:-python:3.13-slim}
+    environment:
+      PORT: "8088"
+      TOOL_MODE: sam2
+      TPA_SAM2_PROXY_URL: ${TPA_SAM2_PROXY_URL:-}
+    ports:
+      - "${TPA_SAM2_SEGMENTATION_PORT:-8088}:8088"
+    gpus: all
     <<: *service_defaults
 
   tpa-vectorization-worker:

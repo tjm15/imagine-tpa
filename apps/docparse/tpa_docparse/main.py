@@ -947,26 +947,6 @@ async def _classify_visuals(
     return classified, tool_runs
 
 
-def _call_vectorize(*, image_bytes: bytes, filename: str) -> tuple[list[dict[str, Any]], list[str]]:
-    base_url = os.environ.get("TPA_VECTORIZE_BASE_URL")
-    if not base_url:
-        return [], ["vectorize_unconfigured"]
-    timeout = None
-    url = base_url.rstrip("/") + "/vectorize"
-    safe_name = filename if filename and filename.strip() else "image.png"
-    files = {"file": (safe_name, io.BytesIO(image_bytes), "image/png")}
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(url, files=files)
-            resp.raise_for_status()
-            data = resp.json()
-    except Exception as exc:  # noqa: BLE001
-        return [], [f"vectorize_failed:{exc}"]
-    if isinstance(data, dict) and isinstance(data.get("paths"), list):
-        return [p for p in data.get("paths") if isinstance(p, dict)], []
-    return [], ["vectorize_invalid_response"]
-
-
 def _default_role_from_type(asset_type: str) -> str:
     return "context"
 
@@ -1158,39 +1138,17 @@ async def parse_bundle(
 
     vector_paths: list[dict[str, Any]] = []
     vector_tool_runs: list[dict[str, Any]] = []
-    for idx, asset in enumerate(classified_visuals, start=1):
-        data_bytes = asset.get("bytes")
-        if not isinstance(data_bytes, (bytes, bytearray)):
-            continue
-        asset_type = _normalize_asset_type((asset.get("classification") or {}).get("asset_type"))
-        if asset_type in {"map", "diagram"}:
-            started = time.time()
-            filename = f"visual-{document_id}-{idx:04d}.png"
-            paths, errs = _call_vectorize(image_bytes=bytes(data_bytes), filename=filename)
-            elapsed = max(0.0, time.time() - started)
-            for p_idx, path in enumerate(paths, start=1):
-                bbox_raw = path.get("bbox") if isinstance(path, dict) else None
-                bbox, bbox_quality = _normalize_bbox(bbox_raw)
-                vector_paths.append(
-                    {
-                        "path_id": f"vp-{idx:04d}-{p_idx:03d}",
-                        "page_number": int(asset.get("page_number") or 0),
-                        "path_type": asset_type,
-                        "geometry": path.get("geometry") if isinstance(path, dict) else None,
-                        "bbox": bbox,
-                        "bbox_quality": bbox_quality,
-                    }
-                )
-            vector_tool_runs.append(
-                {
-                    "tool_name": "vectorize_visual_asset",
-                    "status": "success" if paths else "error",
-                    "inputs": {"image_index": idx, "asset_type": asset_type, "filename": filename},
-                    "outputs": {"path_count": len(paths), "errors": errs},
-                    "duration_seconds": elapsed,
-                    "limitations_text": "Vectorization is best-effort; verify geometry and scale.",
-                }
-            )
+    if classified_visuals:
+        vector_tool_runs.append(
+            {
+                "tool_name": "vectorize_visual_asset",
+                "status": "skipped",
+                "inputs": {"image_count": len(classified_visuals)},
+                "outputs": {"reason": "deferred_to_ingest_worker"},
+                "duration_seconds": None,
+                "limitations_text": "Vectorization deferred to ingest worker (post-segmentation).",
+            }
+        )
 
     asset_items: list[dict[str, Any]] = []
     for idx, asset in enumerate(classified_visuals, start=1):

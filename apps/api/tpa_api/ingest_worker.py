@@ -1563,6 +1563,200 @@ def _truncate_text(text: str | None, limit: int) -> str:
     return cleaned if len(cleaned) <= limit else cleaned[:limit].rstrip() + "..."
 
 
+def _bbox_from_geometry(geometry: dict[str, Any] | None) -> list[float] | None:
+    if not isinstance(geometry, dict):
+        return None
+    geom_type = geometry.get("type")
+    coords = geometry.get("coordinates")
+    points: list[tuple[float, float]] = []
+
+    def _collect_ring(ring: Any) -> None:
+        if isinstance(ring, list):
+            for pt in ring:
+                if isinstance(pt, (list, tuple)) and len(pt) >= 2:
+                    try:
+                        points.append((float(pt[0]), float(pt[1])))
+                    except Exception:  # noqa: BLE001
+                        continue
+
+    if geom_type == "Polygon" and isinstance(coords, list):
+        for ring in coords:
+            _collect_ring(ring)
+    elif geom_type == "MultiPolygon" and isinstance(coords, list):
+        for poly in coords:
+            if isinstance(poly, list):
+                for ring in poly:
+                    _collect_ring(ring)
+    else:
+        return None
+
+    if not points:
+        return None
+    xs = [p[0] for p in points]
+    ys = [p[1] for p in points]
+    return [min(xs), min(ys), max(xs), max(ys)]
+
+
+def _vectorize_segmentation_masks(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    document_id: str,
+    visual_assets: list[dict[str, Any]],
+) -> int:
+    base_url = os.environ.get("TPA_VECTORIZE_BASE_URL")
+    if not base_url:
+        raise RuntimeError("vectorize_unconfigured")
+    timeout = None
+
+    asset_ids = [a.get("visual_asset_id") for a in visual_assets if a.get("visual_asset_id")]
+    if not asset_ids:
+        return 0
+    page_by_asset = {a.get("visual_asset_id"): int(a.get("page_number") or 0) for a in visual_assets}
+
+    mask_rows = _db_fetch_all(
+        """
+        SELECT id, visual_asset_id, mask_artifact_path, bbox, label
+        FROM segmentation_masks
+        WHERE visual_asset_id = ANY(%s::uuid[])
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY created_at
+        """,
+        (asset_ids, run_id, run_id),
+    )
+    if not mask_rows:
+        return 0
+
+    path_total = 0
+    for mask in mask_rows:
+        mask_id = str(mask.get("id"))
+        visual_asset_id = mask.get("visual_asset_id")
+        if not visual_asset_id:
+            continue
+        mask_path = mask.get("mask_artifact_path")
+        if not isinstance(mask_path, str):
+            continue
+        mask_bytes, _, err = read_blob_bytes(mask_path)
+        if err or not mask_bytes:
+            raise RuntimeError(f"mask_read_failed:{err or 'no_bytes'}")
+
+        tool_run_id = str(uuid4())
+        started = _utc_now()
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+              started_at, ended_at, confidence_hint, uncertainty_note
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+            """,
+            (
+                tool_run_id,
+                ingest_batch_id,
+                run_id,
+                "vectorize_mask",
+                json.dumps(
+                    {"visual_asset_id": visual_asset_id, "mask_id": mask_id, "mask_path": mask_path},
+                    ensure_ascii=False,
+                ),
+                json.dumps({}, ensure_ascii=False),
+                "running",
+                started,
+                "medium",
+                "Vectorization requested; awaiting response.",
+            ),
+        )
+
+        payload = {"mask_png_base64": base64.b64encode(mask_bytes).decode("ascii")}
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(base_url.rstrip("/") + "/vectorize", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:  # noqa: BLE001
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                ("error", json.dumps({"error": str(exc)}, ensure_ascii=False), _utc_now(), tool_run_id),
+            )
+            raise RuntimeError(f"vectorize_failed:{exc}") from exc
+
+        features_geojson = data.get("features_geojson") if isinstance(data, dict) else None
+        features = features_geojson.get("features") if isinstance(features_geojson, dict) else None
+        if not isinstance(features, list):
+            _db_execute(
+                "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+                (
+                    "error",
+                    json.dumps({"error": "vectorize_invalid_response"}, ensure_ascii=False),
+                    _utc_now(),
+                    tool_run_id,
+                ),
+            )
+            raise RuntimeError("vectorize_invalid_response")
+
+        insert_count = 0
+        for idx, feature in enumerate(features, start=1):
+            if not isinstance(feature, dict):
+                continue
+            geometry = feature.get("geometry") if isinstance(feature.get("geometry"), dict) else None
+            if not geometry:
+                continue
+            bbox = _bbox_from_geometry(geometry) or mask.get("bbox")
+            bbox_quality = "exact" if bbox else "none"
+            path_id = f"vm-{mask_id}-{idx:03d}"
+            path_type = None
+            props = feature.get("properties") if isinstance(feature.get("properties"), dict) else None
+            if props:
+                path_type = props.get("source")
+            if not isinstance(path_type, str) or not path_type:
+                path_type = "mask_contour"
+            _db_execute(
+                """
+                INSERT INTO vector_paths (
+                  id, document_id, page_number, ingest_batch_id, source_artifact_id,
+                  path_id, path_type, geometry_jsonb, bbox, bbox_quality, tool_run_id, metadata_jsonb
+                )
+                VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s, %s::uuid, %s::jsonb)
+                """,
+                (
+                    str(uuid4()),
+                    document_id,
+                    page_by_asset.get(visual_asset_id, 0),
+                    ingest_batch_id,
+                    None,
+                    path_id,
+                    path_type,
+                    json.dumps(geometry, ensure_ascii=False),
+                    json.dumps(bbox, ensure_ascii=False) if bbox else None,
+                    bbox_quality,
+                    tool_run_id,
+                    json.dumps(
+                        {
+                            "coord_space": "image_pixels",
+                            "vector_source": "segmentation_mask",
+                            "visual_asset_id": visual_asset_id,
+                            "mask_id": mask_id,
+                            "mask_label": mask.get("label"),
+                        },
+                        ensure_ascii=False,
+                    ),
+                ),
+            )
+            insert_count += 1
+
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            (
+                "success",
+                json.dumps({"path_count": insert_count}, ensure_ascii=False),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        path_total += insert_count
+
+    return path_total
+
 def _segment_visual_assets(
     *,
     ingest_batch_id: str,
@@ -4694,6 +4888,15 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 counts["visual_asset_regions"] += region_count
                 step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
 
+                vector_count = _vectorize_segmentation_masks(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    document_id=document_id,
+                    visual_assets=visual_rows,
+                )
+                counts["vector_paths"] += vector_count
+                step_counts["visual_vectorization"] = step_counts.get("visual_vectorization", 0) + 1
+
                 assertion_count = _extract_visual_region_assertions(
                     ingest_batch_id=ingest_batch_id,
                     run_id=run_id,
@@ -4946,6 +5149,14 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     "visual_assets": counts.get("visual_assets", 0),
                     "segmentation_masks": counts.get("segmentation_masks", 0),
                     "visual_asset_regions": counts.get("visual_asset_regions", 0),
+                },
+            )
+            _finish_run_step(
+                run_id=run_id,
+                step_name="visual_vectorization",
+                status="success" if (not visuals_present or step_counts.get("visual_vectorization", 0) > 0) else "partial",
+                outputs={
+                    "vector_paths": counts.get("vector_paths", 0),
                 },
             )
             _finish_run_step(
