@@ -9,7 +9,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import httpx
 from celery import Celery
@@ -18,8 +18,9 @@ from PIL import Image
 
 from .blob_store import minio_client_or_none, read_blob_bytes, write_blob_bytes
 from .db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one, init_db_pool, shutdown_db_pool
-from .model_clients import _embed_multimodal_sync, _embed_texts_sync
-from .prompting import _llm_structured_sync
+from .evidence import _ensure_evidence_ref_row, _parse_evidence_ref
+from .model_clients import _embed_multimodal_sync, _embed_texts_sync, _vlm_json_sync
+from .prompting import _llm_structured_sync, _prompt_upsert
 from .policy_utils import _normalize_policy_speech_act
 from .time_utils import _utc_now
 from .vector_utils import _vector_literal
@@ -491,6 +492,26 @@ def _persist_pages(
         )
 
 
+def _persist_bundle_evidence_refs(
+    *,
+    run_id: str | None,
+    evidence_refs: list[dict[str, Any]],
+) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for ref in evidence_refs:
+        if not isinstance(ref, dict):
+            continue
+        source_doc_id = ref.get("source_doc_id")
+        section_ref = ref.get("section_ref")
+        if not isinstance(source_doc_id, str) or not isinstance(section_ref, str):
+            continue
+        evidence_ref = f"doc::{source_doc_id}::{section_ref}"
+        evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+        if evidence_ref_id:
+            mapping[section_ref] = evidence_ref_id
+    return mapping
+
+
 def _find_span(text: str, fragment: str) -> tuple[int | None, int | None, str]:
     if not text or not fragment:
         return None, None, "none"
@@ -513,9 +534,11 @@ def _persist_layout_blocks(
     source_artifact_id: str | None,
     pages: list[dict[str, Any]],
     blocks: list[dict[str, Any]],
+    evidence_ref_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     page_texts = {int(p.get("page_number") or 0): str(p.get("text") or "") for p in pages}
     rows: list[dict[str, Any]] = []
+    evidence_ref_map = evidence_ref_map or {}
     for block in blocks:
         text = str(block.get("text") or "").strip()
         if not text:
@@ -524,7 +547,20 @@ def _persist_layout_blocks(
         layout_block_id = str(uuid4())
         block_id = str(block.get("block_id") or layout_block_id)
         span_start, span_end, span_quality = _find_span(page_texts.get(page_number, ""), text)
-        evidence_ref_id = str(uuid4())
+        evidence_ref_id: str | None = None
+        used_external_ref = False
+        raw_ref = block.get("evidence_ref")
+        if isinstance(raw_ref, str):
+            parsed = _parse_evidence_ref(raw_ref)
+            if parsed:
+                evidence_ref_id = evidence_ref_map.get(parsed[2])
+                if evidence_ref_id:
+                    used_external_ref = True
+                else:
+                    evidence_ref_id = _ensure_evidence_ref_row(raw_ref, run_id=run_id)
+                    used_external_ref = bool(evidence_ref_id)
+        if not evidence_ref_id:
+            evidence_ref_id = str(uuid4())
         _db_execute(
             """
             INSERT INTO layout_blocks (
@@ -554,10 +590,11 @@ def _persist_layout_blocks(
                 json.dumps({}, ensure_ascii=False),
             ),
         )
-        _db_execute(
-            "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
-            (evidence_ref_id, "layout_block", layout_block_id, block_id, run_id),
-        )
+        if not used_external_ref:
+            _db_execute(
+                "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
+                (evidence_ref_id, "layout_block", layout_block_id, block_id, run_id),
+            )
         rows.append(
             {
                 "layout_block_id": layout_block_id,
@@ -572,6 +609,7 @@ def _persist_layout_blocks(
                 "span_end": span_end,
                 "span_quality": span_quality,
                 "evidence_ref_id": evidence_ref_id,
+                "evidence_ref": raw_ref,
             }
         )
     return rows
@@ -672,7 +710,9 @@ def _persist_chunks_from_blocks(
         chunk_id = str(uuid4())
         page_number = block.get("page_number")
         fragment = str(block.get("block_id") or "block")
-        evidence_ref_id = str(uuid4())
+        evidence_ref_id = block.get("evidence_ref_id")
+        if not evidence_ref_id:
+            evidence_ref_id = str(uuid4())
         _db_execute(
             """
             INSERT INTO chunks (
@@ -701,21 +741,23 @@ def _persist_chunks_from_blocks(
                 json.dumps({"evidence_ref_fragment": fragment}, ensure_ascii=False),
             ),
         )
-        _db_execute(
-            "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
-            (evidence_ref_id, "chunk", chunk_id, fragment, run_id),
-        )
+        if evidence_ref_id and not block.get("evidence_ref_id"):
+            _db_execute(
+                "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
+                (evidence_ref_id, "chunk", chunk_id, fragment, run_id),
+            )
         chunk_rows.append(
             {
                 "chunk_id": chunk_id,
                 "text": text,
                 "page_number": page_number,
                 "fragment": fragment,
-                "evidence_ref": f"chunk::{chunk_id}::{fragment}",
+                "evidence_ref": block.get("evidence_ref") or f"chunk::{chunk_id}::{fragment}",
                 "type": block.get("type"),
                 "section_path": block.get("section_path"),
                 "span_start": block.get("span_start"),
                 "span_end": block.get("span_end"),
+                "evidence_ref_id": evidence_ref_id,
             }
         )
     return chunk_rows
@@ -728,8 +770,10 @@ def _persist_visual_assets(
     run_id: str | None,
     source_artifact_id: str | None,
     visual_assets: list[dict[str, Any]],
+    evidence_ref_map: dict[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
+    evidence_ref_map = evidence_ref_map or {}
     for asset in visual_assets:
         asset_id = str(uuid4())
         blob_path = asset.get("blob_path")
@@ -743,6 +787,7 @@ def _persist_visual_assets(
             "caption": asset.get("caption"),
             "width": asset.get("width"),
             "height": asset.get("height"),
+            "source_asset_id": asset.get("asset_id"),
         }
         now = _utc_now()
         _db_execute(
@@ -767,14 +812,23 @@ def _persist_visual_assets(
                 now,
             ),
         )
-        evidence_ref_id = str(uuid4())
-        _db_execute(
-            """
-            INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id)
-            VALUES (%s, %s, %s, %s, %s::uuid)
-            """,
-            (evidence_ref_id, "visual_asset", asset_id, "image", run_id),
-        )
+        evidence_ref_id: str | None = None
+        source_asset_id = asset.get("asset_id")
+        if isinstance(source_asset_id, str) and source_asset_id:
+            fragment = f"visual::{source_asset_id}"
+            evidence_ref_id = evidence_ref_map.get(fragment)
+            if not evidence_ref_id:
+                evidence_ref = f"doc::{document_id}::{fragment}"
+                evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+        if not evidence_ref_id:
+            evidence_ref_id = str(uuid4())
+            _db_execute(
+                """
+                INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id)
+                VALUES (%s, %s, %s, %s, %s::uuid)
+                """,
+                (evidence_ref_id, "visual_asset", asset_id, "image", run_id),
+            )
         rows.append(
             {
                 "visual_asset_id": asset_id,
@@ -782,6 +836,7 @@ def _persist_visual_assets(
                 "metadata": metadata,
                 "blob_path": blob_path,
                 "evidence_ref_id": evidence_ref_id,
+                "source_asset_id": asset.get("asset_id"),
             }
         )
     return rows
@@ -882,6 +937,490 @@ def _persist_visual_semantic_features(
             ),
         )
 
+
+def _run_vlm_structured(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    tool_name: str,
+    prompt_id: str,
+    prompt_version: int,
+    prompt_name: str,
+    purpose: str,
+    prompt: str,
+    image_bytes: bytes,
+    model_id: str | None = None,
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    tool_run_id = str(uuid4())
+    started_at = _utc_now()
+    _prompt_upsert(
+        prompt_id=prompt_id,
+        prompt_version=prompt_version,
+        name=prompt_name,
+        purpose=purpose,
+        template=prompt,
+        input_schema_ref=None,
+        output_schema_ref=None,
+    )
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+          started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+        """,
+        (
+            tool_run_id,
+            ingest_batch_id,
+            run_id,
+            tool_name,
+            json.dumps(
+                {
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_name": prompt_name,
+                    "purpose": purpose,
+                    "model_id": model_id,
+                    "prompt": prompt,
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps({}, ensure_ascii=False),
+            "running",
+            started_at,
+            "medium",
+            "VLM output is non-deterministic; verify limitations and trace to tool runs.",
+        ),
+    )
+
+    obj, errs = _vlm_json_sync(prompt=prompt, image_bytes=image_bytes, model_id=model_id)
+    status = "success" if obj is not None and not errs else ("partial" if obj is not None else "error")
+    _db_execute(
+        """
+        UPDATE tool_runs
+        SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+        WHERE id = %s::uuid
+        """,
+        (
+            status,
+            json.dumps({"ok": obj is not None, "errors": errs[:10], "parsed_json": obj}, ensure_ascii=False),
+            _utc_now(),
+            tool_run_id,
+        ),
+    )
+    return obj, tool_run_id, errs
+
+
+def _upsert_visual_semantic_output(
+    *,
+    visual_asset_id: str,
+    run_id: str | None,
+    schema_version: str,
+    tool_run_id: str | None,
+    asset_type: str | None = None,
+    asset_subtype: str | None = None,
+    canonical_facts: dict[str, Any] | None = None,
+    asset_specific_facts: dict[str, Any] | None = None,
+    assertions: list[dict[str, Any]] | None = None,
+    agent_findings: dict[str, Any] | None = None,
+    material_index: dict[str, Any] | None = None,
+    metadata_update: dict[str, Any] | None = None,
+) -> None:
+    existing = _db_fetch_one(
+        """
+        SELECT id, metadata_jsonb
+        FROM visual_semantic_outputs
+        WHERE visual_asset_id = %s::uuid
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (visual_asset_id, run_id, run_id),
+    )
+    if existing and existing.get("id"):
+        metadata = existing.get("metadata_jsonb") if isinstance(existing.get("metadata_jsonb"), dict) else {}
+        if metadata_update:
+            metadata.update(metadata_update)
+        _db_execute(
+            """
+            UPDATE visual_semantic_outputs
+            SET asset_type = COALESCE(%s, asset_type),
+                asset_subtype = COALESCE(%s, asset_subtype),
+                canonical_facts_jsonb = COALESCE(%s::jsonb, canonical_facts_jsonb),
+                asset_specific_facts_jsonb = COALESCE(%s::jsonb, asset_specific_facts_jsonb),
+                assertions_jsonb = COALESCE(%s::jsonb, assertions_jsonb),
+                agent_findings_jsonb = COALESCE(%s::jsonb, agent_findings_jsonb),
+                material_index_jsonb = COALESCE(%s::jsonb, material_index_jsonb),
+                metadata_jsonb = %s::jsonb,
+                tool_run_id = COALESCE(%s::uuid, tool_run_id)
+            WHERE id = %s::uuid
+            """,
+            (
+                asset_type,
+                asset_subtype,
+                json.dumps(canonical_facts, ensure_ascii=False) if canonical_facts is not None else None,
+                json.dumps(asset_specific_facts, ensure_ascii=False) if asset_specific_facts is not None else None,
+                json.dumps(assertions, ensure_ascii=False) if assertions is not None else None,
+                json.dumps(agent_findings, ensure_ascii=False) if agent_findings is not None else None,
+                json.dumps(material_index, ensure_ascii=False) if material_index is not None else None,
+                json.dumps(metadata, ensure_ascii=False),
+                tool_run_id,
+                existing["id"],
+            ),
+        )
+        return
+
+    _db_execute(
+        """
+        INSERT INTO visual_semantic_outputs (
+          id, visual_asset_id, run_id, schema_version, asset_type, asset_subtype,
+          canonical_facts_jsonb, asset_specific_facts_jsonb, assertions_jsonb,
+          agent_findings_jsonb, material_index_jsonb, metadata_jsonb, tool_run_id, created_at
+        )
+        VALUES (
+          %s, %s::uuid, %s::uuid, %s, %s, %s,
+          %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::jsonb, %s::uuid, %s
+        )
+        """,
+        (
+            str(uuid4()),
+            visual_asset_id,
+            run_id,
+            schema_version,
+            asset_type,
+            asset_subtype,
+            json.dumps(canonical_facts or {}, ensure_ascii=False),
+            json.dumps(asset_specific_facts or {}, ensure_ascii=False),
+            json.dumps(assertions or [], ensure_ascii=False),
+            json.dumps(agent_findings or {}, ensure_ascii=False),
+            json.dumps(material_index or {}, ensure_ascii=False),
+            json.dumps(metadata_update or {}, ensure_ascii=False),
+            tool_run_id,
+            _utc_now(),
+        ),
+    )
+
+
+def _extract_visual_asset_facts(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_assets: list[dict[str, Any]],
+) -> int:
+    if not visual_assets:
+        return 0
+
+    asset_types = [
+        "photo_existing",
+        "photomontage",
+        "render_cgi",
+        "streetscape_montage",
+        "location_plan",
+        "site_plan_existing",
+        "site_plan_proposed",
+        "floor_plan",
+        "roof_plan",
+        "elevation",
+        "section",
+        "axonometric_or_3d",
+        "diagram_access_transport",
+        "diagram_landscape_trees",
+        "diagram_daylight_sunlight",
+        "diagram_heritage_townscape",
+        "diagram_flood_drainage",
+        "diagram_phasing_construction",
+        "design_material_palette",
+        "other_diagram",
+    ]
+
+    prompt_id = "visual_asset_facts_v1"
+    inserted = 0
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        blob_path = asset.get("blob_path")
+        if not visual_asset_id or not isinstance(blob_path, str):
+            continue
+        image_bytes, _, err = read_blob_bytes(blob_path)
+        if err or not image_bytes:
+            raise RuntimeError(f"visual_asset_read_failed:{err or 'no_bytes'}")
+
+        metadata = asset.get("metadata") or {}
+        asset_type_hint = metadata.get("asset_type") or "unknown"
+        prompt = (
+            "You are a planning visual parsing instrument. Return ONLY valid JSON.\n"
+            "Choose asset_type from: "
+            + ", ".join(asset_types)
+            + ".\n"
+            "Output shape:\n"
+            "{\n"
+            '  "asset_type": "...",\n'
+            '  "asset_subtype": "...|null",\n'
+            '  "canonical_visual_facts": {\n'
+            '    "depiction": {"depiction_kind": "photo|drawing|map|diagram|render|mixed", "view_kind": "plan|section|elevation|perspective|axonometric|unknown", "composite_indicator": {"likely_composite": true, "confidence": 0.0}},\n'
+            '    "orientation": {"north_arrow_present": true, "north_bearing_degrees": 0, "confidence": 0.0},\n'
+            '    "scale_signals": {"scale_bar_present": true, "written_scale_present": true, "dimensions_present": true, "known_object_scale_cues": [], "confidence": 0.0},\n'
+            '    "boundary_representation": {"site_boundary_present": true, "boundary_style": "redline|blue_line|dashed|unknown", "confidence": 0.0},\n'
+            '    "annotations": {"legend_present": true, "key_present": true, "labels_legible": true, "critical_notes_present": true, "confidence": 0.0},\n'
+            '    "viewpoint": {"viewpoint_applicable": true, "declared_viewpoint_present": false, "estimated_camera_height_m": null, "estimated_lens_equiv_mm": null, "estimated_view_direction_degrees": null, "confidence": 0.0},\n'
+            '    "height_and_levels": {"height_markers_present": true, "level_datums_present": true, "storey_indicators_present": true, "confidence": 0.0}\n'
+            "  },\n"
+            '  "asset_specific_facts": {...}\n'
+            "}\n"
+            f"Asset type hint: {asset_type_hint}.\n"
+            "Emit only the asset_specific_facts block relevant to the asset_type."
+        )
+
+        obj, tool_run_id, _ = _run_vlm_structured(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            tool_name="vlm_visual_asset_facts",
+            prompt_id=prompt_id,
+            prompt_version=1,
+            prompt_name="Visual asset facts",
+            purpose="Extract canonical and asset-specific facts from a visual asset.",
+            prompt=prompt,
+            image_bytes=image_bytes,
+        )
+        if not isinstance(obj, dict):
+            continue
+
+        asset_type = obj.get("asset_type") if isinstance(obj.get("asset_type"), str) else None
+        asset_subtype = obj.get("asset_subtype") if isinstance(obj.get("asset_subtype"), str) else None
+        canonical_facts = obj.get("canonical_visual_facts") if isinstance(obj.get("canonical_visual_facts"), dict) else {}
+        asset_specific = obj.get("asset_specific_facts") if isinstance(obj.get("asset_specific_facts"), dict) else {}
+
+        _upsert_visual_semantic_output(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+            schema_version="1.0",
+            tool_run_id=tool_run_id,
+            asset_type=asset_type,
+            asset_subtype=asset_subtype,
+            canonical_facts=canonical_facts,
+            asset_specific_facts=asset_specific,
+            metadata_update={"asset_facts_tool_run_id": tool_run_id},
+        )
+        inserted += 1
+
+    return inserted
+
+
+def _build_material_index(assertions: list[dict[str, Any]]) -> dict[str, Any]:
+    index: dict[str, dict[str, Any]] = {}
+    for assertion in assertions:
+        tags = assertion.get("material_consideration_tags") if isinstance(assertion, dict) else None
+        assertion_id = assertion.get("assertion_id") if isinstance(assertion, dict) else None
+        if not isinstance(tags, list) or not assertion_id:
+            continue
+        for tag in tags:
+            if not isinstance(tag, str):
+                continue
+            entry = index.setdefault(tag, {"assertion_ids": [], "agent_mentions": []})
+            entry["assertion_ids"].append(assertion_id)
+    return index
+
+
+def _extract_visual_region_assertions(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_assets: list[dict[str, Any]],
+) -> int:
+    if not visual_assets:
+        return 0
+
+    prompt_id = "visual_region_assertions_v1"
+    total_assertions = 0
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        if not visual_asset_id:
+            continue
+        semantic_row = _db_fetch_one(
+            """
+            SELECT canonical_facts_jsonb, asset_specific_facts_jsonb, asset_type, asset_subtype, metadata_jsonb
+            FROM visual_semantic_outputs
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row, dict) else {}
+        asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row, dict) else {}
+        asset_type = semantic_row.get("asset_type") if isinstance(semantic_row, dict) else None
+        asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row, dict) else None
+
+        region_rows = _db_fetch_all(
+            """
+            SELECT id, bbox, bbox_quality, caption_text, metadata_jsonb
+            FROM visual_asset_regions
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        if not region_rows:
+            continue
+
+        assertions: list[dict[str, Any]] = []
+        for region in region_rows:
+            region_id = str(region.get("id"))
+            meta = region.get("metadata_jsonb") if isinstance(region.get("metadata_jsonb"), dict) else {}
+            region_blob_path = meta.get("region_blob_path")
+            if not isinstance(region_blob_path, str):
+                continue
+            image_bytes, _, err = read_blob_bytes(region_blob_path)
+            if err or not image_bytes:
+                continue
+
+            prompt = (
+                "You are a planning visual assertion instrument. Return ONLY valid JSON.\n"
+                "Given a cropped region from a planning visual, produce atomic assertions anchored to this region.\n"
+                "Output shape:\n"
+                "{\n"
+                '  "assertions": [\n'
+                "    {\n"
+                '      "assertion_id": "uuid",\n'
+                '      "assertion_type": "string",\n'
+                '      "statement": "string",\n'
+                '      "polarity": "supports|raises_risk|neutral",\n'
+                '      "basis": ["string"],\n'
+                '      "confidence": 0.0,\n'
+                '      "risk_flags": ["string"],\n'
+                '      "material_consideration_tags": ["string"],\n'
+                '      "follow_up_requests": ["string"],\n'
+                f'      "evidence_region_id": "{region_id}"\n'
+                "    }\n"
+                "  ]\n"
+                "}\n"
+                f"Asset type: {asset_type or 'unknown'}; asset subtype: {asset_subtype or 'null'}.\n"
+                f"Canonical facts: {json.dumps(canonical_facts, ensure_ascii=False)}\n"
+                f"Asset-specific facts: {json.dumps(asset_specific, ensure_ascii=False)}\n"
+                f"Region bbox: {json.dumps(region.get('bbox'), ensure_ascii=False)}\n"
+                f"Region caption: {region.get('caption_text') or ''}\n"
+            )
+
+            obj, tool_run_id, _ = _run_vlm_structured(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                tool_name="vlm_region_assertions",
+                prompt_id=prompt_id,
+                prompt_version=1,
+                prompt_name="Region assertions",
+                purpose="Extract region-level assertions from a visual crop.",
+                prompt=prompt,
+                image_bytes=image_bytes,
+            )
+            if not isinstance(obj, dict):
+                continue
+            region_assertions = obj.get("assertions") if isinstance(obj.get("assertions"), list) else []
+            for a in region_assertions:
+                if not isinstance(a, dict):
+                    continue
+                assertion_id = a.get("assertion_id")
+                try:
+                    if not isinstance(assertion_id, str):
+                        raise ValueError("invalid")
+                    UUID(assertion_id)
+                except Exception:  # noqa: BLE001
+                    assertion_id = str(uuid4())
+                a["assertion_id"] = assertion_id
+                if not a.get("evidence_region_id"):
+                    a["evidence_region_id"] = region_id
+                assertions.append(a)
+            total_assertions += len(region_assertions)
+
+        material_index = _build_material_index(assertions)
+        agent_findings: dict[str, Any] = {}
+        if assertions:
+            system_template = (
+                "You are a planning specialist review panel. Return ONLY valid JSON with the shape:\n"
+                "{\n"
+                '  "agent_findings": {\n'
+                '    "Design & Character Agent": {\n'
+                '      "agent_name": "Design & Character Agent",\n'
+                '      "scope_tags": ["design.scale_massing", "design.form_roofline", "design.materials_detailing", "design.public_realm_frontage"],\n'
+                '      "supported_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2}],\n'
+                '      "challenged_assertions": [{"assertion_id": "uuid", "commentary": "string", "confidence_adjustment": -0.2, "additional_risk_flags": ["string"]}],\n'
+                '      "additional_assertions": [ {"assertion_id": "uuid", "assertion_type": "string", "statement": "string", "polarity": "supports|raises_risk|neutral", "basis": ["string"], "confidence": 0.0, "risk_flags": ["string"], "material_consideration_tags": ["string"], "follow_up_requests": ["string"]} ],\n'
+                '      "notable_omissions": ["string"]\n'
+                "    },\n"
+                '    "Townscape & Visual Impact Agent": { ... },\n'
+                '    "Heritage & Setting Agent": { ... },\n'
+                '    "Residential Amenity Agent": { ... },\n'
+                '    "Access, Parking & Servicing Agent": { ... },\n'
+                '    "Landscape & Trees Agent": { ... },\n'
+                '    "Water, Flood & Drainage Agent": { ... },\n'
+                '    "Representation Integrity Agent": { ... }\n'
+                "  }\n"
+                "}\n"
+                "Rules:\n"
+                "- Only reference assertion_id values that exist in the provided assertions list.\n"
+                "- If there is nothing to add, return empty arrays and empty omissions.\n"
+                "- Keep commentary concise and in officer-report language.\n"
+            )
+            obj, tool_run_id, _ = _llm_structured_sync(
+                prompt_id="visual_agent_findings_v1",
+                prompt_version=1,
+                prompt_name="Visual agent findings",
+                purpose="Review visual assertions with specialist planning lenses.",
+                system_template=system_template,
+                user_payload={
+                    "asset_type": asset_type,
+                    "asset_subtype": asset_subtype,
+                    "canonical_facts": canonical_facts,
+                    "asset_specific_facts": asset_specific,
+                    "assertions": assertions,
+                },
+                time_budget_seconds=120.0,
+                output_schema_ref=None,
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+            )
+            if isinstance(obj, dict) and isinstance(obj.get("agent_findings"), dict):
+                agent_findings = obj.get("agent_findings") or {}
+                if isinstance(agent_findings, dict):
+                    for agent in agent_findings.values():
+                        if not isinstance(agent, dict):
+                            continue
+                        additional = agent.get("additional_assertions")
+                        if isinstance(additional, list):
+                            for extra in additional:
+                                if not isinstance(extra, dict):
+                                    continue
+                                assertion_id = extra.get("assertion_id")
+                                try:
+                                    if not isinstance(assertion_id, str):
+                                        raise ValueError("invalid")
+                                    UUID(assertion_id)
+                                except Exception:  # noqa: BLE001
+                                    assertion_id = str(uuid4())
+                                extra["assertion_id"] = assertion_id
+            if tool_run_id:
+                _upsert_visual_semantic_output(
+                    visual_asset_id=visual_asset_id,
+                    run_id=run_id,
+                    schema_version="1.0",
+                    tool_run_id=tool_run_id,
+                    agent_findings=agent_findings,
+                    metadata_update={"agent_findings_tool_run_id": tool_run_id},
+                )
+
+        _upsert_visual_semantic_output(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+            schema_version="1.0",
+            tool_run_id=None,
+            assertions=assertions,
+            agent_findings=agent_findings,
+            material_index=material_index,
+            metadata_update={"region_assertions_count": len(assertions)},
+        )
+
+    return total_assertions
 
 def _decode_base64_payload(data: str) -> bytes:
     if "base64," in data:
@@ -1332,6 +1871,102 @@ def _embed_visual_assets(
     return inserted
 
 
+def _embed_visual_assertions(*, ingest_batch_id: str, run_id: str | None) -> int:
+    rows = _db_fetch_all(
+        """
+        SELECT id, assertions_jsonb
+        FROM visual_semantic_outputs
+        WHERE (%s::uuid IS NULL OR run_id = %s::uuid)
+        """,
+        (run_id, run_id),
+    )
+    candidates: list[tuple[str, str]] = []
+    for row in rows:
+        assertions = row.get("assertions_jsonb") if isinstance(row.get("assertions_jsonb"), list) else []
+        for assertion in assertions:
+            if not isinstance(assertion, dict):
+                continue
+            assertion_id = assertion.get("assertion_id")
+            statement = assertion.get("statement")
+            if not isinstance(assertion_id, str) or not isinstance(statement, str) or not statement.strip():
+                continue
+            try:
+                UUID(assertion_id)
+            except Exception:  # noqa: BLE001
+                continue
+            candidates.append((assertion_id, statement.strip()))
+    if not candidates:
+        return 0
+
+    texts = [text for _, text in candidates]
+    embeddings = _embed_texts_sync(texts=texts, model_id=os.environ.get("TPA_EMBEDDINGS_MODEL_ID"))
+    if not embeddings:
+        return 0
+
+    tool_run_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+          started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+        """,
+        (
+            tool_run_id,
+            ingest_batch_id,
+            run_id,
+            "embed_visual_assertions",
+            json.dumps({"assertion_count": len(embeddings)}, ensure_ascii=False),
+            json.dumps({}, ensure_ascii=False),
+            "running",
+            _utc_now(),
+            None,
+            "medium",
+            "Embedding visual assertions for retrieval.",
+        ),
+    )
+
+    inserted = 0
+    for (assertion_id, _), vec in zip(candidates, embeddings, strict=True):
+        _db_execute(
+            """
+            INSERT INTO unit_embeddings (
+              id, unit_type, unit_id, embedding, embedding_model_id, embedding_dim, created_at, tool_run_id, run_id
+            )
+            VALUES (%s, %s, %s::uuid, %s::vector, %s, %s, %s, %s::uuid, %s::uuid)
+            ON CONFLICT (unit_type, unit_id, embedding_model_id) DO NOTHING
+            """,
+            (
+                str(uuid4()),
+                "visual_assertion",
+                assertion_id,
+                _vector_literal(vec),
+                os.environ.get("TPA_EMBEDDINGS_MODEL_ID", "Qwen/Qwen3-Embedding-8B"),
+                len(vec) if isinstance(vec, list) else None,
+                _utc_now(),
+                tool_run_id,
+                run_id,
+            ),
+        )
+        inserted += 1
+
+    _db_execute(
+        """
+        UPDATE tool_runs
+        SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+        WHERE id = %s::uuid
+        """,
+        (
+            "success" if inserted > 0 else "error",
+            json.dumps({"inserted": inserted}, ensure_ascii=False),
+            _utc_now(),
+            tool_run_id,
+        ),
+    )
+    return inserted
+
+
 def _embed_units(
     *,
     ingest_batch_id: str,
@@ -1554,6 +2189,86 @@ def _llm_extract_policy_structure(
                 existing[list_key] = current
 
     return list(merged.values()), tool_run_ids, errors
+
+
+def _confidence_hint_score(value: str | None) -> float:
+    if not isinstance(value, str):
+        return 0.0
+    lowered = value.strip().lower()
+    if lowered == "high":
+        return 0.9
+    if lowered == "medium":
+        return 0.6
+    if lowered == "low":
+        return 0.3
+    return 0.0
+
+
+def _merge_policy_headings(
+    *,
+    sections: list[dict[str, Any]],
+    policy_headings: list[dict[str, Any]],
+    block_rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not policy_headings:
+        return sections
+    block_lookup = {b.get("block_id"): b for b in block_rows if b.get("block_id")}
+    merged = [dict(s) for s in sections if isinstance(s, dict)]
+
+    for heading in policy_headings:
+        if not isinstance(heading, dict):
+            continue
+        block_id = heading.get("block_id")
+        if not isinstance(block_id, str):
+            continue
+        policy_code = heading.get("policy_code")
+        policy_title = heading.get("policy_title")
+        heading_score = _confidence_hint_score(heading.get("confidence_hint"))
+
+        matched = None
+        for section in merged:
+            block_ids = section.get("block_ids") if isinstance(section.get("block_ids"), list) else []
+            if block_id in block_ids:
+                matched = section
+                break
+        if not matched and isinstance(policy_code, str):
+            for section in merged:
+                if section.get("policy_code") == policy_code:
+                    matched = section
+                    break
+
+        if matched:
+            existing_score = _confidence_hint_score(matched.get("confidence_hint")) or 0.5
+            if heading_score >= existing_score or not matched.get("policy_code"):
+                if isinstance(policy_code, str) and policy_code.strip():
+                    matched["policy_code"] = policy_code.strip()
+                if isinstance(policy_title, str) and policy_title.strip():
+                    matched["title"] = policy_title.strip()
+                if not matched.get("heading_text"):
+                    block = block_lookup.get(block_id) or {}
+                    matched["heading_text"] = block.get("text")
+            continue
+
+        if heading_score >= 0.6:
+            block = block_lookup.get(block_id) or {}
+            merged.append(
+                {
+                    "section_id": f"docparse:{block_id}",
+                    "policy_code": policy_code.strip() if isinstance(policy_code, str) else None,
+                    "title": policy_title.strip() if isinstance(policy_title, str) else None,
+                    "heading_text": block.get("text"),
+                    "section_path": block.get("section_path"),
+                    "block_ids": [block_id],
+                    "clauses": [],
+                    "definitions": [],
+                    "targets": [],
+                    "monitoring": [],
+                    "confidence_hint": heading.get("confidence_hint"),
+                    "uncertainty_note": heading.get("uncertainty_note"),
+                }
+            )
+
+    return merged
 
 
 def _ensure_kg_node(*, node_id: str, node_type: str, canonical_fk: str | None = None, props: dict[str, Any] | None = None) -> None:
@@ -2309,6 +3024,8 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "segmentation_masks": 0,
             "visual_asset_regions": 0,
             "visual_asset_links": 0,
+            "visual_semantic_assets": 0,
+            "visual_semantic_assertions": 0,
             "policy_sections": 0,
             "policy_clauses": 0,
             "definitions": 0,
@@ -2318,6 +3035,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "unit_embeddings_policy_section": 0,
             "unit_embeddings_policy_clause": 0,
             "unit_embeddings_visual": 0,
+            "unit_embeddings_visual_assertion": 0,
         }
         errors: list[str] = []
         step_counts: dict[str, int] = {}
@@ -2493,6 +3211,9 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             counts["pages"] += len(pages)
 
+            bundle_evidence_refs = bundle.get("evidence_refs") if isinstance(bundle.get("evidence_refs"), list) else []
+            evidence_ref_map = _persist_bundle_evidence_refs(run_id=run_id, evidence_refs=bundle_evidence_refs)
+
             blocks = bundle.get("layout_blocks") if isinstance(bundle.get("layout_blocks"), list) else []
             block_rows = _persist_layout_blocks(
                 document_id=document_id,
@@ -2501,6 +3222,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 source_artifact_id=raw_artifact_id,
                 pages=pages,
                 blocks=blocks,
+                evidence_ref_map=evidence_ref_map,
             )
             counts["layout_blocks"] += len(block_rows)
 
@@ -2540,12 +3262,20 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 source_artifact_id=raw_artifact_id,
                 visual_assets=visual_assets,
+                evidence_ref_map=evidence_ref_map,
             )
             counts["visual_assets"] += len(visual_rows)
             _persist_visual_features(visual_assets=visual_rows, run_id=run_id)
 
             semantic = bundle.get("semantic") if isinstance(bundle.get("semantic"), dict) else {}
             _persist_visual_semantic_features(visual_assets=visual_rows, semantic=semantic, run_id=run_id)
+            if visual_rows:
+                counts["visual_semantic_assets"] = counts.get("visual_semantic_assets", 0) + _extract_visual_asset_facts(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                )
+                step_counts["visual_semantics_asset"] = step_counts.get("visual_semantics_asset", 0) + 1
 
             step_counts["canonical_load"] = step_counts.get("canonical_load", 0) + 1
 
@@ -2556,6 +3286,8 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 document_title=doc_metadata.get("title") or filename,
                 blocks=block_rows,
             )
+            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
+            sections = _merge_policy_headings(sections=sections, policy_headings=policy_headings, block_rows=block_rows)
             if struct_errors:
                 errors.extend([f"policy_structure:{err}" for err in struct_errors])
             policy_sections, policy_clauses, definitions, targets, monitoring = _persist_policy_structure(
@@ -2621,6 +3353,13 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 counts["visual_asset_regions"] += region_count
                 step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
 
+                counts["visual_semantic_assertions"] = counts.get("visual_semantic_assertions", 0) + _extract_visual_region_assertions(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                )
+                step_counts["visual_semantics_regions"] = step_counts.get("visual_semantics_regions", 0) + 1
+
                 links_by_asset, link_count = _link_visual_assets_to_policies(
                     ingest_batch_id=ingest_batch_id,
                     run_id=run_id,
@@ -2639,6 +3378,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     links_by_asset=links_by_asset,
                 )
                 step_counts["visual_embeddings"] = step_counts.get("visual_embeddings", 0) + 1
+
+                counts["unit_embeddings_visual_assertion"] = counts.get("unit_embeddings_visual_assertion", 0) + _embed_visual_assertions(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                )
+                step_counts["visual_assertion_embeddings"] = step_counts.get("visual_assertion_embeddings", 0) + 1
 
             counts["unit_embeddings_chunk"] += _embed_units(
                 ingest_batch_id=ingest_batch_id,

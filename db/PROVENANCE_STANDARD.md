@@ -1,7 +1,7 @@
 # Provenance Standard
 
 ## 1. Evidence References
-Every claim in the system must be backed by an `EvidenceRef`.
+**Policy/law/factual claims** must be backed by an `EvidenceRef`.
 Format: `{source_type}::{source_id}::{fragment_selector}`
 Example: `doc::doc-123::page-4-para-2`
 
@@ -17,6 +17,17 @@ Every automated process must produce a `ToolRun` record.
 * Outputs must be captured.
 * Logs/Errors must be captured.
 
-## 3. Assumptions
+## 3. Context Bundle Trace (Judgement Outputs)
+**Discretionary judgement outputs** are traced through context bundles, tool runs, and prompts.
+Minimum fields to record alongside any judgement output:
+* `context_bundle_ref` (e.g., `move::move-123::curated_evidence_set` or a pack id)
+* `tool_run_ids[]` (retrieval, instruments, model calls)
+* `prompt_id` + `prompt_version` (where LLM/VLM is used)
+
+Verbosity is a prompting principle encoded in prompt design and versioning; it is not a runtime field.
+
+Judgement outputs may include `EvidenceRef`s, but they are not required if the above trace is present.
+
+## 4. Assumptions
 If no evidence exists, an `Assumption` must be created.
-It is ILLEGAL to hallucinate or infer without declaring it as either an Interpretation (backed by evidence) or an Assumption (explicitly unfounded).
+It is ILLEGAL to hallucinate or infer without declaring it as either an Interpretation (backed by evidence or a context bundle trace) or an Assumption (explicitly unfounded).

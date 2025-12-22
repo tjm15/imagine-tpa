@@ -12,7 +12,7 @@ def _parse_evidence_ref(evidence_ref: str) -> tuple[str, str, str] | None:
     return parts[0], parts[1], parts[2]
 
 
-def _ensure_evidence_ref_row(evidence_ref: str) -> str | None:
+def _ensure_evidence_ref_row(evidence_ref: str, run_id: str | None = None) -> str | None:
     parsed = _parse_evidence_ref(evidence_ref)
     if not parsed:
         return None
@@ -25,8 +25,7 @@ def _ensure_evidence_ref_row(evidence_ref: str) -> str | None:
         return str(row["id"])
     evidence_ref_id = str(uuid4())
     _db_execute(
-        "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id) VALUES (%s, %s, %s, %s)",
-        (evidence_ref_id, source_type, source_id, fragment_id),
+        "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
+        (evidence_ref_id, source_type, source_id, fragment_id, run_id),
     )
     return evidence_ref_id
-

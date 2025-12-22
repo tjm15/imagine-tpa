@@ -7,8 +7,17 @@
             "type": "string",
             "format": "uuid"
         },
+        "claim_kind": {
+            "type": "string",
+            "enum": ["policy", "law", "fact", "judgement"],
+            "description": "Classifies the interpretation for governance checks (policy/law/fact require EvidenceRef; judgement may rely on context bundle trace)."
+        },
         "claim": {
             "type": "string"
+        },
+        "context_bundle_ref": {
+            "type": ["string", "null"],
+            "description": "Reference to the context bundle used for judgement outputs (e.g., move::move-123::curated_evidence_set)."
         },
         "evidence_refs": {
             "type": "array",

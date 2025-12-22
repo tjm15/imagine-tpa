@@ -6,7 +6,7 @@ It is the orchestration substrate that:
 * builds retrieval frames and context packs,
 * calls tools/instruments,
 * emits structured move outputs,
-* and produces a replayable procedure log.
+* and produces a traceability procedure log.
 
 ## 1) Execution model (workflow-driven)
 The orchestrator runs as a `WorkflowProvider` workflow (LangGraph in OSS, Microsoft Agent Framework in Azure).
@@ -23,13 +23,12 @@ The orchestrator runs as a `WorkflowProvider` workflow (LangGraph in OSS, Micros
 The orchestrator must run the 8 moves in sequence.
 Backtracking is allowed but must be explicit (a new `MoveEvent` that records the reason for returning to an earlier move).
 
-## 3) Non-determinism + replay
+## 3) Non-determinism + traceability
 LLM/VLM providers are allowed to be non-deterministic.
-Replayability is guaranteed by persisting:
+Traceability is guaranteed by persisting:
 * every move’s structured outputs (`MoveEvent.outputs`)
 * every tool/model call (`ToolRun`)
-
-The renderer must be able to deterministically reconstruct sheets from stored move outputs without re-calling providers.
+* context bundle references for judgement outputs
 
 ## 4) Agent roles (specialists, not one mega-agent)
 Minimum roles (shared across pipelines):

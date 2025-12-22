@@ -350,7 +350,7 @@ def _run_townscape_vlm_assessment_sync(
                 started,
                 ended,
                 "medium" if obj is not None else "low",
-                "VLM instrument output is non-deterministic; rely on stored outputs and limitations for replayability.",
+                "VLM instrument output is non-deterministic; rely on stored outputs and limitations for traceability.",
             ),
         )
     except Exception as exc:  # noqa: BLE001

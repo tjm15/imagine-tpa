@@ -36,8 +36,10 @@ View naming note (B1):
 ## 1) UI invariants (non-negotiable)
 1. **Dashboard is canonical UI**: all work happens in the workbench (`ux/DASHBOARD_IA.md`).
 2. **Grammar-first judgement**: any judgement output is produced via the 8 moves (`grammar/GRAMMAR.md`) and logged (`schemas/MoveEvent.schema.json`).
-3. **Non-deterministic agents are allowed**: replayability is via stored artefacts + deterministic rendering, not deterministic prose (`tests/REPLAYABILITY_SPEC.md`).
-4. **Provenance everywhere**: any claim/suggestion/figure must trace to `EvidenceRef` and/or `ToolRun` (`db/PROVENANCE_STANDARD.md`).
+3. **Non-deterministic agents are allowed**: traceability is via stored artefacts + context bundle traces, not deterministic prose.
+4. **Provenance everywhere**:
+   - policy/law/factual claims must cite `EvidenceRef`.
+   - discretionary judgement must include context bundle trace + tool runs + prompt versioning (`db/PROVENANCE_STANDARD.md`).
 5. **User is the selector**: tab selection, accept/reject, and sign-off are explicit `AuditEvent`s (`schemas/AuditEvent.schema.json`).
 6. **Explainability modes**: `summary` / `inspect` / `forensic` are UI projections over the same run data.
 7. **Visuospatial reasoning is first-class**: maps, plans, photos, and photomontages are core evidence surfaces (`ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).

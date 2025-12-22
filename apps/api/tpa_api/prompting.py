@@ -156,7 +156,7 @@ def _llm_structured_sync(
             started_at,
             ended_at,
             "medium" if obj is not None else "low",
-            "LLM outputs are non-deterministic; replayability is achieved by persisting move outputs.",
+            "LLM outputs are non-deterministic; traceability is achieved by persisting move outputs and context bundles.",
         ),
     )
 

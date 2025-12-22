@@ -5,7 +5,7 @@
 **Date**: Dec 2025
 
 ## 1. Objective
-Build a planning judgement system that **imitates the grammar of planning judgement**, making reasoning legible, contestable, and replayable through explicit moves and logged artefacts. It serves both development management and plan-making.
+Build a planning judgement system that **imitates the grammar of planning judgement**, making reasoning legible and contestable through explicit moves and logged artefacts. It serves both development management and plan-making.
 
 The single reasoning spine is expressed across **three pipelines**:
 * Spatial Strategy (plan-making / scenarios)
@@ -46,9 +46,10 @@ Every position/trajectory must be explicitly conditional on a political framing 
 External models (flood tools, connectivity, etc.) are used as **evidence instruments**. Their inputs and outputs are logged; they are not "engines" that drive the system.
 
 ### 3.5 Traceability
-* Every claim must cite `EvidenceRef`.
+* **Policy/law/factual claims** must cite `EvidenceRef`.
+* **Discretionary judgement** is allowed under explicit political framing and is traced via context bundles, tool runs, prompt versions, and output verbosity (not forced citations).
 * Every gap filling must be an explicit `Assumption`.
-* "Explainability" = Traceable Procedure (Move Log), not model weights.
+* "Explainability" = Traceable procedure and context bundles, not model weights.
 
 ## 4. Provider Profiles
 The system supports two distinct profiles defined by the `ProviderProfile` contract:

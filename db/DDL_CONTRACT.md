@@ -22,7 +22,7 @@ All state must exist in these tables.
 * `segmentation_masks` (id, visual_asset_id, run_id [nullable], label, prompt, mask_artifact_path, mask_rle_jsonb [nullable], bbox [nullable], bbox_quality [nullable], confidence, tool_run_id [nullable], created_at)
 * `visual_asset_regions` (id, visual_asset_id, run_id [nullable], region_type, bbox [nullable], bbox_quality [nullable], mask_id [nullable], caption_text [nullable], metadata_jsonb, created_at)
 * `visual_asset_links` (id, visual_asset_id, run_id [nullable], target_type, target_id, link_type, evidence_ref_id [nullable], tool_run_id [nullable], metadata_jsonb, created_at)
-* `visual_semantic_outputs` (id, visual_asset_id, run_id [nullable], schema_version, asset_type [nullable], asset_subtype [nullable], canonical_facts_jsonb, asset_specific_facts_jsonb, assertions_jsonb, agent_findings_jsonb, material_index_jsonb, tool_run_id [nullable], created_at)
+* `visual_semantic_outputs` (id, visual_asset_id, run_id [nullable], schema_version, asset_type [nullable], asset_subtype [nullable], canonical_facts_jsonb, asset_specific_facts_jsonb, assertions_jsonb, agent_findings_jsonb, material_index_jsonb, metadata_jsonb, tool_run_id [nullable], created_at)
 * `frames` (id, run_id [nullable], frame_type, epsg [nullable], description [nullable], metadata_jsonb, created_at)
 * `transforms` (id, run_id [nullable], from_frame_id, to_frame_id, method, matrix, matrix_shape, uncertainty_score, control_point_ids_jsonb, tool_run_id [nullable], metadata_jsonb, created_at)
 * `control_points` (id, run_id [nullable], transform_id, src_jsonb, dst_jsonb, residual [nullable], weight [nullable], created_at)
@@ -94,7 +94,7 @@ All state must exist in these tables.
 * `monitoring_timeseries` (id, authority_id, metric_id, period, value, provenance)
 * `adoption_baselines` (id, authority_id, adoption_date, policies_map_ref, metrics_jsonb, provenance)
 
-## 4. Procedure Tables (Replayable Judgement)
+## 4. Procedure Tables (Traceable Judgement)
 * `runs` (id, profile, culp_stage_id, anchors_jsonb, created_at)
 * `move_events` (id, run_id, move_type, sequence, status, created_at, started_at, ended_at, backtracked_from_move_id, backtrack_reason, confidence_hint [nullable], uncertainty_note [nullable], inputs_jsonb, outputs_jsonb, evidence_refs_considered_jsonb, assumptions_introduced_jsonb, uncertainty_remaining_jsonb, tool_run_ids_jsonb)
 * `retrieval_frames` (id, run_id, move_type, version, is_current, superseded_by_frame_id [nullable], tool_run_id [nullable], frame_jsonb, created_at)

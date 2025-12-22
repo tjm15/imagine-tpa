@@ -154,6 +154,7 @@ CREATE INDEX IF NOT EXISTS ingest_jobs_authority_idx
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS evidence_refs (
   id uuid PRIMARY KEY,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
   source_type text NOT NULL,
   source_id text NOT NULL,
   fragment_id text NOT NULL
@@ -553,6 +554,7 @@ CREATE TABLE IF NOT EXISTS visual_semantic_outputs (
   assertions_jsonb jsonb NOT NULL DEFAULT '[]'::jsonb,
   agent_findings_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
   material_index_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
   tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
   created_at timestamptz NOT NULL DEFAULT NOW()
 );
@@ -1472,7 +1474,7 @@ CREATE TABLE IF NOT EXISTS adoption_baselines (
 );
 
 -- ---------------------------------------------------------------------------
--- Procedure tables (replayable judgement)
+-- Procedure tables (traceable judgement)
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS move_events (
   id uuid PRIMARY KEY,
@@ -1719,6 +1721,9 @@ ALTER TABLE visual_asset_links
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
 
 ALTER TABLE visual_semantic_outputs
+  ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
+
+ALTER TABLE evidence_refs
   ADD COLUMN IF NOT EXISTS run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL;
 
 ALTER TABLE unit_embeddings

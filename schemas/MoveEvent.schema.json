@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "MoveEvent",
   "type": "object",
-  "description": "A single step in the frozen 8-move grammar procedure log. MoveEvents are the primary replayable artefact and must record what was looked at, what was produced, what assumptions were introduced, and what uncertainty remains.",
+  "description": "A single step in the frozen 8-move grammar procedure log. MoveEvents are the primary traceability artefact and must record what was looked at, what was produced, what assumptions were introduced, and what uncertainty remains.",
   "properties": {
     "move_id": { "type": "string", "format": "uuid" },
     "run_id": { "type": "string", "format": "uuid" },
@@ -40,6 +40,10 @@
       "type": "array",
       "items": { "type": "string", "format": "uuid" },
       "description": "ToolRun ids invoked by this move (retrieval, spatial ops, instruments, model calls)."
+    },
+    "context_bundle_ref": {
+      "type": ["string", "null"],
+      "description": "Reference to the context bundle used for judgement outputs in this move."
     },
     "assumptions_introduced": {
       "type": "array",

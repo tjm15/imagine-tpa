@@ -1,6 +1,6 @@
 # imagine-tpa
 
-Specification-first scaffold for **The Planner’s Assistant**: a procedurally explainable planning judgement system that logs a replayable reasoning procedure (8-move grammar) and surfaces outputs in a **Dashboard / Digital Case Officer** UI.
+Specification-first scaffold for **The Planner’s Assistant**: a procedurally explainable planning judgement system that logs a traceable reasoning procedure (8-move grammar) and surfaces outputs in a **Dashboard / Digital Case Officer** UI.
 
 **Key specs**
 - Constitution: `CONSTITUTION.md`

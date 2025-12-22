@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import os
 from typing import Any
 
@@ -62,6 +63,69 @@ async def _ensure_model_role(*, role: str, timeout_seconds: float = 180.0) -> st
     if isinstance(base_url, str) and base_url.startswith("http"):
         return base_url
     return None
+
+
+def _strip_json_fence(text: str) -> str:
+    if "```" not in text:
+        return text
+    cleaned = text.replace("```json", "```")
+    parts = cleaned.split("```")
+    if len(parts) >= 2:
+        return parts[1].strip()
+    return cleaned
+
+
+def _extract_json(text: str) -> dict[str, Any] | None:
+    raw = _strip_json_fence(text or "").strip()
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _vlm_json_sync(
+    *,
+    prompt: str,
+    image_bytes: bytes,
+    model_id: str | None = None,
+) -> tuple[dict[str, Any] | None, list[str]]:
+    base_url = _ensure_model_role_sync(role="vlm", timeout_seconds=180.0) or os.environ.get("TPA_VLM_BASE_URL")
+    if not base_url:
+        return None, ["vlm_unconfigured"]
+
+    model = model_id or _vlm_model_id()
+    timeout = None
+    data_url = "data:image/png;base64," + base64.b64encode(image_bytes).decode("ascii")
+    payload = {
+        "model": model,
+        "messages": [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": data_url}},
+                ],
+            }
+        ],
+    }
+    url = base_url.rstrip("/") + "/chat/completions"
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return None, [f"vlm_request_failed:{exc}"]
+    try:
+        content = data["choices"][0]["message"]["content"]
+    except Exception as exc:  # noqa: BLE001
+        return None, [f"vlm_response_invalid:{exc}"]
+    obj = _extract_json(content)
+    if obj is None:
+        return None, ["vlm_json_parse_failed"]
+    return obj, []
 
 
 def _rerank_texts_sync(

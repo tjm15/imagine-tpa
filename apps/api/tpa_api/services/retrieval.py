@@ -43,13 +43,15 @@ def search_chunks(
           c.document_id,
           c.page_number,
           LEFT(c.text, 800) AS snippet,
+          er.source_type,
+          er.source_id,
           er.fragment_id AS fragment_id,
           d.metadata->>'title' AS document_title,
           d.blob_path AS blob_path,
           d.plan_cycle_id AS plan_cycle_id
         FROM chunks c
         JOIN documents d ON d.id = c.document_id
-        LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
+        LEFT JOIN evidence_refs er ON er.id = c.evidence_ref_id
         WHERE {" AND ".join(where)}
         ORDER BY c.page_number NULLS LAST
         LIMIT %s
@@ -62,7 +64,11 @@ def search_chunks(
             "chunk_id": str(r["chunk_id"]),
             "document_id": str(r["document_id"]),
             "page_number": r["page_number"],
-            "evidence_ref": f"chunk::{r['chunk_id']}::{r['fragment_id'] or 'page-unknown'}",
+            "evidence_ref": (
+                f"{r['source_type']}::{r['source_id']}::{r['fragment_id']}"
+                if r.get("source_type") and r.get("source_id") and r.get("fragment_id")
+                else f"chunk::{r['chunk_id']}::page-unknown"
+            ),
             "document_title": r["document_title"],
             "blob_path": r["blob_path"],
             "plan_cycle_id": str(r["plan_cycle_id"]) if r.get("plan_cycle_id") else None,

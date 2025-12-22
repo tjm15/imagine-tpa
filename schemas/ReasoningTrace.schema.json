@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ReasoningTrace",
   "type": "object",
-  "description": "A structured, replayable log of interpretive steps taken within a move (not just final outputs).",
+  "description": "A structured, traceable log of interpretive steps taken within a move (not just final outputs).",
   "properties": {
     "trace_id": { "type": "string", "format": "uuid" },
     "move_type": {
@@ -40,4 +40,3 @@
   },
   "required": ["trace_id", "move_type", "steps"]
 }
-

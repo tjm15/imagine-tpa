@@ -111,11 +111,13 @@ def _gather_draft_evidence(
           c.id AS chunk_id,
           c.page_number,
           LEFT(c.text, 800) AS snippet,
-          er.fragment_id AS fragment_id,
+          er.source_type,
+          er.source_id,
+          er.fragment_id,
           d.metadata->>'title' AS document_title
         FROM chunks c
         JOIN documents d ON d.id = c.document_id
-        LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
+        LEFT JOIN evidence_refs er ON er.id = c.evidence_ref_id
         WHERE {" AND ".join(clauses)}
         ORDER BY c.page_number NULLS LAST
         LIMIT %s
@@ -128,7 +130,10 @@ def _gather_draft_evidence(
 
     out: list[dict[str, Any]] = []
     for r in rows:
-        evidence_ref = f"chunk::{r['chunk_id']}::{r['fragment_id'] or 'page-unknown'}"
+        if r.get("source_type") and r.get("source_id") and r.get("fragment_id"):
+            evidence_ref = f"{r['source_type']}::{r['source_id']}::{r['fragment_id']}"
+        else:
+            evidence_ref = f"chunk::{r['chunk_id']}::page-unknown"
         out.append(
             {
                 "evidence_ref": evidence_ref,
@@ -199,6 +204,8 @@ def _retrieve_chunks_hybrid_sync(
                   c.section_path,
                   LEFT(c.text, 800) AS snippet,
                   c.text AS full_text,
+                  er.source_type,
+                  er.source_id,
                   er.fragment_id AS fragment_id,
                   d.metadata->>'title' AS document_title,
                   ts_rank_cd(
@@ -207,7 +214,7 @@ def _retrieve_chunks_hybrid_sync(
                   ) AS kw_score
                 FROM chunks c
                 JOIN documents d ON d.id = c.document_id
-                LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
+                LEFT JOIN evidence_refs er ON er.id = c.evidence_ref_id
                 WHERE {where_sql}
                   AND to_tsvector('english', c.text) @@ websearch_to_tsquery('english', %s)
                 ORDER BY kw_score DESC
@@ -240,13 +247,15 @@ def _retrieve_chunks_hybrid_sync(
                       c.section_path,
                       LEFT(c.text, 800) AS snippet,
                       c.text AS full_text,
+                      er.source_type,
+                      er.source_id,
                       er.fragment_id AS fragment_id,
                       d.metadata->>'title' AS document_title,
                       (ue.embedding <=> %s::vector) AS vec_distance
                     FROM unit_embeddings ue
                     JOIN chunks c ON c.id = ue.unit_id
                     JOIN documents d ON d.id = c.document_id
-                    LEFT JOIN evidence_refs er ON er.source_type = 'chunk' AND er.source_id = c.id::text
+                    LEFT JOIN evidence_refs er ON er.id = c.evidence_ref_id
                     WHERE {where_sql}
                       AND ue.embedding_model_id = %s
                       AND ue.unit_type = 'chunk'
@@ -356,7 +365,10 @@ def _retrieve_chunks_hybrid_sync(
     # finalize, strip full_text from response
     results: list[dict[str, Any]] = []
     for r in merged[:limit]:
-        evidence_ref = f"chunk::{r['chunk_id']}::{r.get('fragment_id') or 'page-unknown'}"
+        if r.get("source_type") and r.get("source_id") and r.get("fragment_id"):
+            evidence_ref = f"{r['source_type']}::{r['source_id']}::{r['fragment_id']}"
+        else:
+            evidence_ref = f"chunk::{r['chunk_id']}::page-unknown"
         results.append(
             {
                 "chunk_id": r["chunk_id"],
