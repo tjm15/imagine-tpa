@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { 
   LayoutGrid, ChevronLeft, FileText, Map, Scale, Camera, 
   Sparkles, AlertCircle, Eye, Download, Play, Menu, Bell, ChevronDown, 
-  Search, Settings, Share2, PanelRightOpen, PanelRightClose, ArrowRight
+  Search, Settings, Share2, PanelRightOpen, PanelRightClose, ArrowRight, 
+  PanelLeftOpen, PanelLeftClose
 } from 'lucide-react';
 import { WorkspaceMode, ViewMode } from '../App';
 import { DocumentView } from './views/DocumentView';
@@ -21,6 +22,7 @@ import { Logo } from "./Logo";
 import { useAppState, useAppDispatch } from '../lib/appState';
 import { simulateDraft } from '../lib/aiSimulation';
 import { toast } from 'sonner';
+import { StatusBadge } from './ProvenanceIndicator';
 
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
@@ -39,10 +41,11 @@ export function WorkbenchShell({
   onBackToHome,
 }: WorkbenchShellProps) {
   const dispatch = useAppDispatch();
-  const { currentStageId, aiState } = useAppState();
+  const { currentStageId, aiState, reasoningMoves } = useAppState();
   const [showTraceCanvas, setShowTraceCanvas] = useState(false);
   const [explainabilityMode, setExplainabilityMode] = useState<'summary' | 'inspect' | 'forensic'>('summary');
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [processRailOpen, setProcessRailOpen] = useState(true);
 
   const handleDraftClick = useCallback(async () => {
     dispatch({ type: 'START_AI_GENERATION', payload: { task: 'draft' } });
@@ -265,7 +268,7 @@ export function WorkbenchShell({
                 </button>
             </div>
 
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
                 <TooltipProvider>
                   <Tooltip>
                     <TooltipTrigger asChild>
@@ -303,6 +306,17 @@ export function WorkbenchShell({
                         </button>
                     ))}
                 </div>
+
+                {/* 8-move breadcrumb to satisfy wayfinding */}
+                <div className="hidden md:flex items-center gap-1 pl-3 border-l" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  {(
+                    ['framing','issues','evidence','interpretation','considerations','balance','negotiation','positioning'] as const
+                  ).map((move) => {
+                    const status = reasoningMoves[move];
+                    const bg = status === 'complete' ? 'bg-emerald-500' : status === 'in-progress' ? 'bg-amber-400' : 'bg-slate-200';
+                    return <span key={move} className={`w-2.5 h-2.5 rounded-full ${bg}`} title={`${move} · ${status}`} />;
+                  })}
+                </div>
             </div>
         </div>
       </header>
@@ -310,8 +324,13 @@ export function WorkbenchShell({
       {/* Main Content Area */}
       <div className="flex-1 flex overflow-hidden relative">
         {/* Process Rail (Left Sidebar) */}
-        <div className="hidden lg:block border-r bg-white z-10 w-64 flex-shrink-0" style={{ borderColor: 'var(--color-neutral-300)' }}>
-            <ProcessRail onStageSelect={handleStageSelect} />
+        <div 
+          className={`hidden lg:block bg-white z-10 flex-shrink-0 h-full transition-all duration-300 ease-in-out overflow-hidden border-r ${
+            processRailOpen ? 'w-[350px]' : 'w-0 border-r-0'
+          }`}
+          style={{ borderColor: 'var(--color-neutral-300)' }}
+        >
+          {processRailOpen && <ProcessRail onStageSelect={handleStageSelect} />}
         </div>
 
         {/* Main Workspace */}
@@ -369,7 +388,11 @@ export function WorkbenchShell({
             
             <div className={`flex-1 overflow-auto transition-all duration-300 ${showTraceCanvas ? 'pt-[140px]' : ''}`}>
                <div className="h-full w-full">
-                 <ActiveViewComponent workspace={workspace} explainabilityMode={explainabilityMode} />
+                 <ActiveViewComponent 
+                   workspace={workspace} 
+                   explainabilityMode={explainabilityMode}
+                   onOpenTrace={() => setShowTraceCanvas(true)}
+                 />
                </div>
             </div>
             
@@ -392,7 +415,23 @@ export function WorkbenchShell({
           </div>
         </div>
 
-        {/* Sidebar Toggle Button */}
+        {/* Sidebar Toggle Buttons */}
+        <button
+          onClick={() => setProcessRailOpen(!processRailOpen)}
+          className={`
+            absolute top-1/2 transform -translate-y-1/2 z-20 
+            bg-white border shadow-md p-1.5 rounded-r-md 
+            hover:bg-white/80 transition-all
+          `}
+          style={{ 
+            borderColor: 'var(--color-neutral-300)',
+            color: 'var(--color-text)',
+              left: processRailOpen ? '350px' : '0'
+          }}
+        >
+          {processRailOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
+        </button>
+
         <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className={`

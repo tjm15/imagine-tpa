@@ -227,7 +227,6 @@ def _run_townscape_vlm_assessment_sync(
     run_id: str,
     visual_asset_refs: list[str],
     viewpoint_context: dict[str, Any] | None,
-    time_budget_seconds: float = 240.0,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     base_url = _ensure_model_role_sync(role="vlm", timeout_seconds=240.0) or os.environ.get("TPA_VLM_BASE_URL")
     if not base_url:
@@ -235,7 +234,6 @@ def _run_townscape_vlm_assessment_sync(
 
     model_id = os.environ.get("TPA_VLM_MODEL_ID") or _vlm_model_id()
     timeout = None
-    _ = time_budget_seconds
     url = base_url.rstrip("/") + "/chat/completions"
 
     # Assemble image parts.
@@ -460,7 +458,6 @@ def _run_environment_agency_flood_sync(
     polygon_geojson: dict[str, Any] | None = None,
     authority_id: str | None,
     plan_cycle_id: str | None,
-    time_budget_seconds: float = 30.0,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     OSS flood instrument (deterministic, local):
@@ -468,7 +465,6 @@ def _run_environment_agency_flood_sync(
 
     This is intentionally not a live EA API client: it reports what is present in the canonical store, with limitations.
     """
-    _ = time_budget_seconds  # reserved (kept for parity with other instruments)
     errors: list[str] = []
     now = _utc_now()
 
@@ -625,7 +621,6 @@ def _run_dft_connectivity_sync(
     lon: float | None = None,
     authority_id: str | None,
     plan_cycle_id: str | None,
-    time_budget_seconds: float = 30.0,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     OSS connectivity instrument (deterministic, local proxy).
@@ -636,7 +631,6 @@ def _run_dft_connectivity_sync(
     This is NOT a full reproduction of the DfT Connectivity Metric; it is an evidence instrument that can be
     replaced with an official connector later (same instrument_id, different method/version, logged).
     """
-    _ = time_budget_seconds  # reserved
     errors: list[str] = []
     now = _utc_now()
 

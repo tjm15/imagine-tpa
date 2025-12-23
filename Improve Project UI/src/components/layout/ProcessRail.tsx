@@ -188,27 +188,30 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
   };
 
   return (
-    <div className="h-full flex flex-col bg-white border-r border-neutral-200">
+    <div className="h-full flex flex-col bg-white border-r border-neutral-200 overflow-hidden min-h-0">
       {/* Header */}
-      <div className="p-4 border-b border-neutral-200">
-        <h2 className="text-lg font-semibold mb-1">CULP Process</h2>
-        <p className="text-xs text-slate-500 mb-3">
-          Navigate through plan-making stages
-        </p>
+      <div className="p-3 border-b border-neutral-200 bg-white sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-semibold leading-tight">CULP Process</h2>
+            <p className="text-[11px] text-slate-500">Legible, demo-friendly rail</p>
+          </div>
+          <Badge variant="secondary" className="text-[10px]">Demo</Badge>
+        </div>
         
         {/* Overall Progress */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="text-slate-600">Overall Progress</span>
+        <div className="space-y-1.5 mt-2">
+          <div className="flex items-center justify-between text-[11px]">
+            <span className="text-slate-600">Overall</span>
             <span className="font-medium">{getOverallProgress()}%</span>
           </div>
-          <Progress value={getOverallProgress()} className="h-2" />
+          <Progress value={getOverallProgress()} className="h-1.5" />
         </div>
       </div>
 
       {/* Phase List */}
-      <ScrollArea className="flex-1">
-        <div className="p-2">
+      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+        <div className="p-2.5 space-y-2.5">
           {phases.map((phase) => {
             const isExpanded = expandedPhases.includes(phase.id);
             const phaseStages = stageProgress.filter(s => phase.stages.includes(s.id));
@@ -216,11 +219,11 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
             const phaseInProgress = phaseStages.some(s => s.status === 'in-progress');
             
             return (
-              <div key={phase.id} className="mb-2">
+              <div key={phase.id} className="bg-slate-50 border border-neutral-200 rounded-lg">
                 {/* Phase Header */}
                 <button
                   onClick={() => togglePhase(phase.id)}
-                  className="w-full flex items-center gap-2 p-2 rounded-lg hover:bg-slate-50 transition-colors"
+                  className="w-full flex items-center gap-2 p-2.5 rounded-t-lg hover:bg-white transition-colors"
                 >
                   <div className={`w-2 h-2 rounded-full ${phase.color}`} />
                   <span className="text-sm font-medium flex-1 text-left">{phase.name}</span>
@@ -231,7 +234,7 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
 
                 {/* Stage List */}
                 {isExpanded && (
-                  <div className="ml-4 mt-1 space-y-1">
+                  <div className="mt-1 space-y-1.5 p-2.5 pt-0">
                     {phase.stages.map((stageId) => {
                       const stage = culpStageConfigs.find(s => s.id === stageId);
                       const progress = stageProgress.find(s => s.id === stageId);
@@ -246,34 +249,40 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
                           <button
                             onClick={() => handleStageSelect(stageId)}
                             disabled={progress?.status === 'blocked'}
-                            className={`w-full flex items-center gap-2 p-2 rounded-lg transition-colors text-left ${
+                            className={`w-full flex items-center gap-2.5 p-2.5 rounded-md border transition-colors text-left ${
                               isActive 
-                                ? 'bg-blue-50 ring-1 ring-blue-200' 
+                                ? 'bg-white border-blue-200 shadow-sm' 
                                 : progress?.status === 'blocked'
-                                  ? 'opacity-50 cursor-not-allowed'
-                                  : 'hover:bg-slate-50'
+                                  ? 'opacity-50 cursor-not-allowed border-dashed'
+                                  : 'bg-white hover:border-blue-100'
                             }`}
                           >
-                            {getStatusIcon(progress?.status || 'pending')}
-                            <Icon className="w-4 h-4 text-slate-500" />
-                            <span className="text-sm flex-1">{stage.name}</span>
+                            <div className="flex items-center gap-1.5 w-24">
+                              {getStatusIcon(progress?.status || 'pending')}
+                              <Icon className="w-4 h-4 text-slate-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[13px] font-medium truncate">{stage.name}</span>
+                                {isGateway && <Badge variant="outline" className="text-[9px]">Gateway</Badge>}
+                                {progress?.status === 'completed' && <Badge variant="secondary" className="text-[9px]">Done</Badge>}
+                              </div>
+                              <p className="text-[11px] text-slate-500 line-clamp-2">{stage.description}</p>
+                            </div>
                             <ChevronRight className="w-3 h-3 text-slate-400" />
                           </button>
 
                           {/* Expanded Stage Details (when active) */}
                           {isActive && (
-                            <div className="ml-8 mt-2 mb-3 space-y-2">
+                            <div className="mt-1.5 mb-2.5 space-y-2 bg-slate-50 rounded-md p-2.5 border border-dashed border-neutral-200">
                               {/* Deliverables */}
                               <div className="text-xs">
                                 <span className="font-medium text-slate-600">Deliverables:</span>
-                                <ul className="mt-1 space-y-1">
+                                <div className="flex flex-wrap gap-1 mt-1">
                                   {stage.deliverables.map((d: { id: string; name: string }, i: number) => (
-                                    <li key={i} className="flex items-center gap-2 text-slate-500">
-                                      <Circle className="w-2 h-2" />
-                                      {d.name}
-                                    </li>
+                                    <Badge key={i} variant="outline" className="text-[10px]">{d.name}</Badge>
                                   ))}
-                                </ul>
+                                </div>
                               </div>
 
                               {/* Warnings */}
@@ -330,7 +339,7 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
             );
           })}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Gateway Result Panel */}
       {gatewayResult && (

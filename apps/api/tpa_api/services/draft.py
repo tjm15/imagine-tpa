@@ -17,7 +17,6 @@ from ..time_utils import _utc_now_iso
 async def _llm_blocks(
     *,
     draft_request: dict[str, Any],
-    time_budget_seconds: float,
     evidence_context: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]] | None:
     base_url = await _ensure_model_role(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
@@ -26,8 +25,6 @@ async def _llm_blocks(
 
     model = _llm_model_id()
     timeout = None
-    _ = time_budget_seconds
-
     system = (
         "You are The Planner's Assistant. Produce a quick first draft for a UK planning professional. "
         "You will be given an evidence_context list. When you make factual claims, cite relevant evidence "
@@ -96,13 +93,12 @@ async def _llm_blocks(
 
 
 async def create_draft(request: dict[str, Any]) -> dict[str, Any]:
-    required = ["draft_request_id", "requested_at", "requested_by", "artefact_type", "time_budget_seconds"]
+    required = ["draft_request_id", "requested_at", "requested_by", "artefact_type"]
     missing = [k for k in required if k not in request]
     if missing:
         raise HTTPException(status_code=400, detail=f"Missing required fields: {', '.join(missing)}")
 
     artefact_type = request.get("artefact_type")
-    time_budget_seconds = float(request.get("time_budget_seconds") or 10)
 
     constraints = request.get("constraints") if isinstance(request.get("constraints"), dict) else {}
     authority_id = constraints.get("authority_id") if isinstance(constraints.get("authority_id"), str) else None
@@ -118,7 +114,6 @@ async def create_draft(request: dict[str, Any]) -> dict[str, Any]:
 
     llm_blocks = await _llm_blocks(
         draft_request=request,
-        time_budget_seconds=time_budget_seconds,
         evidence_context=evidence_context,
     )
     if llm_blocks is None:

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ArrowLeft, CheckCircle2, Clock, AlertTriangle, FileText, Database, Layers, Eye } from 'lucide-react';
+import { ArrowLeft, Eye } from 'lucide-react';
 import { Button } from '../../ui/button';
 import { Badge } from '../../ui/badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../ui/card';
@@ -23,6 +23,8 @@ type DeepRunData = {
     started_at: string;
     ended_at?: string;
     error_text?: string;
+    inputs_jsonb?: Record<string, unknown> | null;
+    outputs_jsonb?: Record<string, unknown> | null;
   }>;
   tool_runs: Array<{
     id: string;
@@ -32,6 +34,9 @@ type DeepRunData = {
     ended_at?: string;
     confidence_hint?: string;
     error_detail?: string;
+    uncertainty_note?: string;
+    inputs_logged?: Record<string, unknown> | null;
+    outputs_logged?: Record<string, unknown> | null;
   }>;
   output_counts: Record<string, number>;
 };
@@ -42,28 +47,83 @@ type RunDocument = {
   raw_bytes?: number;
 };
 
+type FetchResult<T> = { ok: boolean; data: T | null; error?: string };
+
+async function fetchJson<T>(path: string): Promise<FetchResult<T>> {
+  try {
+    const resp = await fetch(path, { headers: { accept: 'application/json' } });
+    const text = await resp.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
+    }
+    if (!resp.ok) {
+      return { ok: false, data, error: text || resp.statusText };
+    }
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, data: null, error: String((err as Error).message || err) };
+  }
+}
+
 export function IngestRunInspector({ runId, onBack, onOpenDocument }: { runId: string; onBack: () => void; onOpenDocument?: (docId: string) => void }) {
   const [data, setData] = useState<DeepRunData | null>(null);
   const [documents, setDocuments] = useState<RunDocument[]>([]);
+  const [selectedStepName, setSelectedStepName] = useState<string | null>(null);
+  const [selectedToolRunId, setSelectedToolRunId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([
-      fetch(`/api/debug/ingest/runs/${runId}/deep`).then((res) => res.json()),
-      fetch(`/api/debug/documents?run_id=${runId}`).then((res) => res.json()),
+      fetchJson<DeepRunData>(`/api/debug/ingest/runs/${runId}/deep`),
+      fetchJson<{ documents: RunDocument[] }>(`/api/debug/documents?run_id=${runId}`),
     ])
-      .then(([runData, docData]) => {
-        setData(runData);
-        setDocuments(docData.documents || []);
+      .then(([runRes, docRes]) => {
+        if (!runRes.ok) {
+          throw new Error(runRes.error || 'Failed to load run');
+        }
+        if (!docRes.ok) {
+          throw new Error(docRes.error || 'Failed to load documents');
+        }
+        setData(runRes.data);
+        setDocuments(docRes.data?.documents || []);
       })
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, [runId]);
 
+  useEffect(() => {
+    setSelectedStepName(null);
+    setSelectedToolRunId(null);
+  }, [runId]);
+
+  useEffect(() => {
+    if (!selectedStepName && data?.steps?.length) {
+      setSelectedStepName(data.steps[0].step_name);
+    }
+  }, [data, selectedStepName]);
+
+  useEffect(() => {
+    if (!selectedToolRunId && data?.tool_runs?.length) {
+      setSelectedToolRunId(data.tool_runs[0].id);
+    }
+  }, [data, selectedToolRunId]);
+
   if (loading) return <div className="p-8 text-center">Loading run details...</div>;
   if (error) return <div className="p-8 text-center text-red-600">Error: {error}</div>;
   if (!data) return null;
+
+  const selectedStep = selectedStepName
+    ? data.steps.find((step) => step.step_name === selectedStepName) || null
+    : null;
+  const selectedToolRun = selectedToolRunId
+    ? data.tool_runs.find((run) => run.id === selectedToolRunId) || null
+    : null;
 
   return (
     <div className="space-y-6">
@@ -90,6 +150,7 @@ export function IngestRunInspector({ runId, onBack, onOpenDocument }: { runId: s
       <Tabs defaultValue="overview">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="steps">Steps</TabsTrigger>
           <TabsTrigger value="documents">Documents ({documents.length})</TabsTrigger>
           <TabsTrigger value="logs">Tool Logs</TabsTrigger>
         </TabsList>
@@ -166,6 +227,76 @@ export function IngestRunInspector({ runId, onBack, onOpenDocument }: { runId: s
           </div>
         </TabsContent>
 
+        <TabsContent value="steps" className="mt-4">
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Step trace</CardTitle>
+                <CardDescription>Click a step to inspect inputs and outputs.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Step</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Started</TableHead>
+                      <TableHead>Error</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.steps.map((step) => (
+                      <TableRow
+                        key={step.step_name}
+                        className={selectedStepName === step.step_name ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedStepName(step.step_name)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="text-xs">{step.step_name}</TableCell>
+                        <TableCell>
+                          <Badge variant="outline">{step.status}</Badge>
+                        </TableCell>
+                        <TableCell className="text-xs text-slate-500">
+                          {step.started_at ? new Date(step.started_at).toLocaleTimeString() : '--'}
+                        </TableCell>
+                        <TableCell className="max-w-[180px] truncate text-xs text-slate-500" title={step.error_text || ''}>
+                          {step.error_text || '--'}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Step detail</CardTitle>
+                <CardDescription>Raw inputs and outputs recorded for this stage.</CardDescription>
+              </CardHeader>
+              <CardContent>
+                {selectedStep ? (
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(
+                      {
+                        step_name: selectedStep.step_name,
+                        status: selectedStep.status,
+                        error_text: selectedStep.error_text,
+                        inputs: selectedStep.inputs_jsonb,
+                        outputs: selectedStep.outputs_jsonb,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                ) : (
+                  <div className="text-xs text-slate-500">Select a step to view details.</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
         <TabsContent value="documents" className="mt-4">
           <Card>
             <Table>
@@ -216,7 +347,12 @@ export function IngestRunInspector({ runId, onBack, onOpenDocument }: { runId: s
                 </TableHeader>
                 <TableBody>
                   {data.tool_runs.map((run) => (
-                    <TableRow key={run.id}>
+                    <TableRow
+                      key={run.id}
+                      className={selectedToolRunId === run.id ? 'bg-slate-50' : undefined}
+                      onClick={() => setSelectedToolRunId(run.id)}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <TableCell className="font-medium">{run.tool_name}</TableCell>
                       <TableCell>
                         <Badge variant="outline" className={run.status === 'success' ? 'border-green-500 text-green-600' : 'border-red-500 text-red-600'}>
@@ -239,6 +375,31 @@ export function IngestRunInspector({ runId, onBack, onOpenDocument }: { runId: s
                 </TableBody>
               </Table>
             </Card>
+            {selectedToolRun && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Tool run detail</CardTitle>
+                  <CardDescription>Inputs, outputs, and uncertainty notes.</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(
+                      {
+                        tool_name: selectedToolRun.tool_name,
+                        status: selectedToolRun.status,
+                        confidence_hint: selectedToolRun.confidence_hint,
+                        uncertainty_note: selectedToolRun.uncertainty_note,
+                        error_detail: selectedToolRun.error_detail,
+                        inputs: selectedToolRun.inputs_logged,
+                        outputs: selectedToolRun.outputs_logged,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
       </Tabs>

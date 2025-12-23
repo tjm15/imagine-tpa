@@ -9,7 +9,7 @@
  * - Filter and search
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { 
   Search, Filter, FileText, Map, Image, MessageSquare, 
   Users, ChevronRight, ExternalLink, GripVertical, 
@@ -25,7 +25,6 @@ import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
 import { 
-  mockPhotos,
   mockPhotosForLightbox,
   mockPolicyDetails, 
   mockConsulteeResponses,
@@ -42,6 +41,7 @@ interface ContextMarginProps {
 
 type ViewMode = 'grid' | 'list';
 type EvidenceCategory = 'all' | 'documents' | 'photos' | 'policies' | 'responses';
+type DemoFilter = 'members-briefed' | 'policy-critical' | 'site-shlaa' | 'consultation-heat';
 
 // Draggable Evidence Card Component
 function DraggableEvidenceCard({ 
@@ -133,7 +133,7 @@ function PhotoCard({
   photo, 
   onClick 
 }: { 
-  photo: typeof mockPhotos[0]; 
+  photo: typeof mockPhotosForLightbox[0]; 
   onClick: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -158,7 +158,7 @@ function PhotoCard({
       onClick={onClick}
     >
       <img 
-        src={photo.url + '&h=150'} 
+        src={photo.thumbnailUrl || photo.url + '&h=150'} 
         alt={photo.caption}
         className="w-full h-24 object-cover"
       />
@@ -307,19 +307,28 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
+  const [demoFilter, setDemoFilter] = useState<DemoFilter | null>('members-briefed');
 
-  const filteredEvidence = mockEvidence.filter(e => {
-    const matchesSearch = searchQuery === '' || 
-      e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      e.summary?.toLowerCase().includes(searchQuery.toLowerCase());
-    
-    const matchesCategory = category === 'all' || 
-      (category === 'documents' && e.type === 'document') ||
-      (category === 'policies' && e.type === 'policy') ||
-      (category === 'responses' && e.type === 'consultation');
-    
-    return matchesSearch && matchesCategory;
-  });
+  const filteredEvidence = useMemo(() => {
+    return mockEvidence.filter(e => {
+      const matchesSearch = searchQuery === '' || 
+        e.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        e.summary?.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesCategory = category === 'all' || 
+        (category === 'documents' && e.type === 'document') ||
+        (category === 'policies' && e.type === 'policy') ||
+        (category === 'responses' && e.type === 'consultation');
+
+      const matchesFilter = demoFilter === null ||
+        (demoFilter === 'members-briefed' && e.source === 'member briefing') ||
+        (demoFilter === 'policy-critical' && e.type === 'policy') ||
+        (demoFilter === 'site-shlaa' && e.title.toLowerCase().includes('shlaa')) ||
+        (demoFilter === 'consultation-heat' && e.type === 'consultation');
+      
+      return matchesSearch && matchesCategory && matchesFilter;
+    });
+  }, [searchQuery, category, demoFilter]);
 
   const handleEvidenceSelect = useCallback((evidenceId: string) => {
     onEvidenceSelect?.(evidenceId);
@@ -334,14 +343,41 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
     setLightboxOpen(true);
   }, []);
 
+  const curatedPulls = useMemo(() => [
+    {
+      id: 'cur-1',
+      title: 'Member Briefing: Housing Delivery (Dec 2024)',
+      why: 'Sets political steer for uplift in brownfield allocations and town centre densification.',
+      tag: 'Political framing',
+      trace: 'FR-01 · CULP framing move',
+    },
+    {
+      id: 'cur-2',
+      title: 'Policy H2: Mix & Tenure (Reg 18 draft)',
+      why: 'Critical policy for viability sensitivity; cite for minimum 40% affordable ask.',
+      tag: 'Policy-critical',
+      trace: 'EV-17 · Evidence move',
+    },
+    {
+      id: 'cur-3',
+      title: 'SHLAA/045 Site Sheet',
+      why: 'Top candidate allocation; aligns with “Homes first” political framing and high PTAL.',
+      tag: 'Site dossier',
+      trace: 'INT-04 · Interpretation move',
+    },
+  ], []);
+
   return (
-    <div className="h-full flex flex-col bg-neutral-50 border-l border-neutral-200">
+    <div className="h-full flex flex-col bg-neutral-50 border-l border-neutral-200 overflow-hidden">
       {/* Header */}
-      <div className="p-4 bg-white border-b border-neutral-200">
-        <h3 className="text-lg font-semibold mb-1">Evidence Library</h3>
-        <p className="text-xs text-slate-500 mb-3">
-          Drag cards into documents to cite
-        </p>
+      <div className="p-4 bg-white border-b border-neutral-200 sticky top-0 z-10 shadow-sm">
+        <div className="flex items-center justify-between mb-1">
+          <div>
+            <h3 className="text-lg font-semibold">Evidence Library</h3>
+            <p className="text-xs text-slate-500">Drag cards into documents to cite</p>
+          </div>
+          <Badge variant="secondary" className="text-[10px]">Demo</Badge>
+        </div>
         
         {/* Search */}
         <div className="relative mb-3">
@@ -355,7 +391,7 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
         </div>
         
         {/* Category Tabs */}
-        <div className="flex gap-1 flex-wrap">
+        <div className="flex gap-1 flex-wrap mb-2">
           {(['all', 'documents', 'policies', 'photos', 'responses'] as EvidenceCategory[]).map((cat) => (
             <button
               key={cat}
@@ -370,11 +406,64 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
             </button>
           ))}
         </div>
+
+        {/* Demo filters */}
+        <div className="flex gap-1 flex-wrap">
+          {([
+            { id: 'members-briefed', label: 'Members briefed' },
+            { id: 'policy-critical', label: 'Policy critical' },
+            { id: 'site-shlaa', label: 'SHLAA focus' },
+            { id: 'consultation-heat', label: 'Consultation heat' },
+          ] as { id: DemoFilter; label: string }[]).map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setDemoFilter(prev => prev === f.id ? null : f.id)}
+              className={`px-2 py-1 text-[11px] rounded-full border transition-colors ${
+                demoFilter === f.id
+                  ? 'border-blue-500 text-blue-700 bg-blue-50'
+                  : 'border-slate-200 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1">
-        <div className="p-3 space-y-4">
+      <ScrollArea className="flex-1 h-[calc(100vh-180px)]">
+        <div className="p-3 space-y-4 pb-6">
+          {/* Curated pulls */}
+          <div className="bg-white border border-neutral-200 rounded-xl p-3 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-500" />
+                <span className="text-xs font-semibold text-slate-700">Curated pulls for demo</span>
+              </div>
+              <Badge variant="outline" className="text-[10px]">Why/trace ready</Badge>
+            </div>
+            <div className="space-y-2">
+              {curatedPulls.map((item) => (
+                <div key={item.id} className="p-2 rounded-lg border border-neutral-200 bg-slate-50">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge variant="secondary" className="text-[10px]">{item.tag}</Badge>
+                    <span className="text-sm font-medium text-slate-800">{item.title}</span>
+                  </div>
+                  <p className="text-xs text-slate-600 mb-2 line-clamp-2">{item.why}</p>
+                  <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                    <Badge variant="outline" className="text-[10px]">{item.trace}</Badge>
+                    <button
+                      className="text-blue-600 hover:underline"
+                      onClick={() => toast.success('Pinned to trace for demo')}
+                    >
+                      Pin to trace
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Cited Evidence Section */}
           {citedEvidence.length > 0 && (
             <div>
@@ -419,7 +508,7 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
                 </div>
               </div>
               <div className={viewMode === 'grid' ? 'grid grid-cols-2 gap-2' : 'space-y-2'}>
-                {mockPhotos.map((photo, index) => (
+                {mockPhotosForLightbox.map((photo, index) => (
                   <PhotoCard
                     key={photo.id}
                     photo={photo}
@@ -489,7 +578,7 @@ export function ContextMarginInteractive({ onEvidenceSelect }: ContextMarginProp
         open={lightboxOpen}
         close={() => setLightboxOpen(false)}
         index={lightboxIndex}
-        slides={mockPhotos.map(p => ({ src: p.url, alt: p.caption }))}
+        slides={mockPhotosForLightbox.map(p => ({ src: p.fullUrl || p.url, alt: p.caption }))}
       />
     </div>
   );

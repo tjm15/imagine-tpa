@@ -1,14 +1,24 @@
+import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2, Database, Terminal, Sparkles } from 'lucide-react';
+import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2, Database, Terminal, Sparkles, X } from 'lucide-react';
+import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface RealityViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
+  onOpenTrace?: () => void;
 }
 
-export function RealityView({ workspace, explainabilityMode = 'summary' }: RealityViewProps) {
+export function RealityView({ workspace, explainabilityMode = 'summary', onOpenTrace }: RealityViewProps) {
+  const photos = [
+    { id: 'north', label: 'Site Context: North', note: 'Established residential to north. Two-storey height datum.', captured: '12 Nov 2024' },
+    { id: 'east', label: 'Site Access: East', note: 'Existing field access road. Width ~4.5m.', captured: '12 Nov 2024' },
+    { id: 'west', label: 'Frontage', note: 'District Centre frontage; shopfront retained.', captured: '12 Nov 2024' },
+    { id: 'south', label: 'Rear courtyard', note: 'Private amenity space; scope for cycle storage.', captured: '12 Nov 2024' }
+  ];
+  const [lightbox, setLightbox] = useState<string | null>(null);
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -19,6 +29,14 @@ export function RealityView({ workspace, explainabilityMode = 'summary' }: Reali
             <h2 className="text-lg">
               {workspace === 'plan' ? 'Visual Evidence & Overlays' : 'Site Photos & Context'}
             </h2>
+            {onOpenTrace && (
+              <button
+                className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline"
+                onClick={onOpenTrace}
+              >
+                Trace
+              </button>
+            )}
           </div>
           <p className="text-sm text-neutral-600">
             {workspace === 'plan' 
@@ -83,42 +101,41 @@ export function RealityView({ workspace, explainabilityMode = 'summary' }: Reali
                 </div>
               </div>
 
-              {/* Aerial Context */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-                  <div className="aspect-video bg-neutral-100 relative">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <MapPin className="w-10 h-10 text-neutral-300" />
-                    </div>
+              {/* Photo Evidence Grid */}
+              <div className="bg-white rounded-lg border border-neutral-200 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="mb-1">Photo Evidence</h3>
+                    <p className="text-xs text-neutral-600">Click to enlarge and trace provenance</p>
                   </div>
-                  <div className="p-3">
-                    <h4 className="text-sm mb-1">Site Context: North</h4>
-                    <p className="text-xs text-neutral-600">
-                      Established residential to north. Two-storey height datum.
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-neutral-500 mt-2">
-                      <Camera className="w-3 h-3" />
-                      <span>Captured: 12 Nov 2024</span>
-                    </div>
-                  </div>
+                  <Sparkles className="w-4 h-4 text-[color:var(--color-gov-blue)]" />
                 </div>
-
-                <div className="bg-white rounded-lg border border-neutral-200 overflow-hidden">
-                  <div className="aspect-video bg-neutral-100 relative">
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <MapPin className="w-10 h-10 text-neutral-300" />
-                    </div>
-                  </div>
-                  <div className="p-3">
-                    <h4 className="text-sm mb-1">Site Access: East</h4>
-                    <p className="text-xs text-neutral-600">
-                      Existing field access road. Width ~4.5m, suitable for residential.
-                    </p>
-                    <div className="flex items-center gap-2 text-xs text-neutral-500 mt-2">
-                      <Camera className="w-3 h-3" />
-                      <span>Captured: 12 Nov 2024</span>
-                    </div>
-                  </div>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  {photos.map(photo => (
+                    <button
+                      key={photo.id}
+                      onClick={() => setLightbox(photo.id)}
+                      className="text-left border rounded-lg overflow-hidden hover:border-blue-200 transition-colors"
+                    >
+                      <div className="aspect-video bg-neutral-100 relative">
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <Camera className="w-10 h-10 text-neutral-300" />
+                        </div>
+                        <div className="absolute top-2 right-2">
+                          <StatusBadge status="settled" />
+                        </div>
+                      </div>
+                      <div className="p-3 space-y-1">
+                        <h4 className="text-sm">{photo.label}</h4>
+                        <p className="text-xs text-neutral-600">{photo.note}</p>
+                        <div className="flex items-center gap-2 text-xs text-neutral-500">
+                          <Camera className="w-3 h-3" />
+                          <span>Captured: {photo.captured}</span>
+                          <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Trace</button>
+                        </div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
               </div>
 
@@ -289,6 +306,25 @@ export function RealityView({ workspace, explainabilityMode = 'summary' }: Reali
           )}
         </div>
       </div>
+
+      {/* Lightbox */}
+      {lightbox && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-3xl w-full p-4 relative">
+            <button className="absolute top-3 right-3 text-slate-500 hover:text-slate-800" onClick={() => setLightbox(null)}>
+              <X className="w-4 h-4" />
+            </button>
+            <div className="aspect-video bg-neutral-100 rounded flex items-center justify-center mb-3">
+              <Camera className="w-12 h-12 text-neutral-300" />
+            </div>
+            <div className="flex items-center gap-2 text-sm text-neutral-700">
+              <StatusBadge status="settled" />
+              <ProvenanceIndicator provenance={{ source: 'human', confidence: 'high', status: 'settled', evidenceIds: ['ev-site-visit'] }} showConfidence onOpenTrace={onOpenTrace} />
+              <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Why is this here?</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

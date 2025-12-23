@@ -16,6 +16,7 @@ type ApiResult<T> = {
   status: number;
   data: T | null;
   error?: string;
+  rawText?: string;
 };
 
 type HealthPayload = { status?: string; db?: string; detail?: unknown };
@@ -158,6 +159,13 @@ type VisualAssetDetail = {
 
 const API_PREFIX = '/api';
 
+type EndpointError = {
+  label: string;
+  status: number;
+  error: string;
+  rawText?: string;
+};
+
 async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<ApiResult<T>> {
   try {
     const resp = await fetch(`${API_PREFIX}${path}`, {
@@ -179,11 +187,55 @@ async function fetchJson<T>(path: string, signal?: AbortSignal): Promise<ApiResu
         status: resp.status,
         data,
         error: (data as any)?.detail ? JSON.stringify((data as any).detail) : text || resp.statusText,
+        rawText: text || undefined,
       };
     }
-    return { ok: true, status: resp.status, data };
+    return { ok: true, status: resp.status, data, rawText: text || undefined };
   } catch (err) {
-    return { ok: false, status: 0, data: null, error: String((err as Error).message || err) };
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: String((err as Error).message || err),
+      rawText: undefined,
+    };
+  }
+}
+
+async function postJson<T>(path: string, body: Record<string, any>): Promise<ApiResult<T>> {
+  try {
+    const resp = await fetch(`${API_PREFIX}${path}`, {
+      method: 'POST',
+      headers: { accept: 'application/json', 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const text = await resp.text();
+    let data: T | null = null;
+    if (text) {
+      try {
+        data = JSON.parse(text) as T;
+      } catch {
+        data = null;
+      }
+    }
+    if (!resp.ok) {
+      return {
+        ok: false,
+        status: resp.status,
+        data,
+        error: (data as any)?.detail ? JSON.stringify((data as any).detail) : text || resp.statusText,
+        rawText: text || undefined,
+      };
+    }
+    return { ok: true, status: resp.status, data, rawText: text || undefined };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 0,
+      data: null,
+      error: String((err as Error).message || err),
+      rawText: undefined,
+    };
   }
 }
 
@@ -235,7 +287,7 @@ function StatusBadge({ label }: { label: string }) {
 export function DebugView() {
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
-  const [errors, setErrors] = useState<string[]>([]);
+  const [endpointErrors, setEndpointErrors] = useState<EndpointError[]>([]);
   const [health, setHealth] = useState<HealthPayload | null>(null);
   const [ready, setReady] = useState<HealthPayload | null>(null);
   const [jobs, setJobs] = useState<IngestJob[]>([]);
@@ -248,6 +300,7 @@ export function DebugView() {
   const [documents, setDocuments] = useState<DebugDocument[]>([]);
   const [selectedDocumentId, setSelectedDocumentId] = useState<string | null>(null);
   const [documentCoverage, setDocumentCoverage] = useState<DocumentCoverage | null>(null);
+  const [documentCoverageError, setDocumentCoverageError] = useState<EndpointError | null>(null);
   const [toolRuns, setToolRuns] = useState<ToolRun[]>([]);
   const [georefRuns, setGeorefRuns] = useState<ToolRun[]>([]);
   const [selectedToolRunId, setSelectedToolRunId] = useState<string | null>(null);
@@ -256,8 +309,10 @@ export function DebugView() {
   const [traceRuns, setTraceRuns] = useState<RunSummary[]>([]);
   const [traceMode, setTraceMode] = useState<'summary' | 'inspect' | 'forensic'>('summary');
   const [traceGraph, setTraceGraph] = useState<DebugGraphData | null>(null);
+  const [traceError, setTraceError] = useState<EndpointError | null>(null);
   const [selectedTraceRunId, setSelectedTraceRunId] = useState<string | null>(null);
   const [kgGraph, setKgGraph] = useState<DebugGraphData | null>(null);
+  const [kgError, setKgError] = useState<EndpointError | null>(null);
   const [selectedGraphNode, setSelectedGraphNode] = useState<DebugGraphNode | null>(null);
   const [kgLoading, setKgLoading] = useState(false);
   const [kgNodeTypeFilter, setKgNodeTypeFilter] = useState('');
@@ -265,7 +320,9 @@ export function DebugView() {
   const [visualAssets, setVisualAssets] = useState<VisualAssetSummary[]>([]);
   const [selectedVisualAssetId, setSelectedVisualAssetId] = useState<string | null>(null);
   const [visualAssetDetail, setVisualAssetDetail] = useState<VisualAssetDetail | null>(null);
+  const [visualAssetError, setVisualAssetError] = useState<EndpointError | null>(null);
   const [selectedRunStepId, setSelectedRunStepId] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
 
   // New state for sub-views
   const [view, setView] = useState<'dashboard' | 'run-inspector' | 'policy-inspector'>('dashboard');
@@ -275,6 +332,7 @@ export function DebugView() {
   const [uploading, setUpload] = useState(false);
 
   const envLabel = useMemo(() => (import.meta.env.DEV ? 'dev' : 'prod'), []);
+
   const latestPromptVersion = useMemo(() => {
     const map = new Map<string, number>();
     promptVersions.forEach((version) => {
@@ -335,7 +393,7 @@ export function DebugView() {
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
-    setErrors([]);
+    setEndpointErrors([]);
     const [
       healthRes,
       readyRes,
@@ -366,20 +424,68 @@ export function DebugView() {
       fetchJson<{ visual_assets: VisualAssetSummary[] }>('/debug/visual-assets?limit=40', signal),
     ]);
 
-    const nextErrors: string[] = [];
-    if (!healthRes.ok) nextErrors.push(`healthz: ${healthRes.error || 'unavailable'}`);
-    if (!readyRes.ok) nextErrors.push(`readyz: ${readyRes.error || 'unavailable'}`);
-    if (!jobsRes.ok) nextErrors.push(`ingest jobs: ${jobsRes.error || 'unavailable'}`);
-    if (!batchesRes.ok) nextErrors.push(`ingest batches: ${batchesRes.error || 'unavailable'}`);
-    if (!schemasRes.ok) nextErrors.push(`schemas: ${schemasRes.error || 'unavailable'}`);
-    if (!overviewRes.ok) nextErrors.push(`debug overview: ${overviewRes.error || 'unavailable'}`);
-    if (!ingestRunsRes.ok) nextErrors.push(`ingest runs: ${ingestRunsRes.error || 'unavailable'}`);
-    if (!documentsRes.ok) nextErrors.push(`documents: ${documentsRes.error || 'unavailable'}`);
-    if (!toolRunsRes.ok) nextErrors.push(`tool runs: ${toolRunsRes.error || 'unavailable'}`);
-    if (!georefRunsRes.ok) nextErrors.push(`georef attempts: ${georefRunsRes.error || 'unavailable'}`);
-    if (!promptsRes.ok) nextErrors.push(`prompts: ${promptsRes.error || 'unavailable'}`);
-    if (!traceRunsRes.ok) nextErrors.push(`runs: ${traceRunsRes.error || 'unavailable'}`);
-    if (!visualAssetsRes.ok) nextErrors.push(`visual assets: ${visualAssetsRes.error || 'unavailable'}`);
+    const nextErrors: EndpointError[] = [];
+    if (!healthRes.ok)
+      nextErrors.push({ label: 'healthz', status: healthRes.status, error: healthRes.error || 'unavailable', rawText: healthRes.rawText });
+    if (!readyRes.ok)
+      nextErrors.push({ label: 'readyz', status: readyRes.status, error: readyRes.error || 'unavailable', rawText: readyRes.rawText });
+    if (!jobsRes.ok)
+      nextErrors.push({ label: 'ingest jobs', status: jobsRes.status, error: jobsRes.error || 'unavailable', rawText: jobsRes.rawText });
+    if (!batchesRes.ok)
+      nextErrors.push({
+        label: 'ingest batches',
+        status: batchesRes.status,
+        error: batchesRes.error || 'unavailable',
+        rawText: batchesRes.rawText,
+      });
+    if (!schemasRes.ok)
+      nextErrors.push({ label: 'schemas', status: schemasRes.status, error: schemasRes.error || 'unavailable', rawText: schemasRes.rawText });
+    if (!overviewRes.ok)
+      nextErrors.push({
+        label: 'debug overview',
+        status: overviewRes.status,
+        error: overviewRes.error || 'unavailable',
+        rawText: overviewRes.rawText,
+      });
+    if (!ingestRunsRes.ok)
+      nextErrors.push({
+        label: 'ingest runs',
+        status: ingestRunsRes.status,
+        error: ingestRunsRes.error || 'unavailable',
+        rawText: ingestRunsRes.rawText,
+      });
+    if (!documentsRes.ok)
+      nextErrors.push({
+        label: 'documents',
+        status: documentsRes.status,
+        error: documentsRes.error || 'unavailable',
+        rawText: documentsRes.rawText,
+      });
+    if (!toolRunsRes.ok)
+      nextErrors.push({
+        label: 'tool runs',
+        status: toolRunsRes.status,
+        error: toolRunsRes.error || 'unavailable',
+        rawText: toolRunsRes.rawText,
+      });
+    if (!georefRunsRes.ok)
+      nextErrors.push({
+        label: 'georef attempts',
+        status: georefRunsRes.status,
+        error: georefRunsRes.error || 'unavailable',
+        rawText: georefRunsRes.rawText,
+      });
+    if (!promptsRes.ok)
+      nextErrors.push({ label: 'prompts', status: promptsRes.status, error: promptsRes.error || 'unavailable', rawText: promptsRes.rawText });
+    if (!traceRunsRes.ok)
+      nextErrors.push({ label: 'runs', status: traceRunsRes.status, error: traceRunsRes.error || 'unavailable', rawText: traceRunsRes.rawText });
+    if (!visualAssetsRes.ok)
+      nextErrors.push({
+        label: 'visual assets',
+        status: visualAssetsRes.status,
+        error: visualAssetsRes.error || 'unavailable',
+        rawText: visualAssetsRes.rawText,
+      });
 
     setHealth(healthRes.data);
     setReady(readyRes.data);
@@ -395,10 +501,36 @@ export function DebugView() {
     setPromptVersions(promptsRes.data?.prompt_versions || []);
     setTraceRuns(traceRunsRes.data?.runs || []);
     setVisualAssets(visualAssetsRes.data?.visual_assets || []);
-    setErrors(nextErrors);
+    setEndpointErrors(nextErrors);
     setLastUpdated(new Date().toLocaleString());
     setLoading(false);
   }, []);
+
+  const handleResetIngest = useCallback(async (payload: Record<string, any>) => {
+    const res = await postJson<{ jobs_updated: number; runs_updated: number; batches_updated: number }>(
+      '/debug/ingest/reset',
+      payload,
+    );
+    if (res.ok) {
+      const counts = res.data || { jobs_updated: 0, runs_updated: 0, batches_updated: 0 };
+      setActionMessage(`Reset complete: ${counts.jobs_updated} jobs, ${counts.runs_updated} runs, ${counts.batches_updated} batches.`);
+      load();
+    } else {
+      setActionMessage(`Reset failed: ${res.error || 'unknown error'}`);
+    }
+  }, [load]);
+
+  const handleRequeueJob = useCallback(async (ingestJobId: string) => {
+    const res = await postJson<{ ingest_job_id: string; enqueued: boolean }>('/debug/ingest/requeue', {
+      ingest_job_id: ingestJobId,
+    });
+    if (res.ok) {
+      setActionMessage(`Requeued job ${ingestJobId.slice(0, 8)}.`);
+      load();
+    } else {
+      setActionMessage(`Requeue failed: ${res.error || 'unknown error'}`);
+    }
+  }, [load]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -451,6 +583,7 @@ export function DebugView() {
   useEffect(() => {
     if (!selectedDocumentId) {
       setDocumentCoverage(null);
+      setDocumentCoverageError(null);
       return;
     }
     const controller = new AbortController();
@@ -458,6 +591,14 @@ export function DebugView() {
       .then((res) => {
         if (res.ok) {
           setDocumentCoverage(res.data);
+          setDocumentCoverageError(null);
+        } else {
+          setDocumentCoverageError({
+            label: 'document coverage',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
         }
       })
       .catch(() => undefined);
@@ -485,6 +626,7 @@ export function DebugView() {
   useEffect(() => {
     if (!selectedVisualAssetId) {
       setVisualAssetDetail(null);
+      setVisualAssetError(null);
       return;
     }
     const controller = new AbortController();
@@ -492,6 +634,14 @@ export function DebugView() {
       .then((res) => {
         if (res.ok) {
           setVisualAssetDetail(res.data || null);
+          setVisualAssetError(null);
+        } else {
+          setVisualAssetError({
+            label: 'visual asset detail',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
         }
       })
       .catch(() => undefined);
@@ -501,6 +651,7 @@ export function DebugView() {
   useEffect(() => {
     if (!selectedTraceRunId) {
       setTraceGraph(null);
+      setTraceError(null);
       return;
     }
     const controller = new AbortController();
@@ -508,6 +659,15 @@ export function DebugView() {
       .then((res) => {
         if (res.ok) {
           setTraceGraph(res.data);
+          setTraceError(null);
+        } else {
+          setTraceGraph(null);
+          setTraceError({
+            label: 'trace graph',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
         }
       })
       .catch(() => undefined);
@@ -528,6 +688,15 @@ export function DebugView() {
     const res = await fetchJson<DebugGraphData>(`/debug/kg?${query.toString()}`);
     if (res.ok) {
       setKgGraph(res.data);
+      setKgError(null);
+    } else {
+      setKgGraph(null);
+      setKgError({
+        label: 'kg snapshot',
+        status: res.status,
+        error: res.error || 'unavailable',
+        rawText: res.rawText,
+      });
     }
     setKgLoading(false);
   }, [kgLimit, kgNodeTypeFilter]);
@@ -596,6 +765,14 @@ export function DebugView() {
               Back to app
             </Button>
             <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleResetIngest({ scope: 'running' })}
+              style={{ borderColor: 'rgba(234, 88, 12, 0.35)', color: 'var(--color-warning)' }}
+            >
+              Reset running ingest
+            </Button>
+            <Button
               size="sm"
               onClick={() => load()}
               disabled={loading}
@@ -609,6 +786,14 @@ export function DebugView() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl px-6 py-6">
+        {actionMessage && (
+          <div
+            className="mb-4 rounded-lg border px-4 py-2 text-sm"
+            style={{ borderColor: 'var(--color-neutral-300)', backgroundColor: 'rgba(15, 23, 42, 0.04)' }}
+          >
+            {actionMessage}
+          </div>
+        )}
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
             <CardHeader>
@@ -726,18 +911,33 @@ export function DebugView() {
           </Card>
         </div>
 
-        {errors.length > 0 && (
+        {endpointErrors.length > 0 && (
           <div
             className="mt-6 rounded-xl border px-4 py-3 text-sm"
             style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
           >
             <div className="flex items-center gap-2 font-medium" style={{ color: 'var(--color-warning)' }}>
               <AlertTriangle className="h-4 w-4" />
-              {errors.length} backend checks failed
+              {endpointErrors.length} backend checks failed
             </div>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              {errors.map((error) => (
-                <li key={error}>{error}</li>
+              {endpointErrors.map((error) => (
+                <li key={`${error.label}-${error.status}`}>
+                  <div className="font-medium">
+                    {error.label} {error.status ? `(${error.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {error.error}
+                  </div>
+                  {error.rawText && error.rawText !== error.error && (
+                    <details className="mt-1">
+                      <summary className="cursor-pointer text-xs" style={{ color: 'var(--color-text-light)' }}>
+                        Response body
+                      </summary>
+                      <pre className="mt-1 max-h-40 overflow-auto whitespace-pre-wrap text-xs">{error.rawText}</pre>
+                    </details>
+                  )}
+                </li>
               ))}
             </ul>
           </div>
@@ -759,12 +959,14 @@ export function DebugView() {
                     <TableHead>Status</TableHead>
                     <TableHead>Authority</TableHead>
                     <TableHead>Created</TableHead>
+                    <TableHead>Error</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {jobs.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>No ingest jobs found.</TableCell>
+                      <TableCell colSpan={6}>No ingest jobs found.</TableCell>
                     </TableRow>
                   ) : (
                     jobs.map((job) => (
@@ -775,6 +977,23 @@ export function DebugView() {
                         </TableCell>
                         <TableCell>{job.authority_id || '--'}</TableCell>
                         <TableCell>{formatDate(job.created_at)}</TableCell>
+                        <TableCell className="max-w-[160px] truncate text-xs" title={job.error_text || ''}>
+                          {job.error_text || '--'}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleResetIngest({ ingest_job_id: job.ingest_job_id })}
+                            >
+                              Reset
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleRequeueJob(job.ingest_job_id)}>
+                              Requeue
+                            </Button>
+                          </div>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -796,12 +1015,13 @@ export function DebugView() {
                     <TableHead>Status</TableHead>
                     <TableHead>Authority</TableHead>
                     <TableHead>Started</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {batches.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>No ingest batches found.</TableCell>
+                      <TableCell colSpan={5}>No ingest batches found.</TableCell>
                     </TableRow>
                   ) : (
                     batches.map((batch) => (
@@ -812,6 +1032,15 @@ export function DebugView() {
                         </TableCell>
                         <TableCell>{batch.authority_id || '--'}</TableCell>
                         <TableCell>{formatDate(batch.started_at)}</TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleResetIngest({ ingest_batch_id: batch.ingest_batch_id })}
+                          >
+                            Reset
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -837,12 +1066,13 @@ export function DebugView() {
                     <TableHead>Status</TableHead>
                     <TableHead>Started</TableHead>
                     <TableHead></TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {ingestRuns.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={4}>No ingest runs found.</TableCell>
+                      <TableCell colSpan={5}>No ingest runs found.</TableCell>
                     </TableRow>
                   ) : (
                     ingestRuns.map((run) => (
@@ -870,6 +1100,18 @@ export function DebugView() {
                             <Search className="h-4 w-4" />
                           </Button>
                         </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleResetIngest({ run_id: run.id });
+                            }}
+                          >
+                            Reset
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -890,12 +1132,13 @@ export function DebugView() {
                     <TableHead>Step</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Started</TableHead>
+                    <TableHead>Error</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {ingestRunSteps.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={3}>Select a run to view steps.</TableCell>
+                      <TableCell colSpan={4}>Select a run to view steps.</TableCell>
                     </TableRow>
                   ) : (
                     ingestRunSteps.map((step) => (
@@ -910,6 +1153,9 @@ export function DebugView() {
                           <StatusBadge label={step.status || 'unknown'} />
                         </TableCell>
                         <TableCell>{formatDate(step.started_at)}</TableCell>
+                        <TableCell className="max-w-[160px] truncate text-xs" title={step.error_text || ''}>
+                          {step.error_text || '--'}
+                        </TableCell>
                       </TableRow>
                     ))
                   )}
@@ -998,7 +1244,22 @@ export function DebugView() {
               <CardDescription>Counts + assertions for the selected document.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm">
-              {!documentCoverage ? (
+              {documentCoverageError ? (
+                <div
+                  className="rounded-lg border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {documentCoverageError.label} {documentCoverageError.status ? `(${documentCoverageError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {documentCoverageError.error}
+                  </div>
+                  {documentCoverageError.rawText && documentCoverageError.rawText !== documentCoverageError.error && (
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">{documentCoverageError.rawText}</pre>
+                  )}
+                </div>
+              ) : !documentCoverage ? (
                 <div>Select a document to view coverage.</div>
               ) : (
                 <>
@@ -1205,6 +1466,22 @@ export function DebugView() {
                     {kgLoading ? 'Loading…' : 'Load graph'}
                   </Button>
                 </div>
+                {kgError && (
+                  <div
+                    className="mb-4 rounded-lg border px-3 py-2 text-xs"
+                    style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                  >
+                    <div className="font-semibold">
+                      {kgError.label} {kgError.status ? `(${kgError.status})` : ''}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                      {kgError.error}
+                    </div>
+                    {kgError.rawText && kgError.rawText !== kgError.error && (
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">{kgError.rawText}</pre>
+                    )}
+                  </div>
+                )}
                 <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                   <DebugGraph3D graph={kgGraph} onNodeSelect={setSelectedGraphNode} selectedNodeId={selectedGraphNode?.node_id || null} />
                   <div className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
@@ -1246,6 +1523,22 @@ export function DebugView() {
                     <option value="forensic">forensic</option>
                   </select>
                 </div>
+                {traceError && (
+                  <div
+                    className="mb-4 rounded-lg border px-3 py-2 text-xs"
+                    style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                  >
+                    <div className="font-semibold">
+                      {traceError.label} {traceError.status ? `(${traceError.status})` : ''}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                      {traceError.error}
+                    </div>
+                    {traceError.rawText && traceError.rawText !== traceError.error && (
+                      <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">{traceError.rawText}</pre>
+                    )}
+                  </div>
+                )}
                 <div className="grid gap-4 lg:grid-cols-[2fr_1fr]">
                   <DebugGraph3D graph={traceGraph} onNodeSelect={setSelectedGraphNode} selectedNodeId={selectedGraphNode?.node_id || null} />
                   <div className="rounded-xl border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>

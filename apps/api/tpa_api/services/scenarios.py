@@ -452,7 +452,6 @@ def create_scenario_set_auto(body: ScenarioSetAutoCreate) -> JSONResponse:
         purpose="Generate initial spatial strategy scenario options.",
         system_template=scenario_prompt,
         user_payload=user_payload,
-        time_budget_seconds=60.0,
         output_schema_ref="schemas/ScenarioAutoSet.schema.json",
     )
 
@@ -605,7 +604,6 @@ def select_scenario_tab(scenario_set_id: str, body: ScenarioTabSelection) -> JSO
 
 
 class ScenarioTabRunRequest(BaseModel):
-    time_budget_seconds: float = Field(default=120.0, ge=5.0, le=900.0)
     max_issues: int = Field(default=6, ge=2, le=12)
     evidence_per_issue: int = Field(default=4, ge=1, le=10)
     context_token_budget: int = Field(
@@ -858,7 +856,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     seed_evidence_refs = [r.get("evidence_ref") for r in seed_evidence if isinstance(r, dict)]
     seed_evidence_refs = [r for r in seed_evidence_refs if isinstance(r, str)]
 
-    per_call_budget = max(6.0, float(body.time_budget_seconds) / 6.0)
     issue_prompt = (
         "You are the Scout agent for The Planner's Assistant.\n"
         "Task: Surface the material planning issues for the scenario under the political framing.\n"
@@ -894,7 +891,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             ],
             "max_issues": body.max_issues,
         },
-        time_budget_seconds=per_call_budget,
         output_schema_ref="schemas/Issue.schema.json",
     )
     if issue_llm_tool_run_id:
@@ -1010,7 +1006,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         issues=issues,
         evidence_per_issue=body.evidence_per_issue,
         token_budget=body.context_token_budget,
-        time_budget_seconds=body.time_budget_seconds,
     )
 
     curated_set = context_result.get("curated_evidence_set") if isinstance(context_result, dict) else None
@@ -1118,7 +1113,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 for a in evidence_atoms[:50]
             ],
         },
-        time_budget_seconds=per_call_budget,
         output_schema_ref="schemas/Interpretation.schema.json",
     )
     if interp_tool_run_id:
@@ -1205,7 +1199,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "issues": [{"issue_id": i["issue_id"], "title": i["title"]} for i in issues],
             "interpretations": [{"claim": it["claim"], "evidence_refs": it["evidence_refs"]} for it in interpretations],
         },
-        time_budget_seconds=per_call_budget,
         output_schema_ref="schemas/ConsiderationLedgerEntry.schema.json",
     )
     if ledger_tool_run_id:
@@ -1313,7 +1306,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "framing": framing_obj,
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
         },
-        time_budget_seconds=per_call_budget,
         output_schema_ref="schemas/WeighingRecord.schema.json",
     )
     if weighing_tool_run_id:
@@ -1372,7 +1364,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "weighing_record": weighing_record,
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
         },
-        time_budget_seconds=per_call_budget,
         output_schema_ref="schemas/NegotiationMove.schema.json",
     )
     if negotiation_tool_run_id:
@@ -1447,7 +1438,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "weighing_record": weighing_record,
             "negotiation_moves": negotiation_moves,
         },
-        time_budget_seconds=max(per_call_budget, 10.0),
         output_schema_ref="schemas/Trajectory.schema.json",
     )
     if position_tool_run_id:
@@ -1508,7 +1498,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         purpose="Generate a structured FigureSpec for a judgement sheet chart.",
         system_template=figure_prompt,
         user_payload=figure_payload,
-        time_budget_seconds=25.0,
         output_schema_ref="schemas/FigureSpec.schema.json",
     )
     if figure_tool_run_id:

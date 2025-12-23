@@ -230,7 +230,7 @@ def _retrieve_chunks_hybrid_sync(
     query_vec: list[float] | None = None
     if use_vector:
         try:
-            embedded = _embed_texts_sync(texts=[query], model_id=embedding_model_id, time_budget_seconds=30.0)
+            embedded = _embed_texts_sync(texts=[query], model_id=embedding_model_id)
             if embedded and embedded[0]:
                 query_vec = embedded[0]
         except Exception as exc:  # noqa: BLE001
@@ -525,7 +525,7 @@ def _retrieve_policy_clauses_hybrid_sync(
     query_vec: list[float] | None = None
     if use_vector:
         try:
-            embedded = _embed_texts_sync(texts=[query], model_id=embedding_model_id, time_budget_seconds=30.0)
+            embedded = _embed_texts_sync(texts=[query], model_id=embedding_model_id)
             if embedded and embedded[0]:
                 query_vec = embedded[0]
         except Exception as exc:  # noqa: BLE001

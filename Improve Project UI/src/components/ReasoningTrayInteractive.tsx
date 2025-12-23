@@ -9,7 +9,7 @@
  * - Add consideration modal trigger
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { 
   ChevronUp, ChevronDown, Scale, FileText, Lightbulb, 
   CheckCircle, Clock, Circle, AlertTriangle, Sparkles, User,
@@ -175,8 +175,8 @@ export function ReasoningTrayInteractive({ runId, onOpenTrace, onSelectConsidera
   const { reasoningMoves, considerations, aiState } = useAppState();
   const dispatch = useAppDispatch();
   
-  const [isExpanded, setIsExpanded] = useState(false);
-  const [activeTab, setActiveTab] = useState<'progress' | 'ledger' | 'trace'>('progress');
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [activeTab, setActiveTab] = useState<'progress' | 'ledger' | 'trace'>('ledger');
   const [localConsiderations, setLocalConsiderations] = useState(considerations);
 
   // Sync with global state
@@ -228,10 +228,25 @@ export function ReasoningTrayInteractive({ runId, onOpenTrace, onSelectConsidera
     dispatch({ type: 'OPEN_MODAL', payload: { modalId: 'balance', data: {} } });
   }, [dispatch]);
 
-  // Calculate progress
+  // Calculate progress and ledger rollup
   const completedMoves = moveOrder.filter(m => reasoningMoves[m] === 'complete');
   const currentMove = moveOrder.find(m => reasoningMoves[m] === 'in-progress') || 'framing';
   const progressPercent = Math.round((completedMoves.length / 8) * 100);
+  const ledgerSummary = useMemo(() => {
+    const forCount = localConsiderations.filter(c => getValence(c) === 'for');
+    const againstCount = localConsiderations.filter(c => getValence(c) === 'against');
+    const neutralCount = localConsiderations.filter(c => getValence(c) === 'neutral');
+    const net = localConsiderations.reduce((acc, c) => {
+      const weight = Number(c.weight ?? 0) || 0;
+      const direction = getValence(c) === 'for' ? 1 : getValence(c) === 'against' ? -1 : 0;
+      return acc + weight * direction;
+    }, 0);
+    return { forCount, againstCount, neutralCount, net };
+  }, [localConsiderations]);
+  const tensions = useMemo(() => [
+    'Housing uplift vs town centre heritage risk',
+    'Parking removal tension with disability access',
+  ], []);
 
   return (
     <div className="border-t border-neutral-200 bg-white transition-all duration-300 ease-in-out">
@@ -295,6 +310,25 @@ export function ReasoningTrayInteractive({ runId, onOpenTrace, onSelectConsidera
 
         <CollapsibleContent>
           <Separator />
+          {/* Ledger and trace micro-summary */}
+          <div className="px-4 py-2 flex flex-wrap items-center gap-3 bg-white">
+            <div className="flex items-center gap-2 text-xs">
+              <Badge variant="outline" className="text-[10px] text-green-700">For {ledgerSummary.forCount.length}</Badge>
+              <Badge variant="outline" className="text-[10px] text-red-700">Against {ledgerSummary.againstCount.length}</Badge>
+              <Badge variant="outline" className="text-[10px] text-slate-600">Neutral {ledgerSummary.neutralCount.length}</Badge>
+              <span className={`px-2 py-0.5 rounded-full text-[11px] ${ledgerSummary.net >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>
+                Net weight {ledgerSummary.net >= 0 ? '+' : ''}{ledgerSummary.net}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-amber-700">
+              <AlertTriangle className="w-3 h-3" />
+              {tensions[0]}
+            </div>
+            <Button variant="ghost" size="sm" className="ml-auto text-xs gap-1" onClick={onOpenTrace}>
+              <ExternalLink className="w-3 h-3" />
+              Open trace
+            </Button>
+          </div>
           
           {/* Tab Bar */}
           <div className="flex items-center gap-1 px-4 py-2 border-b border-neutral-200 bg-slate-50">

@@ -6,7 +6,8 @@ from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
-from ..db import _db_fetch_all, _db_fetch_one
+from ..api_utils import validate_uuid_or_400 as _validate_uuid_or_400
+from ..db import _db_execute, _db_fetch_all, _db_fetch_one
 from ..time_utils import _utc_now_iso
 
 
@@ -86,7 +87,12 @@ def list_ingest_run_steps(run_id: str) -> JSONResponse:
     return JSONResponse(content=jsonable_encoder({"run_id": run_id, "steps": rows}))
 
 
-def list_documents(authority_id: str | None = None, plan_cycle_id: str | None = None, limit: int = 50) -> JSONResponse:
+def list_documents(
+    authority_id: str | None = None,
+    plan_cycle_id: str | None = None,
+    run_id: str | None = None,
+    limit: int = 50,
+) -> JSONResponse:
     clauses: list[str] = []
     params: list[Any] = []
     if authority_id:
@@ -94,7 +100,10 @@ def list_documents(authority_id: str | None = None, plan_cycle_id: str | None = 
         params.append(authority_id)
     if plan_cycle_id:
         clauses.append("plan_cycle_id = %s::uuid")
-        params.append(plan_cycle_id)
+        params.append(_validate_uuid_or_400(plan_cycle_id, field_name="plan_cycle_id"))
+    if run_id:
+        clauses.append("run_id = %s::uuid")
+        params.append(_validate_uuid_or_400(run_id, field_name="run_id"))
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
     params.append(limit)
     rows = _db_fetch_all(
@@ -473,7 +482,7 @@ def debug_ingest_run_deep(run_id: str) -> JSONResponse:
 
     steps = _db_fetch_all(
         """
-        SELECT step_name, status, started_at, ended_at, error_text
+        SELECT step_name, status, started_at, ended_at, error_text, inputs_jsonb, outputs_jsonb
         FROM ingest_run_steps
         WHERE run_id = %s::uuid
         ORDER BY started_at ASC
@@ -484,7 +493,7 @@ def debug_ingest_run_deep(run_id: str) -> JSONResponse:
     tool_runs = _db_fetch_all(
         """
         SELECT id, tool_name, status, started_at, ended_at, confidence_hint, uncertainty_note,
-               (outputs_jsonb->>'error') as error_detail
+               inputs_logged, outputs_logged, (outputs_logged->>'error') as error_detail
         FROM tool_runs
         WHERE run_id = %s::uuid
         ORDER BY started_at ASC
@@ -571,3 +580,193 @@ def upload_and_ingest_file(file_bytes: bytes, filename: str) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"Failed to enqueue debug job: {error}")
 
     return JSONResponse(content={"ingest_job_id": ingest_job_id, "ingest_batch_id": ingest_batch_id})
+
+
+def reset_ingest_state(
+    *,
+    scope: str = "running",
+    ingest_job_id: str | None = None,
+    run_id: str | None = None,
+    ingest_batch_id: str | None = None,
+    authority_id: str | None = None,
+    plan_cycle_id: str | None = None,
+    note: str | None = None,
+) -> JSONResponse:
+    scope = scope or "running"
+    if scope not in {"running", "all"}:
+        raise HTTPException(status_code=400, detail="scope must be one of: running, all")
+
+    job_id = _validate_uuid_or_400(ingest_job_id, field_name="ingest_job_id") if ingest_job_id else None
+    run_id_val = _validate_uuid_or_400(run_id, field_name="run_id") if run_id else None
+    batch_id = _validate_uuid_or_400(ingest_batch_id, field_name="ingest_batch_id") if ingest_batch_id else None
+    plan_cycle_val = _validate_uuid_or_400(plan_cycle_id, field_name="plan_cycle_id") if plan_cycle_id else None
+
+    note_text = note or "reset via debug"
+
+    job_clauses: list[str] = []
+    job_params: list[Any] = []
+    if scope == "running":
+        job_clauses.append("status IN ('running', 'pending')")
+    if job_id:
+        job_clauses.append("id = %s::uuid")
+        job_params.append(job_id)
+    if batch_id:
+        job_clauses.append("ingest_batch_id = %s::uuid")
+        job_params.append(batch_id)
+    if authority_id:
+        job_clauses.append("authority_id = %s")
+        job_params.append(authority_id)
+    if plan_cycle_val:
+        job_clauses.append("plan_cycle_id = %s::uuid")
+        job_params.append(plan_cycle_val)
+    job_where = " AND ".join(job_clauses) if job_clauses else "TRUE"
+
+    run_clauses: list[str] = []
+    run_params: list[Any] = []
+    if scope == "running":
+        run_clauses.append("status IN ('running', 'pending')")
+    if run_id_val:
+        run_clauses.append("id = %s::uuid")
+        run_params.append(run_id_val)
+    if batch_id:
+        run_clauses.append("ingest_batch_id = %s::uuid")
+        run_params.append(batch_id)
+    if authority_id:
+        run_clauses.append("authority_id = %s")
+        run_params.append(authority_id)
+    if plan_cycle_val:
+        run_clauses.append("plan_cycle_id = %s::uuid")
+        run_params.append(plan_cycle_val)
+    run_where = " AND ".join(run_clauses) if run_clauses else "TRUE"
+
+    step_clauses: list[str] = []
+    step_params: list[Any] = []
+    if run_id_val:
+        step_clauses.append("id = %s::uuid")
+        step_params.append(run_id_val)
+    if batch_id:
+        step_clauses.append("ingest_batch_id = %s::uuid")
+        step_params.append(batch_id)
+    if authority_id:
+        step_clauses.append("authority_id = %s")
+        step_params.append(authority_id)
+    if plan_cycle_val:
+        step_clauses.append("plan_cycle_id = %s::uuid")
+        step_params.append(plan_cycle_val)
+    step_where = " AND ".join(step_clauses) if step_clauses else "TRUE"
+
+    batch_clauses: list[str] = []
+    batch_params: list[Any] = []
+    if scope == "running":
+        batch_clauses.append("status IN ('running', 'pending')")
+    if batch_id:
+        batch_clauses.append("id = %s::uuid")
+        batch_params.append(batch_id)
+    if authority_id:
+        batch_clauses.append("authority_id = %s")
+        batch_params.append(authority_id)
+    if plan_cycle_val:
+        batch_clauses.append("plan_cycle_id = %s::uuid")
+        batch_params.append(plan_cycle_val)
+    batch_where = " AND ".join(batch_clauses) if batch_clauses else "TRUE"
+
+    jobs_updated = _db_fetch_all(
+        f"""
+        UPDATE ingest_jobs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            completed_at = NOW()
+        WHERE {job_where}
+        RETURNING id
+        """,
+        tuple([note_text] + job_params),
+    )
+
+    runs_updated = _db_fetch_all(
+        f"""
+        UPDATE ingest_runs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = NOW()
+        WHERE {run_where}
+        RETURNING id
+        """,
+        tuple([note_text] + run_params),
+    )
+
+    steps_updated = _db_fetch_all(
+        f"""
+        UPDATE ingest_run_steps
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = NOW()
+        WHERE run_id IN (
+            SELECT id FROM ingest_runs WHERE {step_where}
+        )
+        RETURNING id
+        """,
+        tuple([note_text] + step_params),
+    )
+
+    batches_updated = _db_fetch_all(
+        f"""
+        UPDATE ingest_batches
+        SET status = 'error',
+            notes = COALESCE(notes, %s),
+            completed_at = NOW()
+        WHERE {batch_where}
+        RETURNING id
+        """,
+        tuple([note_text] + batch_params),
+    )
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "jobs_updated": len(jobs_updated),
+                "runs_updated": len(runs_updated),
+                "steps_updated": len(steps_updated),
+                "batches_updated": len(batches_updated),
+            }
+        )
+    )
+
+
+def requeue_ingest_job(ingest_job_id: str, note: str | None = None) -> JSONResponse:
+    job_id = _validate_uuid_or_400(ingest_job_id, field_name="ingest_job_id")
+    job = _db_fetch_one(
+        "SELECT id, ingest_batch_id FROM ingest_jobs WHERE id = %s::uuid",
+        (job_id,),
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Ingest job not found")
+    _db_fetch_all(
+        """
+        UPDATE ingest_jobs
+        SET status = 'pending',
+            started_at = NULL,
+            completed_at = NULL,
+            error_text = NULL,
+            outputs_jsonb = '{}'::jsonb
+        WHERE id = %s::uuid
+        RETURNING id
+        """,
+        (job_id,),
+    )
+    if job.get("ingest_batch_id"):
+        _db_execute(
+            """
+            UPDATE ingest_batches
+            SET status = 'running',
+                completed_at = NULL,
+                notes = COALESCE(notes, %s)
+            WHERE id = %s::uuid
+            """,
+            (note or "requeued via debug", job.get("ingest_batch_id")),
+        )
+    from ..services.ingest import _enqueue_ingest_job  # noqa: PLC0415
+
+    enqueued, error = _enqueue_ingest_job(job_id)
+    if not enqueued:
+        raise HTTPException(status_code=500, detail=f"Failed to enqueue ingest job: {error}")
+    return JSONResponse(content=jsonable_encoder({"ingest_job_id": job_id, "enqueued": True}))

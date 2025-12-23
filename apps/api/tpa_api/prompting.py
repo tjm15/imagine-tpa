@@ -54,13 +54,13 @@ def _llm_structured_sync(
     purpose: str,
     system_template: str,
     user_payload: dict[str, Any],
-    time_budget_seconds: float,
     temperature: float | None = None,
     max_tokens: int | None = None,
     model_id: str | None = None,
     output_schema_ref: str | None = None,
     ingest_batch_id: str | None = None,
     run_id: str | None = None,
+    **_: Any,
 ) -> tuple[dict[str, Any] | None, str | None, list[str]]:
     """
     Calls the configured LLMProvider (OpenAI-compatible) and returns (json, tool_run_id, errors).

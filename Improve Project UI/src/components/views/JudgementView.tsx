@@ -4,12 +4,14 @@ import { useState } from 'react';
 import { ProvenanceIndicator, ConfidenceBadge, StatusBadge } from '../ProvenanceIndicator';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
+import { mockConsiderations } from '../../fixtures/mockData';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface JudgementViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
+  onOpenTrace?: () => void;
 }
 
 interface ScenarioTab {
@@ -19,7 +21,7 @@ interface ScenarioTab {
   color: string;
 }
 
-export function JudgementView({ workspace, explainabilityMode = 'summary' }: JudgementViewProps) {
+export function JudgementView({ workspace, explainabilityMode = 'summary', onOpenTrace }: JudgementViewProps) {
   const planTabs: ScenarioTab[] = [
     { id: '1', scenario: 'Urban Intensification', framing: 'Growth-focused', color: 'blue' },
     { id: '2', scenario: 'Urban Intensification', framing: 'Heritage-balanced', color: 'amber' },
@@ -47,6 +49,14 @@ export function JudgementView({ workspace, explainabilityMode = 'summary' }: Jud
           <h2 className="text-lg">
             {workspace === 'plan' ? 'Scenario × Political Framing' : 'Position Packages'}
           </h2>
+          {onOpenTrace && (
+            <button
+              className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline"
+              onClick={onOpenTrace}
+            >
+              Trace
+            </button>
+          )}
         </div>
         <p className="text-sm text-neutral-600">
           {workspace === 'plan' 
@@ -130,6 +140,33 @@ export function JudgementView({ workspace, explainabilityMode = 'summary' }: Jud
                     <li>Plan period: 2025-2040</li>
                     <li>Geographic scope: Cambridge authority area</li>
                   </ul>
+                </div>
+              </section>
+
+              {/* Balance Ledger Snapshot */}
+              <section className="mt-6">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="mb-0">Balance Snapshot</h3>
+                  <Badge variant="outline" className="text-[10px]">Weights · tensions · certainty</Badge>
+                </div>
+                <div className="grid md:grid-cols-2 gap-3">
+                  {mockConsiderations.map(c => (
+                    <div key={c.id} className="p-3 border rounded-lg bg-white">
+                      <div className="flex items-center gap-2 mb-1">
+                        <StatusBadge status={c.settled ? 'settled' : 'provisional'} />
+                        <Badge variant="secondary" className="text-[10px] bg-slate-50 text-slate-700">{c.weight}</Badge>
+                        <Badge variant="secondary" className="text-[10px] bg-slate-50 text-slate-700">{c.direction === 'supports' ? 'For' : c.direction === 'against' ? 'Against' : 'Neutral'}</Badge>
+                      </div>
+                      <div className="text-sm font-medium text-neutral-800">{c.issue}</div>
+                      {c.tensions && c.tensions.length > 0 && (
+                        <p className="text-xs text-amber-700 mt-1">Tension with: {c.tensions.join(', ')}</p>
+                      )}
+                      <div className="mt-2 flex items-center gap-2 text-[11px] text-blue-700">
+                        <GitBranch className="w-3 h-3" />
+                        <button className="hover:underline" onClick={onOpenTrace}>Trace</button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </section>
 

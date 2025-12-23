@@ -127,7 +127,6 @@ def run_scenario_inspector(body: ScenarioInspectorRequest) -> JSONResponse:
         purpose="Assess readiness for scenario generation and provide planner-facing report cards.",
         system_template=system,
         user_payload=payload,
-        time_budget_seconds=40.0,
         output_schema_ref="schemas/InspectorReport.schema.json",
     )
 

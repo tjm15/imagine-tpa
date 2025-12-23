@@ -140,6 +140,8 @@ class AutoGeorefRequest(BaseModel):
     asset_subtype: str | None = None
     target_epsg: int = 27700
     image_base64: str
+    redline_mask_base64: str | None = None
+    redline_mask_id: str | None = None
     canonical_facts: dict[str, Any] = Field(default_factory=dict)
     asset_specific_facts: dict[str, Any] = Field(default_factory=dict)
 
@@ -245,8 +247,27 @@ def auto_georef(req: AutoGeorefRequest) -> AutoGeorefResponse:
         "image_height": height,
         "target_epsg": req.target_epsg,
         "asset_type": req.asset_type,
+        "redline_mask_provided": bool(req.redline_mask_base64),
     }
     provenance: dict[str, Any] = {"engine": "tpa-georef-agent", "policy": "closed-loop"}
+
+    if isinstance(req.redline_mask_base64, str):
+        try:
+            mask_bytes, _, _ = _decode_image(req.redline_mask_base64)
+            path = _store_artifact(
+                visual_asset_id=req.visual_asset_id,
+                artifact_type="redline_mask",
+                data=mask_bytes,
+            )
+            projection_artifacts.append(
+                ProjectionArtifact(
+                    artifact_type="redline_mask",
+                    artifact_path=path,
+                    metadata={"source": "redline_mask", "mask_id": req.redline_mask_id},
+                )
+            )
+        except HTTPException as exc:
+            errors.append(f"redline_mask_store_failed:{exc.detail}")
 
     if not _macro_base_url():
         return AutoGeorefResponse(
@@ -293,6 +314,7 @@ def auto_georef(req: AutoGeorefRequest) -> AutoGeorefResponse:
         "/macros/detect-candidate-gcps",
         {
             "image_base64": req.image_base64,
+            "redline_mask_base64": req.redline_mask_base64,
             "method": "auto",
             "target_epsg": req.target_epsg,
         },
@@ -316,6 +338,7 @@ def auto_georef(req: AutoGeorefRequest) -> AutoGeorefResponse:
         "/macros/apply-gcps",
         {
             "image_base64": req.image_base64,
+            "redline_mask_base64": req.redline_mask_base64,
             "gcps": gcps,
             "method": "affine",
             "target_epsg": req.target_epsg,

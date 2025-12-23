@@ -38,12 +38,14 @@ import {
 } from '../../fixtures/extendedMockData';
 import { useAppState } from '../../lib/appState';
 import { toast } from 'sonner';
+import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface MapViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
+  onOpenTrace?: () => void;
 }
 
 interface PopupInfo {
@@ -116,7 +118,7 @@ const conservationStyle = {
   },
 };
 
-export function MapView({ workspace, explainabilityMode = 'summary' }: MapViewProps) {
+export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace }: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const { openModal, notify } = useAppState();
   
@@ -233,6 +235,14 @@ export function MapView({ workspace, explainabilityMode = 'summary' }: MapViewPr
           <p className="text-sm text-neutral-600">
             Click features to identify · Toggle layers · Export snapshots
           </p>
+          {onOpenTrace && (
+            <button
+              className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline mt-1"
+              onClick={onOpenTrace}
+            >
+              Trace selection
+            </button>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <Button 
@@ -375,6 +385,16 @@ export function MapView({ workspace, explainabilityMode = 'summary' }: MapViewPr
                     >
                       View Full Assessment
                     </Button>
+                    {onOpenTrace && (
+                      <Button 
+                        variant="ghost"
+                        size="sm" 
+                        className="w-full mt-2 text-xs"
+                        onClick={onOpenTrace}
+                      >
+                        Trace this site
+                      </Button>
+                    )}
                   </>
                 )}
 
@@ -520,6 +540,21 @@ export function MapView({ workspace, explainabilityMode = 'summary' }: MapViewPr
             <Square className="w-4 h-4" />
           </button>
         </div>
+
+        {/* Draw-to-ask helper */}
+        {drawingMode !== 'none' && (
+          <div className="absolute bottom-4 right-4 bg-white/95 backdrop-blur rounded-lg shadow-lg border border-blue-200 p-3 max-w-sm">
+            <div className="flex items-center justify-between mb-1">
+              <div className="text-sm font-semibold text-slate-800">Draw to ask</div>
+              <StatusBadge status="draft" />
+            </div>
+            <p className="text-xs text-slate-600">Sketch a {drawingMode} to query constraints and nearby evidence. We’ll pin the evidence stack and open trace.</p>
+            <div className="flex items-center gap-2 mt-2 text-xs">
+              <ProvenanceIndicator provenance={{ source: 'human', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-shlaa-2024','ev-affordability'] }} />
+              <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Open trace</button>
+            </div>
+          </div>
+        )}
 
         {/* Site List (Plan mode) */}
         {workspace === 'plan' && (

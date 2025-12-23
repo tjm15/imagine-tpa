@@ -23,10 +23,9 @@
     "based_on_retrieval_frame_id": { "type": ["string", "null"], "format": "uuid" },
     "budgets": {
       "type": "object",
-      "description": "Budgets are advisory inputs to Context Assembly and downstream agents (tokens/time/candidate limits).",
+      "description": "Budgets are advisory inputs to Context Assembly and downstream agents (token/candidate limits).",
       "properties": {
         "token_budget": { "type": ["integer", "null"], "minimum": 0 },
-        "time_budget_seconds": { "type": ["number", "null"], "minimum": 0 },
         "max_candidates_per_query": { "type": ["integer", "null"], "minimum": 1 },
         "max_atoms_per_issue": { "type": ["integer", "null"], "minimum": 1 }
       },
@@ -78,4 +77,3 @@
   },
   "required": ["move_type", "queries"]
 }
-

@@ -690,6 +690,23 @@ def _annotate_blocks_with_llm(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     if not blocks:
         return blocks, [], [], [], []
+    if not llm_model_id or os.environ.get("TPA_DOCPARSE_DISABLE_LLM", "").lower() == "true":
+        return (
+            blocks,
+            [],
+            [],
+            [],
+            [
+                {
+                    "tool_name": "llm_block_annotation",
+                    "status": "skipped",
+                    "inputs": {"reason": "llm_disabled"},
+                    "outputs": {},
+                    "duration_seconds": 0.0,
+                    "limitations_text": "LLM annotation disabled; DocParse emits layout-only bundles.",
+                }
+            ],
+        )
 
     max_blocks = int(os.environ.get("TPA_DOC_PARSE_LLM_BLOCKS_PER_PASS", "120"))
     max_chars = int(os.environ.get("TPA_DOC_PARSE_LLM_CHARS_PER_PASS", "60000"))

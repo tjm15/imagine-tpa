@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from fastapi import FastAPI
+from fastapi.openapi.docs import get_swagger_ui_html
 
 from .db import init_db_pool, shutdown_db_pool
 from .routes.core import router as core_router
@@ -74,6 +75,14 @@ def create_app() -> FastAPI:
     app.include_router(tool_requests_router)
     app.include_router(visuals_router)
     app.include_router(ingest_router)
+
+    @app.get("/api/openapi.json", include_in_schema=False)
+    def openapi_json() -> dict:
+        return app.openapi()
+
+    @app.get("/api/docs", include_in_schema=False)
+    def swagger_ui() -> object:
+        return get_swagger_ui_html(openapi_url="/api/openapi.json", title=f"{app.title} - Docs")
 
     return app
 

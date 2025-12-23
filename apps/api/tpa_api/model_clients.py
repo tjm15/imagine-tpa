@@ -133,7 +133,6 @@ def _rerank_texts_sync(
     query: str,
     texts: list[str],
     model_id: str | None = None,
-    time_budget_seconds: float = 60.0,
 ) -> list[float] | None:
     base_url = _ensure_model_role_sync(role="reranker", timeout_seconds=180.0) or os.environ.get("TPA_RERANKER_BASE_URL")
     if not base_url:
@@ -206,7 +205,6 @@ async def _embed_texts(
     *,
     texts: list[str],
     model_id: str | None = None,
-    time_budget_seconds: float = 30.0,
 ) -> list[list[float]] | None:
     base_url = await _ensure_model_role(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
     if not base_url:
@@ -262,7 +260,6 @@ def _embed_texts_sync(
     *,
     texts: list[str],
     model_id: str | None = None,
-    time_budget_seconds: float = 30.0,
 ) -> list[list[float]] | None:
     base_url = _ensure_model_role_sync(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
     if not base_url:
@@ -329,7 +326,6 @@ def _embed_multimodal_sync(
     image_bytes: bytes,
     text: str,
     model_id: str | None = None,
-    time_budget_seconds: float = 60.0,
 ) -> list[float] | None:
     base_url = _ensure_model_role_sync(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_MM_BASE_URL") or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
     if not base_url:
@@ -384,7 +380,6 @@ def _generate_completion_sync(
     model_id: str | None = None,
     max_tokens: int | None = None,
     temperature: float | None = None,
-    time_budget_seconds: float = 60.0,
 ) -> str | None:
     base_url = _ensure_model_role_sync(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
     if not base_url:
@@ -402,8 +397,6 @@ def _generate_completion_sync(
     payload: dict[str, Any] = {"model": model_id, "messages": messages}
     _ = max_tokens
     _ = temperature
-    _ = time_budget_seconds
-
     try:
         with httpx.Client(timeout=timeout) as client:
             resp = client.post(url, json=payload, headers=_model_supervisor_headers())

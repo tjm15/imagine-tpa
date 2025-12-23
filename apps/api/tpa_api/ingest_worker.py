@@ -112,6 +112,35 @@ def _finish_run_step(
     )
 
 
+def _update_run_step_progress(
+    *,
+    run_id: str,
+    step_name: str,
+    outputs: dict[str, Any],
+    status: str = "running",
+    error_text: str | None = None,
+) -> None:
+    try:
+        _db_execute(
+            """
+            UPDATE ingest_run_steps
+            SET status = %s,
+                outputs_jsonb = outputs_jsonb || %s::jsonb,
+                error_text = COALESCE(error_text, %s)
+            WHERE run_id = %s::uuid AND step_name = %s
+            """,
+            (
+                status,
+                json.dumps(outputs, ensure_ascii=False),
+                error_text,
+                run_id,
+                step_name,
+            ),
+        )
+    except Exception:  # noqa: BLE001
+        pass
+
+
 def _create_ingest_run(
     *,
     ingest_batch_id: str,
@@ -244,7 +273,14 @@ def _load_parse_bundle(blob_path: str) -> dict[str, Any]:
     return json.loads(data)
 
 
-def _call_docparse_bundle(*, file_bytes: bytes, filename: str, metadata: dict[str, Any]) -> dict[str, Any]:
+def _call_docparse_bundle(
+    *,
+    file_bytes: bytes,
+    filename: str,
+    metadata: dict[str, Any],
+    ingest_batch_id: str | None = None,
+    run_id: str | None = None,
+) -> dict[str, Any]:
     base_url = os.environ.get("TPA_DOCPARSE_BASE_URL")
     if not base_url:
         raise RuntimeError("TPA_DOCPARSE_BASE_URL not configured")
@@ -252,10 +288,99 @@ def _call_docparse_bundle(*, file_bytes: bytes, filename: str, metadata: dict[st
     files = {"file": (filename, io.BytesIO(file_bytes), "application/pdf")}
     data = {"metadata": json.dumps(metadata, ensure_ascii=False)}
     timeout = None
-    with httpx.Client(timeout=timeout) as client:
-        resp = client.post(url, files=files, data=data)
-        resp.raise_for_status()
-        return resp.json()
+    tool_run_id = str(uuid4())
+    started_at = _utc_now()
+    tool_run_inserted = False
+    try:
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+              started_at, ended_at, confidence_hint, uncertainty_note
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+            """,
+            (
+                tool_run_id,
+                ingest_batch_id,
+                run_id,
+                "docparse_bundle",
+                json.dumps(
+                    {
+                        "filename": filename,
+                        "byte_count": len(file_bytes),
+                        "base_url": base_url,
+                    },
+                    ensure_ascii=False,
+                ),
+                json.dumps({}, ensure_ascii=False),
+                "running",
+                started_at,
+                "low",
+                "Docparse bundle request in progress.",
+            ),
+        )
+        tool_run_inserted = True
+    except Exception:  # noqa: BLE001
+        tool_run_inserted = False
+
+    try:
+        with httpx.Client(timeout=timeout) as client:
+            resp = client.post(url, files=files, data=data)
+            resp.raise_for_status()
+            payload = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        if tool_run_inserted:
+            try:
+                _db_execute(
+                    """
+                    UPDATE tool_runs
+                    SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                        confidence_hint = %s, uncertainty_note = %s
+                    WHERE id = %s::uuid
+                    """,
+                    (
+                        "error",
+                        json.dumps({"error": str(exc)}, ensure_ascii=False),
+                        _utc_now(),
+                        "low",
+                        "Docparse request failed; check docparse service logs.",
+                        tool_run_id,
+                    ),
+                )
+            except Exception:  # noqa: BLE001
+                pass
+        raise
+
+    if tool_run_inserted:
+        try:
+            _db_execute(
+                """
+                UPDATE tool_runs
+                SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                    confidence_hint = %s, uncertainty_note = %s
+                WHERE id = %s::uuid
+                """,
+                (
+                    "success",
+                    json.dumps(
+                        {
+                            "parse_bundle_path": payload.get("parse_bundle_path"),
+                            "schema_version": payload.get("schema_version"),
+                            "parse_flags": payload.get("parse_flags"),
+                        },
+                        ensure_ascii=False,
+                    ),
+                    _utc_now(),
+                    "medium",
+                    "Docparse bundle returned successfully.",
+                    tool_run_id,
+                ),
+            )
+        except Exception:  # noqa: BLE001
+            pass
+
+    return payload
 
 
 def _ensure_document_row(
@@ -359,6 +484,11 @@ def _store_raw_blob(
     object_name = f"raw/{authority_id}/{sha}{ext}"
     if not client or not bucket:
         raise RuntimeError("MinIO not configured for raw artifact storage")
+    try:
+        if not client.bucket_exists(bucket):
+            client.make_bucket(bucket)
+    except Exception as exc:  # noqa: BLE001
+        raise RuntimeError(f"MinIO bucket ensure failed: {exc}") from exc
     try:
         client.stat_object(bucket, object_name)
     except Exception:  # noqa: BLE001
@@ -607,7 +737,7 @@ def _persist_layout_blocks(
               block_id, block_type, text, bbox, bbox_quality, section_path,
               span_start, span_end, span_quality, evidence_ref_id, metadata_jsonb
             )
-            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s::uuid, %s::jsonb)
+            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb)
             """,
             (
                 layout_block_id,
@@ -760,7 +890,7 @@ def _persist_chunks_from_blocks(
               text, bbox, bbox_quality, type, section_path, span_start, span_end,
               span_quality, evidence_ref_id, metadata
             )
-            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb)
+            VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb)
             """,
             (
                 chunk_id,
@@ -873,6 +1003,7 @@ def _persist_visual_assets(
         rows.append(
             {
                 "visual_asset_id": asset_id,
+                "document_id": document_id,
                 "page_number": asset.get("page_number"),
                 "metadata": metadata,
                 "blob_path": blob_path,
@@ -1484,7 +1615,6 @@ def _extract_visual_agent_findings(
                 "asset_specific_facts": asset_specific,
                 "assertions": assertions,
             },
-            time_budget_seconds=120.0,
             output_schema_ref=None,
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -1522,6 +1652,126 @@ def _extract_visual_agent_findings(
         updated += 1
 
     return updated
+
+
+def _extract_visual_text_snippets(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_assets: list[dict[str, Any]],
+) -> int:
+    if not visual_assets:
+        return 0
+
+    prompt = (
+        "You are an OCR assistant for planning visuals. Return ONLY valid JSON with:\n"
+        '{ "snippets": [ { "text": "string", "bbox": [x, y, w, h] | null, "confidence": "low|medium|high" } ], '
+        '"limitations": [] }\n'
+        "Rules:\n"
+        "- Extract readable text from the image, including labels, legends, drawing titles, scale notes.\n"
+        "- If text is unreadable, return an empty list.\n"
+        "- bbox is optional; when unsure, set it to null.\n"
+    )
+
+    total = 0
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        blob_path = asset.get("blob_path")
+        if not visual_asset_id or not isinstance(blob_path, str):
+            continue
+        image_bytes, _, err = read_blob_bytes(blob_path)
+        if err or not image_bytes:
+            raise RuntimeError(f"visual_asset_read_failed:{err or 'no_bytes'}")
+
+        obj, tool_run_id, errs = _run_vlm_structured(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            tool_name="vlm_text_snippets",
+            prompt_id="visual_text_snippets_v1",
+            prompt_version=1,
+            prompt_name="Visual text extraction",
+            purpose="Extract visible text from planning visuals for traceable linkage.",
+            prompt=prompt,
+            image_bytes=image_bytes,
+        )
+        if errs or not isinstance(obj, dict):
+            continue
+        snippets = obj.get("snippets")
+        if not isinstance(snippets, list):
+            continue
+
+        snippet_count = 0
+        for idx, snippet in enumerate(snippets, start=1):
+            if not isinstance(snippet, dict):
+                continue
+            text = snippet.get("text")
+            if not isinstance(text, str) or not text.strip():
+                continue
+            bbox = snippet.get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                try:
+                    x0, y0, x1, y1 = [int(float(v)) for v in bbox]
+                    if x1 <= x0 or y1 <= y0:
+                        x1 = x0 + max(0, x1)
+                        y1 = y0 + max(0, y1)
+                    bbox = [x0, y0, x1, y1]
+                except Exception:  # noqa: BLE001
+                    bbox = None
+            else:
+                bbox = None
+            bbox_quality = "approx" if bbox else "none"
+
+            evidence_ref = f"visual_text::{visual_asset_id}::snippet-{idx}"
+            evidence_ref_id = _ensure_evidence_ref_row(
+                evidence_ref,
+                run_id=run_id,
+                document_id=asset.get("document_id"),
+                locator_type="visual_asset",
+                locator_value=str(visual_asset_id),
+                excerpt=text.strip(),
+            )
+            _db_execute(
+                """
+                INSERT INTO visual_asset_regions (
+                  id, visual_asset_id, run_id, region_type, bbox, bbox_quality,
+                  mask_id, caption_text, evidence_ref_id, metadata_jsonb, created_at
+                )
+                VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s::uuid, %s, %s::uuid, %s::jsonb, %s)
+                """,
+                (
+                    str(uuid4()),
+                    visual_asset_id,
+                    run_id,
+                    "text_snippet",
+                    json.dumps(bbox, ensure_ascii=False) if bbox else None,
+                    bbox_quality,
+                    None,
+                    text.strip(),
+                    evidence_ref_id,
+                    json.dumps(
+                        {
+                            "confidence": snippet.get("confidence"),
+                            "source": "vlm_text",
+                        },
+                        ensure_ascii=False,
+                    ),
+                    _utc_now(),
+                ),
+            )
+            snippet_count += 1
+
+        if snippet_count > 0:
+            _upsert_visual_semantic_output(
+                visual_asset_id=visual_asset_id,
+                run_id=run_id,
+                schema_version="1.0",
+                output_kind="classification",
+                tool_run_id=tool_run_id,
+                metadata_update={"text_snippet_count": snippet_count},
+            )
+            total += snippet_count
+
+    return total
 
 def _decode_base64_payload(data: str) -> bytes:
     if "base64," in data:
@@ -1642,6 +1892,17 @@ def _vectorize_segmentation_masks(
 
         tool_run_id = str(uuid4())
         started = _utc_now()
+        redline_mask_b64, redline_mask_id = _load_redline_mask_base64(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+        )
+        if not redline_mask_b64:
+            redline_mask_b64, redline_mask_id = _detect_redline_boundary_mask(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                visual_asset_id=visual_asset_id,
+                blob_path=blob_path,
+            )
         _db_execute(
             """
             INSERT INTO tool_runs (
@@ -1954,6 +2215,233 @@ def _segment_visual_assets(
     return mask_total, region_total
 
 
+def _load_redline_mask_base64(
+    *,
+    visual_asset_id: str,
+    run_id: str | None,
+) -> tuple[str | None, str | None]:
+    row = _db_fetch_one(
+        """
+        SELECT id, mask_artifact_path
+        FROM segmentation_masks
+        WHERE visual_asset_id = %s::uuid
+          AND label = 'red_line_boundary'
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (visual_asset_id, run_id, run_id),
+    )
+    if not isinstance(row, dict):
+        return None, None
+    mask_path = row.get("mask_artifact_path")
+    if not isinstance(mask_path, str):
+        return None, None
+    mask_bytes, _, err = read_blob_bytes(mask_path)
+    if err or not mask_bytes:
+        return None, None
+    return base64.b64encode(mask_bytes).decode("ascii"), row.get("id")
+
+
+def _detect_redline_boundary_mask(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    visual_asset_id: str,
+    blob_path: str,
+) -> tuple[str | None, str | None]:
+    segmentation_url = os.environ.get("TPA_SEGMENTATION_BASE_URL")
+    if not segmentation_url:
+        return None, None
+
+    image_bytes, _, err = read_blob_bytes(blob_path)
+    if err or not image_bytes:
+        return None, None
+
+    prompt = (
+        "You are identifying red line boundaries on planning maps and site plans.\n"
+        "Return ONLY JSON with:\n"
+        '{ "red_line_present": true|false, "bbox": [x0, y0, x1, y1] | null, '
+        '"confidence": "low|medium|high", "notes": [] }\n'
+        "Rules:\n"
+        "- bbox must tightly bound the red line boundary if present.\n"
+        "- If no red line boundary is visible, set red_line_present=false and bbox=null.\n"
+    )
+    obj, tool_run_id, errs = _run_vlm_structured(
+        ingest_batch_id=ingest_batch_id,
+        run_id=run_id,
+        tool_name="vlm_redline_bbox",
+        prompt_id="visual_redline_bbox_v1",
+        prompt_version=1,
+        prompt_name="Red line boundary detector",
+        purpose="Detect a red line boundary region for georeferencing.",
+        prompt=prompt,
+        image_bytes=image_bytes,
+    )
+    if errs or not isinstance(obj, dict):
+        return None, None
+    if obj.get("red_line_present") is not True:
+        return None, None
+    bbox = obj.get("bbox")
+    if not (isinstance(bbox, list) and len(bbox) == 4):
+        return None, None
+    try:
+        x0, y0, x1, y1 = [int(float(v)) for v in bbox]
+        if x1 <= x0 or y1 <= y0:
+            return None, None
+        bbox = [x0, y0, x1, y1]
+    except Exception:  # noqa: BLE001
+        return None, None
+
+    tool_run_id = str(uuid4())
+    started = _utc_now()
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+          started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s)
+        """,
+        (
+            tool_run_id,
+            ingest_batch_id,
+            run_id,
+            "segment_redline_boundary",
+            json.dumps({"visual_asset_id": visual_asset_id, "bbox": bbox}, ensure_ascii=False),
+            json.dumps({}, ensure_ascii=False),
+            "running",
+            started,
+            "medium",
+            "SAM2 prompted segmentation for red line boundary.",
+        ),
+    )
+
+    payload = {"image_base64": base64.b64encode(image_bytes).decode("ascii"), "prompts": {"box": bbox}}
+    try:
+        with httpx.Client(timeout=None) as client:
+            resp = client.post(segmentation_url.rstrip("/") + "/segment", json=payload)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            ("error", json.dumps({"error": str(exc)}, ensure_ascii=False), _utc_now(), tool_run_id),
+        )
+        return None, None
+
+    masks = data.get("masks") if isinstance(data, dict) else None
+    limitations_text = data.get("limitations_text") if isinstance(data, dict) else None
+    if not isinstance(masks, list) or not masks:
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            (
+                "error",
+                json.dumps({"error": "no_masks_returned", "limitations_text": limitations_text}, ensure_ascii=False),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        return None, None
+
+    mask = masks[0]
+    if not isinstance(mask, dict) or not isinstance(mask.get("mask_png_base64"), str):
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            ("error", json.dumps({"error": "mask_payload_invalid"}, ensure_ascii=False), _utc_now(), tool_run_id),
+        )
+        return None, None
+
+    mask_bytes = _decode_base64_payload(mask.get("mask_png_base64"))
+    mask_rle = _mask_png_to_rle(mask_bytes)
+    if mask_rle is None:
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            ("error", json.dumps({"error": "mask_rle_failed"}, ensure_ascii=False), _utc_now(), tool_run_id),
+        )
+        return None, None
+
+    prefix = f"derived/visual_masks/{visual_asset_id}"
+    mask_blob_path = f"{prefix}/redline-mask-{uuid4()}.png"
+    stored_path, store_err = write_blob_bytes(mask_blob_path, mask_bytes, content_type="image/png")
+    if store_err or not stored_path:
+        _db_execute(
+            "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s WHERE id = %s::uuid",
+            ("error", json.dumps({"error": f"mask_upload_failed:{store_err}"}, ensure_ascii=False), _utc_now(), tool_run_id),
+        )
+        return None, None
+
+    mask_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO segmentation_masks (
+          id, visual_asset_id, run_id, label, prompt, mask_artifact_path, mask_rle_jsonb,
+          bbox, bbox_quality, confidence, tool_run_id, created_at
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s::jsonb, %s, %s, %s::uuid, %s)
+        """,
+        (
+            mask_id,
+            visual_asset_id,
+            run_id,
+            "red_line_boundary",
+            "bbox_prompt",
+            stored_path,
+            json.dumps(mask_rle, ensure_ascii=False),
+            json.dumps(bbox, ensure_ascii=False),
+            "exact",
+            mask.get("confidence"),
+            tool_run_id,
+            _utc_now(),
+        ),
+    )
+
+    region_id = str(uuid4())
+    evidence_ref = f"visual_redline::{visual_asset_id}::{region_id}"
+    evidence_ref_id = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+    _db_execute(
+        """
+        INSERT INTO visual_asset_regions (
+          id, visual_asset_id, run_id, region_type, bbox, bbox_quality,
+          mask_id, caption_text, evidence_ref_id, metadata_jsonb, created_at
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s, %s::uuid, %s, %s::uuid, %s::jsonb, %s)
+        """,
+        (
+            region_id,
+            visual_asset_id,
+            run_id,
+            "red_line_boundary",
+            json.dumps(bbox, ensure_ascii=False),
+            "exact",
+            mask_id,
+            None,
+            evidence_ref_id,
+            json.dumps(
+                {
+                    "source": "sam2_prompt",
+                    "confidence": mask.get("confidence"),
+                    "tool_run_id": tool_run_id,
+                },
+                ensure_ascii=False,
+            ),
+            _utc_now(),
+        ),
+    )
+
+    _db_execute(
+        "UPDATE tool_runs SET status = %s, outputs_logged = %s::jsonb, ended_at = %s, uncertainty_note = %s WHERE id = %s::uuid",
+        (
+            "success",
+            json.dumps({"visual_asset_id": visual_asset_id, "mask_id": mask_id}, ensure_ascii=False),
+            _utc_now(),
+            limitations_text,
+            tool_run_id,
+        ),
+    )
+
+    return base64.b64encode(mask_bytes).decode("ascii"), mask_id
+
 def _should_attempt_georef(asset_type: str | None, canonical_facts: dict[str, Any]) -> bool:
     if isinstance(asset_type, str):
         normalized = asset_type.strip().lower()
@@ -2240,6 +2728,7 @@ def _auto_georef_visual_assets(
                         "asset_type": asset_type,
                         "asset_subtype": asset_subtype,
                         "target_epsg": target_epsg,
+                        "redline_mask_id": redline_mask_id,
                     },
                     ensure_ascii=False,
                 ),
@@ -2255,7 +2744,12 @@ def _auto_georef_visual_assets(
         image_frame_id = _create_image_frame(visual_asset_id=visual_asset_id, blob_path=blob_path, page_number=page_number)
         _merge_visual_asset_metadata(
             visual_asset_id=visual_asset_id,
-            patch={"image_frame_id": image_frame_id, "georef_tool_run_id": tool_run_id, "georef_status": "running"},
+            patch={
+                "image_frame_id": image_frame_id,
+                "georef_tool_run_id": tool_run_id,
+                "georef_status": "running",
+                "redline_mask_id": redline_mask_id,
+            },
         )
 
         if not base_url:
@@ -2290,6 +2784,9 @@ def _auto_georef_visual_assets(
             "canonical_facts": canonical_facts,
             "asset_specific_facts": asset_specific,
         }
+        if redline_mask_b64:
+            payload["redline_mask_base64"] = redline_mask_b64
+            payload["redline_mask_id"] = redline_mask_id
         try:
             with httpx.Client(timeout=None) as client:
                 resp = client.post(base_url.rstrip("/") + "/auto-georef", json=payload)
@@ -2375,41 +2872,49 @@ def _propose_visual_policy_links(
     ingest_batch_id: str,
     run_id: str | None,
     visual_assets: list[dict[str, Any]],
-    policy_headings: list[dict[str, Any]],
+    policy_sections: list[dict[str, Any]],
     page_texts: dict[int, str],
 ) -> tuple[dict[str, list[dict[str, Any]]], int]:
-    if not visual_assets or not policy_headings:
+    if not visual_assets or not policy_sections:
         return {}, 0
 
     candidates_all = [
         {
-            "policy_code": h.get("policy_code"),
-            "title": h.get("policy_title"),
-            "evidence_ref": h.get("evidence_ref"),
+            "policy_section_id": s.get("policy_section_id"),
+            "policy_code": s.get("policy_code"),
+            "title": s.get("title"),
+            "section_path": s.get("section_path"),
         }
-        for h in policy_headings
-        if h.get("policy_code")
+        for s in policy_sections
+        if s.get("policy_section_id")
     ]
     if not candidates_all:
         return {}, 0
 
-    prompt_id = "visual_asset_link_v2"
+    system_template = (
+        "You are a planning visual linker. Return ONLY valid JSON with:\n"
+        '{ "links": [ { "policy_section_id": "uuid", "confidence": "low|medium|high", '
+        '"rationale": "string", "basis": "in_image_text|caption|visual_facts|page_context" } ] }\n'
+        "Rules:\n"
+        "- Only link to policy_section_id values provided in policy_candidates.\n"
+        "- Use extracted text snippets if present. Do not invent policy codes.\n"
+    )
+
     proposals_by_asset: dict[str, list[dict[str, Any]]] = {}
     proposal_count = 0
 
     for asset in visual_assets:
         visual_asset_id = asset.get("visual_asset_id")
-        blob_path = asset.get("blob_path")
-        if not visual_asset_id or not isinstance(blob_path, str):
+        if not visual_asset_id:
             continue
         metadata = asset.get("metadata") or {}
         page_number = int(asset.get("page_number") or 0)
         caption = metadata.get("caption") or (metadata.get("classification") or {}).get("caption_hint")
         page_text = _truncate_text(page_texts.get(page_number), 1200)
-        asset_type = metadata.get("asset_type") or metadata.get("asset_type_vlm") or (metadata.get("classification") or {}).get("asset_type")
+
         semantic_row = _db_fetch_one(
             """
-            SELECT asset_type, asset_subtype
+            SELECT asset_type, asset_subtype, canonical_facts_jsonb, asset_specific_facts_jsonb
             FROM visual_semantic_outputs
             WHERE visual_asset_id = %s::uuid
               AND (%s::uuid IS NULL OR run_id = %s::uuid)
@@ -2418,36 +2923,43 @@ def _propose_visual_policy_links(
             """,
             (visual_asset_id, run_id, run_id),
         )
-        if semantic_row and not asset_type:
-            asset_type = semantic_row.get("asset_type")
-        asset_subtype = semantic_row.get("asset_subtype") if semantic_row else None
+        asset_type = semantic_row.get("asset_type") if isinstance(semantic_row, dict) else None
+        asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row, dict) else None
+        canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row, dict) and isinstance(semantic_row.get("canonical_facts_jsonb"), dict) else {}
+        asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row, dict) and isinstance(semantic_row.get("asset_specific_facts_jsonb"), dict) else {}
 
-        image_bytes, _, err = read_blob_bytes(blob_path)
-        if err or not image_bytes:
-            raise RuntimeError(f"visual_asset_read_failed:{err or 'no_bytes'}")
-
-        prompt = (
-            "You are a planning visual linker. Return ONLY valid JSON.\n"
-            "Text may appear inside the image; use it if present. Some links are implied by the visual content.\n"
-            "Only link to policies listed in policy_candidates. Do not invent codes.\n"
-            "Output shape:\n"
-            '{ "links": [ { "policy_code": "string", "confidence": "low|medium|high", '
-            '"rationale": "string", "basis": "in_image_text|caption|visual_implied|page_context" } ] }\n'
-            f"Asset type: {asset_type or 'unknown'}.\n"
-            f"Asset subtype: {asset_subtype or 'unknown'}.\n"
-            f"Caption (if any): {caption or ''}\n"
-            f"Page text (if any): {page_text or ''}\n"
-            f"Policy candidates: {json.dumps(candidates_all, ensure_ascii=False)}\n"
+        text_rows = _db_fetch_all(
+            """
+            SELECT caption_text
+            FROM visual_asset_regions
+            WHERE visual_asset_id = %s::uuid
+              AND region_type = 'text_snippet'
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at ASC
+            LIMIT 25
+            """,
+            (visual_asset_id, run_id, run_id),
         )
+        text_snippets = [r.get("caption_text") for r in text_rows if isinstance(r.get("caption_text"), str)]
 
-        obj, tool_run_id, errs = _run_vlm_structured(
-            prompt_id=prompt_id,
-            prompt_version=2,
+        obj, tool_run_id, errs = _llm_structured_sync(
+            prompt_id="visual_policy_link_v1",
+            prompt_version=1,
             prompt_name="Visual policy linker",
-            purpose="Link visual assets to relevant policy sections using the visual content.",
-            tool_name="vlm_visual_policy_link",
-            prompt=prompt,
-            image_bytes=image_bytes,
+            purpose="Link visual assets to policy sections using extracted text and asset facts.",
+            system_template=system_template,
+            user_payload={
+                "visual_asset_id": visual_asset_id,
+                "asset_type": asset_type,
+                "asset_subtype": asset_subtype,
+                "caption": caption,
+                "page_text": page_text,
+                "text_snippets": text_snippets,
+                "canonical_facts": canonical_facts,
+                "asset_specific_facts": asset_specific,
+                "policy_candidates": candidates_all,
+            },
+            output_schema_ref=None,
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
         )
@@ -2460,16 +2972,15 @@ def _propose_visual_policy_links(
         for link in links:
             if not isinstance(link, dict):
                 continue
-            policy_code = link.get("policy_code")
-            if not isinstance(policy_code, str):
+            policy_section_id = link.get("policy_section_id")
+            if not isinstance(policy_section_id, str):
                 continue
             proposals_by_asset.setdefault(visual_asset_id, []).append(
                 {
-                    "policy_code": policy_code,
+                    "policy_section_id": policy_section_id,
                     "confidence": link.get("confidence"),
                     "rationale": link.get("rationale"),
                     "basis": link.get("basis") or "unspecified",
-                    "candidate_scope": "all",
                     "page_number": page_number,
                     "tool_run_id": tool_run_id,
                 }
@@ -2488,6 +2999,7 @@ def _persist_visual_policy_links_from_proposals(
 ) -> tuple[dict[str, list[str]], int]:
     if not proposals_by_asset:
         return {}, 0
+    section_by_id = {str(s.get("policy_section_id")): s for s in policy_sections if s.get("policy_section_id")}
     section_by_code = {
         str(s.get("policy_code")).strip(): s
         for s in policy_sections
@@ -2504,8 +3016,11 @@ def _persist_visual_policy_links_from_proposals(
 
     for asset_id, proposals in proposals_by_asset.items():
         for link in proposals:
+            policy_section_id = link.get("policy_section_id")
             policy_code = link.get("policy_code")
             section = None
+            if isinstance(policy_section_id, str):
+                section = section_by_id.get(policy_section_id)
             if isinstance(policy_code, str):
                 section = section_by_code.get(policy_code.strip()) or section_by_code.get(policy_code.strip().upper())
                 if not section:
@@ -2990,7 +3505,6 @@ def _llm_extract_policy_structure(
                 purpose="Split policy section text into clauses and extract definitions, targets, and monitoring hooks.",
                 system_template=system_template,
                 user_payload=payload,
-                time_budget_seconds=120.0,
                 output_schema_ref="schemas/PolicySectionClauseParseResult.schema.json",
                 ingest_batch_id=ingest_batch_id,
                 run_id=run_id,
@@ -3077,7 +3591,6 @@ def _llm_extract_policy_structure(
             purpose="Extract policy sections, clauses, definitions, targets, and monitoring hooks from layout blocks.",
             system_template=system_template,
             user_payload=payload,
-            time_budget_seconds=120.0,
             output_schema_ref="schemas/PolicyStructureParseResult.schema.json",
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -3114,6 +3627,338 @@ def _llm_extract_policy_structure(
 
     return list(merged.values()), tool_run_ids, errors
 
+
+def _llm_extract_policy_logic_assets(
+    *,
+    ingest_batch_id: str,
+    run_id: str | None,
+    document_id: str,
+    document_title: str,
+    policy_sections: list[dict[str, Any]],
+    block_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[str]]:
+    if not policy_sections:
+        return [], [], []
+
+    block_lookup = {b.get("block_id"): b for b in block_rows if b.get("block_id")}
+    errors: list[str] = []
+    matrices: list[dict[str, Any]] = []
+    scopes: list[dict[str, Any]] = []
+
+    system_template = (
+        "You are a planning policy logic extractor. Return ONLY valid JSON with:\n"
+        "{\n"
+        '  "standard_matrices": [\n'
+        '    {"matrix_id": "string|null", "matrix_title": "string|null", "inputs": ["..."], "outputs": ["..."], '
+        '     "logic_type": "Lookup|Multiplication|Threshold|Other", "evidence_block_id": "block_id|null"}\n'
+        "  ],\n"
+        '  "scope_candidates": [\n'
+        '    {\n'
+        '      "id": "string|null",\n'
+        '      "geography_refs": ["..."],\n'
+        '      "development_types": ["..."],\n'
+        '      "use_classes": ["..."],\n'
+        '      "use_class_regime": "2020_Amendment|Pre_2020|Sui_Generis|unknown",\n'
+        '      "temporal_scope": {"start_date": null, "end_date": null, "phasing_stage": null},\n'
+        '      "conditions": ["..."],\n'
+        '      "scope_notes": "string|null",\n'
+        '      "evidence_block_id": "block_id|null"\n'
+        "    }\n"
+        "  ],\n"
+        '  "limitations": []\n'
+        "}\n"
+        "Rules:\n"
+        "- Use ONLY provided block_id values for evidence_block_id.\n"
+        "- If unsure, return empty lists.\n"
+    )
+
+    for section in policy_sections:
+        section_id = section.get("policy_section_id")
+        block_ids = section.get("block_ids") if isinstance(section.get("block_ids"), list) else []
+        section_blocks = [
+            {
+                "block_id": block_id,
+                "text": block_lookup.get(block_id, {}).get("text"),
+                "page_number": block_lookup.get(block_id, {}).get("page_number"),
+            }
+            for block_id in block_ids
+            if block_lookup.get(block_id) and block_lookup.get(block_id).get("text")
+        ]
+        if not section_blocks:
+            continue
+        payload = {
+            "document_id": document_id,
+            "document_title": document_title,
+            "policy_section": {
+                "policy_section_id": section_id,
+                "policy_code": section.get("policy_code"),
+                "title": section.get("title"),
+                "section_path": section.get("section_path"),
+            },
+            "blocks": section_blocks,
+        }
+        obj, tool_run_id, errs = _llm_structured_sync(
+            prompt_id="policy_logic_assets_v1",
+            prompt_version=1,
+            prompt_name="Policy logic assets extractor",
+            purpose="Extract matrices and scope candidates from policy sections.",
+            system_template=system_template,
+            user_payload=payload,
+            output_schema_ref=None,
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+        )
+        if errs:
+            errors.extend(errs)
+        if not isinstance(obj, dict):
+            continue
+        for matrix in obj.get("standard_matrices") or []:
+            if not isinstance(matrix, dict):
+                continue
+            evidence_block_id = matrix.get("evidence_block_id")
+            if isinstance(evidence_block_id, str) and not matrix.get("evidence_ref"):
+                block = block_lookup.get(evidence_block_id)
+                if block and isinstance(block.get("evidence_ref"), str):
+                    matrix["evidence_ref"] = block.get("evidence_ref")
+            matrix["inputs"] = _normalize_text_list(matrix.get("inputs"))
+            matrix["outputs"] = _normalize_text_list(matrix.get("outputs"))
+            matrix["policy_section_id"] = section_id
+            matrix["tool_run_id"] = tool_run_id
+            matrices.append(matrix)
+        for scope in obj.get("scope_candidates") or []:
+            if not isinstance(scope, dict):
+                continue
+            evidence_block_id = scope.get("evidence_block_id")
+            if isinstance(evidence_block_id, str) and not scope.get("evidence_ref"):
+                block = block_lookup.get(evidence_block_id)
+                if block and isinstance(block.get("evidence_ref"), str):
+                    scope["evidence_ref"] = block.get("evidence_ref")
+            scope["geography_refs"] = _normalize_text_list(scope.get("geography_refs"))
+            scope["development_types"] = _normalize_text_list(scope.get("development_types"))
+            scope["use_classes"] = _normalize_text_list(scope.get("use_classes"))
+            scope["conditions"] = _normalize_text_list(scope.get("conditions"))
+            scope["policy_section_id"] = section_id
+            scope["tool_run_id"] = tool_run_id
+            scopes.append(scope)
+
+    return matrices, scopes, errors
+
+
+def _normalize_text_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    out: list[str] = []
+    for item in values:
+        if not isinstance(item, str):
+            continue
+        cleaned = item.strip()
+        if cleaned:
+            out.append(cleaned)
+    return out
+
+
+def _merge_matrix_fields(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(primary)
+    merged["inputs"] = sorted(set(_normalize_text_list(primary.get("inputs")) + _normalize_text_list(secondary.get("inputs"))))
+    merged["outputs"] = sorted(set(_normalize_text_list(primary.get("outputs")) + _normalize_text_list(secondary.get("outputs"))))
+    for key in ("logic_type", "matrix_title", "matrix_id", "evidence_ref", "evidence_block_id", "policy_section_id", "tool_run_id"):
+        if not merged.get(key) and secondary.get(key):
+            merged[key] = secondary.get(key)
+    sources = {s for s in (primary.get("source"), secondary.get("source")) if isinstance(s, str)}
+    if len(sources) > 1:
+        merged["source"] = "hybrid"
+    elif sources:
+        merged["source"] = sources.pop()
+    merged["quality_score"] = max(float(primary.get("quality_score") or 0.0), float(secondary.get("quality_score") or 0.0))
+    return merged
+
+
+def _merge_scope_fields(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(primary)
+    merged["geography_refs"] = sorted(set(_normalize_text_list(primary.get("geography_refs")) + _normalize_text_list(secondary.get("geography_refs"))))
+    merged["development_types"] = sorted(set(_normalize_text_list(primary.get("development_types")) + _normalize_text_list(secondary.get("development_types"))))
+    merged["use_classes"] = sorted(set(_normalize_text_list(primary.get("use_classes")) + _normalize_text_list(secondary.get("use_classes"))))
+    merged["conditions"] = sorted(set(_normalize_text_list(primary.get("conditions")) + _normalize_text_list(secondary.get("conditions"))))
+    for key in ("use_class_regime", "temporal_scope", "scope_notes", "evidence_ref", "evidence_block_id", "policy_section_id", "tool_run_id"):
+        if not merged.get(key) and secondary.get(key):
+            merged[key] = secondary.get(key)
+    sources = {s for s in (primary.get("source"), secondary.get("source")) if isinstance(s, str)}
+    if len(sources) > 1:
+        merged["source"] = "hybrid"
+    elif sources:
+        merged["source"] = sources.pop()
+    merged["quality_score"] = max(float(primary.get("quality_score") or 0.0), float(secondary.get("quality_score") or 0.0))
+    return merged
+
+
+def _matrix_quality_score(matrix: dict[str, Any]) -> float:
+    score = 0.0
+    if _normalize_text_list(matrix.get("inputs")):
+        score += 1.0
+    if _normalize_text_list(matrix.get("outputs")):
+        score += 1.0
+    logic_type = matrix.get("logic_type")
+    if isinstance(logic_type, str) and logic_type.strip().lower() not in {"other", "unknown"}:
+        score += 0.5
+    if matrix.get("evidence_ref") or matrix.get("evidence_block_id"):
+        score += 1.0
+    if matrix.get("policy_section_id"):
+        score += 0.5
+    if matrix.get("matrix_title"):
+        score += 0.25
+    return score
+
+
+def _scope_quality_score(scope: dict[str, Any]) -> float:
+    score = 0.0
+    if _normalize_text_list(scope.get("geography_refs")):
+        score += 1.0
+    if _normalize_text_list(scope.get("development_types")):
+        score += 1.0
+    if _normalize_text_list(scope.get("use_classes")):
+        score += 1.0
+    if _normalize_text_list(scope.get("conditions")):
+        score += 0.5
+    if isinstance(scope.get("scope_notes"), str) and scope.get("scope_notes").strip():
+        score += 0.25
+    temporal_scope = scope.get("temporal_scope")
+    if isinstance(temporal_scope, dict) and any(temporal_scope.get(k) for k in ("start_date", "end_date", "phasing_stage")):
+        score += 0.5
+    if scope.get("evidence_ref") or scope.get("evidence_block_id"):
+        score += 1.0
+    if scope.get("policy_section_id"):
+        score += 0.5
+    return score
+
+
+def _matrix_fingerprint(matrix: dict[str, Any]) -> str:
+    if isinstance(matrix.get("evidence_block_id"), str):
+        return f"block:{matrix.get('evidence_block_id')}"
+    if isinstance(matrix.get("evidence_ref"), str):
+        return f"ref:{matrix.get('evidence_ref')}"
+    policy_section_id = matrix.get("policy_section_id") or "none"
+    inputs = ",".join(sorted(_normalize_text_list(matrix.get("inputs"))))
+    outputs = ",".join(sorted(_normalize_text_list(matrix.get("outputs"))))
+    logic_type = str(matrix.get("logic_type") or "")
+    title = str(matrix.get("matrix_title") or "")
+    return f"fields:{policy_section_id}|{inputs}|{outputs}|{logic_type}|{title}"
+
+
+def _scope_fingerprint(scope: dict[str, Any]) -> str:
+    if isinstance(scope.get("evidence_block_id"), str):
+        return f"block:{scope.get('evidence_block_id')}"
+    if isinstance(scope.get("evidence_ref"), str):
+        return f"ref:{scope.get('evidence_ref')}"
+    policy_section_id = scope.get("policy_section_id") or "none"
+    geography = ",".join(sorted(_normalize_text_list(scope.get("geography_refs"))))
+    dev = ",".join(sorted(_normalize_text_list(scope.get("development_types"))))
+    use = ",".join(sorted(_normalize_text_list(scope.get("use_classes"))))
+    conditions = ",".join(sorted(_normalize_text_list(scope.get("conditions"))))
+    return f"fields:{policy_section_id}|{geography}|{dev}|{use}|{conditions}"
+
+
+def _merge_policy_logic_assets(
+    *,
+    docparse_matrices: list[dict[str, Any]],
+    llm_matrices: list[dict[str, Any]],
+    docparse_scopes: list[dict[str, Any]],
+    llm_scopes: list[dict[str, Any]],
+    sections: list[dict[str, Any]],
+    policy_sections: list[dict[str, Any]],
+    block_rows: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    section_by_source = {
+        s.get("source_section_id"): s.get("policy_section_id")
+        for s in policy_sections
+        if s.get("source_section_id") and s.get("policy_section_id")
+    }
+    block_to_section: dict[str, str] = {}
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        source_section_id = section.get("section_id")
+        policy_section_id = section_by_source.get(source_section_id)
+        if not policy_section_id:
+            continue
+        for block_id in section.get("block_ids") or []:
+            if isinstance(block_id, str):
+                block_to_section[block_id] = policy_section_id
+
+    block_lookup = {b.get("block_id"): b for b in block_rows if b.get("block_id")}
+
+    def _enrich_item(item: dict[str, Any]) -> dict[str, Any]:
+        enriched = dict(item)
+        evidence_ref = enriched.get("evidence_ref")
+        evidence_block_id = enriched.get("evidence_block_id")
+        if isinstance(evidence_block_id, str) and not evidence_ref:
+            block = block_lookup.get(evidence_block_id)
+            if block and isinstance(block.get("evidence_ref"), str):
+                enriched["evidence_ref"] = block.get("evidence_ref")
+        if not evidence_block_id and isinstance(evidence_ref, str):
+            parsed = _parse_evidence_ref(evidence_ref)
+            if parsed:
+                block_id = _block_id_from_section_ref(parsed[2])
+                if block_id:
+                    enriched["evidence_block_id"] = block_id
+        if not enriched.get("policy_section_id") and isinstance(enriched.get("evidence_block_id"), str):
+            enriched["policy_section_id"] = block_to_section.get(enriched.get("evidence_block_id"))
+        return enriched
+
+    merged_matrices: dict[str, dict[str, Any]] = {}
+    for item in (docparse_matrices or []):
+        if not isinstance(item, dict):
+            continue
+        enriched = _enrich_item(item)
+        enriched["inputs"] = _normalize_text_list(enriched.get("inputs"))
+        enriched["outputs"] = _normalize_text_list(enriched.get("outputs"))
+        enriched["source"] = "docparse"
+        enriched["quality_score"] = _matrix_quality_score(enriched)
+        merged_matrices[_matrix_fingerprint(enriched)] = enriched
+
+    for item in (llm_matrices or []):
+        if not isinstance(item, dict):
+            continue
+        enriched = _enrich_item(item)
+        enriched["inputs"] = _normalize_text_list(enriched.get("inputs"))
+        enriched["outputs"] = _normalize_text_list(enriched.get("outputs"))
+        enriched["source"] = "llm"
+        enriched["quality_score"] = _matrix_quality_score(enriched)
+        key = _matrix_fingerprint(enriched)
+        if key in merged_matrices:
+            merged_matrices[key] = _merge_matrix_fields(merged_matrices[key], enriched)
+        else:
+            merged_matrices[key] = enriched
+
+    merged_scopes: dict[str, dict[str, Any]] = {}
+    for item in (docparse_scopes or []):
+        if not isinstance(item, dict):
+            continue
+        enriched = _enrich_item(item)
+        enriched["geography_refs"] = _normalize_text_list(enriched.get("geography_refs"))
+        enriched["development_types"] = _normalize_text_list(enriched.get("development_types"))
+        enriched["use_classes"] = _normalize_text_list(enriched.get("use_classes"))
+        enriched["conditions"] = _normalize_text_list(enriched.get("conditions"))
+        enriched["source"] = "docparse"
+        enriched["quality_score"] = _scope_quality_score(enriched)
+        merged_scopes[_scope_fingerprint(enriched)] = enriched
+
+    for item in (llm_scopes or []):
+        if not isinstance(item, dict):
+            continue
+        enriched = _enrich_item(item)
+        enriched["geography_refs"] = _normalize_text_list(enriched.get("geography_refs"))
+        enriched["development_types"] = _normalize_text_list(enriched.get("development_types"))
+        enriched["use_classes"] = _normalize_text_list(enriched.get("use_classes"))
+        enriched["conditions"] = _normalize_text_list(enriched.get("conditions"))
+        enriched["source"] = "llm"
+        enriched["quality_score"] = _scope_quality_score(enriched)
+        key = _scope_fingerprint(enriched)
+        if key in merged_scopes:
+            merged_scopes[key] = _merge_scope_fields(merged_scopes[key], enriched)
+        else:
+            merged_scopes[key] = enriched
+
+    return list(merged_matrices.values()), list(merged_scopes.values())
 
 def _confidence_hint_score(value: str | None) -> float:
     if not isinstance(value, str):
@@ -3156,6 +4001,7 @@ def _persist_policy_logic_assets(
         for s in policy_sections
         if s.get("source_section_id") and s.get("policy_section_id")
     }
+    block_lookup = {b.get("block_id"): b for b in block_rows if b.get("block_id")}
     block_to_section: dict[str, str] = {}
     for section in sections:
         if not isinstance(section, dict):
@@ -3173,22 +4019,37 @@ def _persist_policy_logic_assets(
     for matrix in standard_matrices or []:
         if not isinstance(matrix, dict):
             continue
+        policy_section_id = matrix.get("policy_section_id")
         evidence_ref = matrix.get("evidence_ref")
+        evidence_block_id = matrix.get("evidence_block_id")
         section_ref = None
         if isinstance(evidence_ref, str):
             parsed = _parse_evidence_ref(evidence_ref)
             if parsed:
                 section_ref = parsed[2]
         block_id = _block_id_from_section_ref(section_ref) if section_ref else None
-        policy_section_id = block_to_section.get(block_id) if block_id else None
-        evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else None
+        if not policy_section_id and block_id:
+            policy_section_id = block_to_section.get(block_id)
+        if not policy_section_id and isinstance(evidence_block_id, str):
+            policy_section_id = block_to_section.get(evidence_block_id)
+
+        evidence_ref_id = None
+        if isinstance(evidence_ref, str) and evidence_ref:
+            evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else evidence_ref_map.get(evidence_ref)
+        if not evidence_ref_id and isinstance(evidence_block_id, str):
+            block = block_lookup.get(evidence_block_id)
+            if block and isinstance(block.get("evidence_ref"), str):
+                evidence_ref_id = evidence_ref_map.get(block.get("evidence_ref"))
         matrix_id = str(uuid4())
         matrix_jsonb = {
             "matrix_id": matrix.get("matrix_id"),
+            "matrix_title": matrix.get("matrix_title") or matrix.get("title"),
             "inputs": matrix.get("inputs"),
             "outputs": matrix.get("outputs"),
             "logic_type": matrix.get("logic_type"),
             "evidence_ref": evidence_ref,
+            "evidence_block_id": evidence_block_id,
+            "policy_section_id": policy_section_id,
         }
         _db_execute(
             """
@@ -3204,7 +4065,14 @@ def _persist_policy_logic_assets(
                 run_id,
                 json.dumps(matrix_jsonb, ensure_ascii=False),
                 evidence_ref_id,
-                json.dumps({}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "source": matrix.get("source"),
+                        "quality_score": matrix.get("quality_score"),
+                        "tool_run_id": matrix.get("tool_run_id"),
+                    },
+                    ensure_ascii=False,
+                ),
                 _utc_now(),
             ),
         )
@@ -3212,19 +4080,26 @@ def _persist_policy_logic_assets(
             node_id=f"policy_matrix::{matrix_id}",
             node_type="PolicyMatrix",
             canonical_fk=matrix_id,
-            props={"logic_type": matrix.get("logic_type"), "matrix_id": matrix.get("matrix_id")},
+            props={
+                "logic_type": matrix.get("logic_type"),
+                "matrix_id": matrix.get("matrix_id"),
+                "matrix_title": matrix.get("matrix_title") or matrix.get("title"),
+            },
         )
         if policy_section_id:
+            source = matrix.get("source")
+            resolve_method = "llm_policy_matrix" if source in {"llm", "hybrid"} else "docparse_standard_matrix"
+            edge_class = source if isinstance(source, str) else "docparse"
             _insert_kg_edge(
                 src_id=f"policy_section::{policy_section_id}",
                 dst_id=f"policy_matrix::{matrix_id}",
                 edge_type="CONTAINS_MATRIX",
                 run_id=run_id,
-                edge_class="docparse",
-                resolve_method="docparse_standard_matrix",
+                edge_class=edge_class,
+                resolve_method=resolve_method,
                 props={},
                 evidence_ref_id=evidence_ref_id,
-                tool_run_id=None,
+                tool_run_id=matrix.get("tool_run_id"),
             )
         matrix_count += 1
 
@@ -3232,15 +4107,27 @@ def _persist_policy_logic_assets(
     for scope in scope_candidates or []:
         if not isinstance(scope, dict):
             continue
+        policy_section_id = scope.get("policy_section_id")
         evidence_ref = scope.get("evidence_ref")
+        evidence_block_id = scope.get("evidence_block_id")
         section_ref = None
         if isinstance(evidence_ref, str):
             parsed = _parse_evidence_ref(evidence_ref)
             if parsed:
                 section_ref = parsed[2]
         block_id = _block_id_from_section_ref(section_ref) if section_ref else None
-        policy_section_id = block_to_section.get(block_id) if block_id else None
-        evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else None
+        if not policy_section_id and block_id:
+            policy_section_id = block_to_section.get(block_id)
+        if not policy_section_id and isinstance(evidence_block_id, str):
+            policy_section_id = block_to_section.get(evidence_block_id)
+
+        evidence_ref_id = None
+        if isinstance(evidence_ref, str) and evidence_ref:
+            evidence_ref_id = evidence_ref_map.get(section_ref) if section_ref else evidence_ref_map.get(evidence_ref)
+        if not evidence_ref_id and isinstance(evidence_block_id, str):
+            block = block_lookup.get(evidence_block_id)
+            if block and isinstance(block.get("evidence_ref"), str):
+                evidence_ref_id = evidence_ref_map.get(block.get("evidence_ref"))
         scope_id = str(uuid4())
         scope_jsonb = {
             "scope_id": scope.get("id"),
@@ -3250,7 +4137,10 @@ def _persist_policy_logic_assets(
             "use_class_regime": scope.get("use_class_regime"),
             "temporal_scope": scope.get("temporal_scope"),
             "conditions": scope.get("conditions"),
+            "scope_notes": scope.get("scope_notes"),
             "evidence_ref": evidence_ref,
+            "evidence_block_id": evidence_block_id,
+            "policy_section_id": policy_section_id,
         }
         _db_execute(
             """
@@ -3266,7 +4156,14 @@ def _persist_policy_logic_assets(
                 run_id,
                 json.dumps(scope_jsonb, ensure_ascii=False),
                 evidence_ref_id,
-                json.dumps({}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "source": scope.get("source"),
+                        "quality_score": scope.get("quality_score"),
+                        "tool_run_id": scope.get("tool_run_id"),
+                    },
+                    ensure_ascii=False,
+                ),
                 _utc_now(),
             ),
         )
@@ -3277,16 +4174,19 @@ def _persist_policy_logic_assets(
             props={},
         )
         if policy_section_id:
+            source = scope.get("source")
+            resolve_method = "llm_scope_candidate" if source in {"llm", "hybrid"} else "docparse_scope_candidate"
+            edge_class = source if isinstance(source, str) else "docparse"
             _insert_kg_edge(
                 src_id=f"policy_section::{policy_section_id}",
                 dst_id=f"policy_scope::{scope_id}",
                 edge_type="DEFINES_SCOPE",
                 run_id=run_id,
-                edge_class="docparse",
-                resolve_method="docparse_scope_candidate",
+                edge_class=edge_class,
+                resolve_method=resolve_method,
                 props={},
                 evidence_ref_id=evidence_ref_id,
-                tool_run_id=None,
+                tool_run_id=scope.get("tool_run_id"),
             )
         scope_count += 1
 
@@ -3690,7 +4590,6 @@ def _extract_document_identity_status(
         purpose="Classify document identity, status, and planning weight with explicit evidence.",
         system_template=system_template,
         user_payload=payload,
-        time_budget_seconds=120.0,
         output_schema_ref="schemas/DocumentIdentityStatusBundle.schema.json",
         ingest_batch_id=ingest_batch_id,
         run_id=run_id,
@@ -4183,7 +5082,6 @@ def _llm_extract_edges(
             purpose="Extract policy citations, clause mentions, and clause conditions from clauses.",
             system_template=system_template,
             user_payload=payload,
-            time_budget_seconds=90.0,
             output_schema_ref="schemas/PolicyEdgeParseResult.schema.json",
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
@@ -4597,6 +5495,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "visual_semantic_assets": 0,
             "visual_semantic_assertions": 0,
             "visual_semantic_agents": 0,
+            "visual_text_snippets": 0,
             "georef_attempts": 0,
             "georef_success": 0,
             "transforms": 0,
@@ -4606,6 +5505,8 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             "definitions": 0,
             "targets": 0,
             "monitoring": 0,
+            "policy_matrices": 0,
+            "policy_scopes": 0,
             "unit_embeddings_chunk": 0,
             "unit_embeddings_policy_section": 0,
             "unit_embeddings_policy_clause": 0,
@@ -4614,6 +5515,16 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
         }
         errors: list[str] = []
         step_counts: dict[str, int] = {}
+
+        def _progress(step_name: str, outputs: dict[str, Any], status: str = "running", error_text: str | None = None) -> None:
+            if run_id:
+                _update_run_step_progress(
+                    run_id=run_id,
+                    step_name=step_name,
+                    outputs=outputs,
+                    status=status,
+                    error_text=error_text,
+                )
 
         if ingest_batch_id:
             _start_run_step(
@@ -4776,6 +5687,14 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 raw_artifact_id=raw_artifact_id,
             )
             step_counts["anchor_raw"] = step_counts.get("anchor_raw", 0) + 1
+            _progress(
+                "anchor_raw",
+                {
+                    "documents": step_counts.get("anchor_raw", 0),
+                    "last_document_id": document_id,
+                    "last_filename": filename,
+                },
+            )
 
             parse_result = _call_docparse_bundle(
                 file_bytes=data_bytes,
@@ -4787,12 +5706,22 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     "job_id": ingest_job_id,
                     "source_url": source_url,
                 },
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
             )
             bundle_path = parse_result.get("parse_bundle_path")
             if not isinstance(bundle_path, str):
                 errors.append("parse_bundle_missing")
                 continue
             step_counts["docling_parse"] = step_counts.get("docling_parse", 0) + 1
+            _progress(
+                "docling_parse",
+                {
+                    "documents": step_counts.get("docling_parse", 0),
+                    "last_document_id": document_id,
+                    "parse_bundle_path": bundle_path,
+                },
+            )
 
             bundle = _load_parse_bundle(bundle_path)
             _insert_parse_bundle_record(
@@ -4877,6 +5806,20 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             )
             counts["visual_assets"] += len(visual_rows)
             _persist_visual_features(visual_assets=visual_rows, run_id=run_id)
+            step_counts["canonical_load"] = step_counts.get("canonical_load", 0) + 1
+            _progress(
+                "canonical_load",
+                {
+                    "documents": step_counts.get("canonical_load", 0),
+                    "pages": counts.get("pages", 0),
+                    "layout_blocks": counts.get("layout_blocks", 0),
+                    "tables": counts.get("tables", 0),
+                    "vector_paths": counts.get("vector_paths", 0),
+                    "chunks": counts.get("chunks", 0),
+                    "visual_assets": counts.get("visual_assets", 0),
+                    "last_document_id": document_id,
+                },
+            )
 
             semantic = bundle.get("semantic") if isinstance(bundle.get("semantic"), dict) else {}
             _persist_visual_semantic_features(visual_assets=visual_rows, semantic=semantic, run_id=run_id)
@@ -4890,6 +5833,27 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     visual_assets=visual_rows,
                 )
                 step_counts["visual_semantics_asset"] = step_counts.get("visual_semantics_asset", 0) + 1
+                _progress(
+                    "visual_semantics_asset",
+                    {
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "visual_semantic_assets": counts.get("visual_semantic_assets", 0),
+                    },
+                )
+                text_snippet_count = _extract_visual_text_snippets(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                )
+                counts["visual_text_snippets"] = counts.get("visual_text_snippets", 0) + text_snippet_count
+                if text_snippet_count:
+                    step_counts["visual_text_snippets"] = step_counts.get("visual_text_snippets", 0) + 1
+                    _progress(
+                        "visual_semantics_asset",
+                        {
+                            "visual_text_snippets": counts.get("visual_text_snippets", 0),
+                        },
+                    )
 
                 mask_count, region_count = _segment_visual_assets(
                     ingest_batch_id=ingest_batch_id,
@@ -4902,6 +5866,13 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 counts["segmentation_masks"] += mask_count
                 counts["visual_asset_regions"] += region_count
                 step_counts["visual_segmentation"] = step_counts.get("visual_segmentation", 0) + 1
+                _progress(
+                    "visual_segmentation",
+                    {
+                        "segmentation_masks": counts.get("segmentation_masks", 0),
+                        "visual_asset_regions": counts.get("visual_asset_regions", 0),
+                    },
+                )
 
                 vector_count = _vectorize_segmentation_masks(
                     ingest_batch_id=ingest_batch_id,
@@ -4911,6 +5882,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 )
                 counts["vector_paths"] += vector_count
                 step_counts["visual_vectorization"] = step_counts.get("visual_vectorization", 0) + 1
+                _progress(
+                    "visual_vectorization",
+                    {
+                        "vector_paths": counts.get("vector_paths", 0),
+                    },
+                )
 
                 assertion_count = _extract_visual_region_assertions(
                     ingest_batch_id=ingest_batch_id,
@@ -4919,6 +5896,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 )
                 counts["visual_semantic_assertions"] += assertion_count
                 step_counts["visual_semantics_regions"] = step_counts.get("visual_semantics_regions", 0) + 1
+                _progress(
+                    "visual_semantics_regions",
+                    {
+                        "visual_semantic_assertions": counts.get("visual_semantic_assertions", 0),
+                    },
+                )
 
                 target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
                 georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
@@ -4932,16 +5915,15 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 counts["transforms"] += transform_count
                 counts["projection_artifacts"] += projection_count
                 step_counts["visual_georef"] = step_counts.get("visual_georef", 0) + 1
-
-                link_proposals, _ = _propose_visual_policy_links(
-                    ingest_batch_id=ingest_batch_id,
-                    run_id=run_id,
-                    visual_assets=visual_rows,
-                    policy_headings=policy_headings,
-                    page_texts=page_texts,
+                _progress(
+                    "visual_georef",
+                    {
+                        "georef_attempts": counts.get("georef_attempts", 0),
+                        "georef_success": counts.get("georef_success", 0),
+                        "transforms": counts.get("transforms", 0),
+                        "projection_artifacts": counts.get("projection_artifacts", 0),
+                    },
                 )
-
-            step_counts["canonical_load"] = step_counts.get("canonical_load", 0) + 1
 
             identity_bundle, identity_tool_run_id, identity_errors = _extract_document_identity_status(
                 ingest_batch_id=ingest_batch_id,
@@ -4958,6 +5940,10 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             if identity_bundle:
                 counts["document_identity_status"] += 1
                 step_counts["document_identity_status"] = step_counts.get("document_identity_status", 0) + 1
+                _progress(
+                    "document_identity_status",
+                    {"documents": step_counts.get("document_identity_status", 0)},
+                )
             sections, _, struct_errors = _llm_extract_policy_structure(
                 ingest_batch_id=ingest_batch_id,
                 run_id=run_id,
@@ -4994,18 +5980,49 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             counts["targets"] += len(targets)
             counts["monitoring"] += len(monitoring)
             step_counts["structural_llm"] = step_counts.get("structural_llm", 0) + 1
+            _progress(
+                "structural_llm",
+                {
+                    "policy_sections": counts.get("policy_sections", 0),
+                    "policy_clauses": counts.get("policy_clauses", 0),
+                    "definitions": counts.get("definitions", 0),
+                    "targets": counts.get("targets", 0),
+                    "monitoring": counts.get("monitoring", 0),
+                },
+            )
+
+            llm_matrices, llm_scopes, logic_errors = _llm_extract_policy_logic_assets(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                document_title=doc_metadata.get("title") or filename,
+                policy_sections=policy_sections,
+                block_rows=block_rows,
+            )
+            if logic_errors:
+                errors.extend([f"policy_logic_assets:{err}" for err in logic_errors])
+
+            merged_matrices, merged_scopes = _merge_policy_logic_assets(
+                docparse_matrices=semantic.get("standard_matrices")
+                if isinstance(semantic.get("standard_matrices"), list)
+                else [],
+                llm_matrices=llm_matrices,
+                docparse_scopes=semantic.get("scope_candidates")
+                if isinstance(semantic.get("scope_candidates"), list)
+                else [],
+                llm_scopes=llm_scopes,
+                sections=sections,
+                policy_sections=policy_sections,
+                block_rows=block_rows,
+            )
 
             matrix_count, scope_count = _persist_policy_logic_assets(
                 document_id=document_id,
                 run_id=run_id,
                 sections=sections,
                 policy_sections=policy_sections,
-                standard_matrices=semantic.get("standard_matrices")
-                if isinstance(semantic.get("standard_matrices"), list)
-                else [],
-                scope_candidates=semantic.get("scope_candidates")
-                if isinstance(semantic.get("scope_candidates"), list)
-                else [],
+                standard_matrices=merged_matrices,
+                scope_candidates=merged_scopes,
                 evidence_ref_map=evidence_ref_map,
                 block_rows=block_rows,
             )
@@ -5013,6 +6030,24 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             counts["policy_scopes"] = counts.get("policy_scopes", 0) + scope_count
             if matrix_count or scope_count:
                 step_counts["policy_logic_assets"] = step_counts.get("policy_logic_assets", 0) + 1
+                _progress(
+                    "structural_llm",
+                    {
+                        "policy_matrices": counts.get("policy_matrices", 0),
+                        "policy_scopes": counts.get("policy_scopes", 0),
+                    },
+                )
+
+            if visual_rows and policy_sections:
+                link_proposals, _ = _propose_visual_policy_links(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_assets=visual_rows,
+                    policy_sections=policy_sections,
+                    page_texts=page_texts,
+                )
+                if link_proposals:
+                    step_counts["visual_linking"] = step_counts.get("visual_linking", 0) + 1
 
             policy_codes = [s.get("policy_code") for s in policy_sections if s.get("policy_code")]
             citations, mentions, conditions, edge_tool_run_ids, edge_errors = _llm_extract_edges(
@@ -5037,6 +6072,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
             )
             step_counts["edges_llm"] = step_counts.get("edges_llm", 0) + 1
+            _progress("edges_llm", {"documents": step_counts.get("edges_llm", 0)})
 
             _persist_kg_nodes(
                 document_id=document_id,
@@ -5066,6 +6102,10 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 )
                 counts["visual_asset_links"] += link_count
                 step_counts["visual_linking"] = step_counts.get("visual_linking", 0) + 1
+                _progress(
+                    "visual_linking",
+                    {"visual_asset_links": counts.get("visual_asset_links", 0)},
+                )
 
                 counts["unit_embeddings_visual"] += _embed_visual_assets(
                     ingest_batch_id=ingest_batch_id,
@@ -5075,6 +6115,10 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     links_by_asset=links_by_asset,
                 )
                 step_counts["visual_embeddings"] = step_counts.get("visual_embeddings", 0) + 1
+                _progress(
+                    "visual_embeddings",
+                    {"unit_embeddings_visual": counts.get("unit_embeddings_visual", 0)},
+                )
 
 
             counts["unit_embeddings_chunk"] += _embed_units(
@@ -5102,6 +6146,14 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 id_key="policy_clause_id",
             )
             step_counts["embeddings"] = step_counts.get("embeddings", 0) + 1
+            _progress(
+                "embeddings",
+                {
+                    "unit_embeddings_chunk": counts.get("unit_embeddings_chunk", 0),
+                    "unit_embeddings_policy_section": counts.get("unit_embeddings_policy_section", 0),
+                    "unit_embeddings_policy_clause": counts.get("unit_embeddings_policy_clause", 0),
+                },
+            )
 
         if counts.get("visual_semantic_assertions", 0) > 0:
             counts["unit_embeddings_visual_assertion"] += _embed_visual_assertions(
@@ -5109,6 +6161,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
             )
             step_counts["visual_assertion_embeddings"] = step_counts.get("visual_assertion_embeddings", 0) + 1
+            _progress(
+                "visual_assertion_embeddings",
+                {
+                    "unit_embeddings_visual_assertion": counts.get("unit_embeddings_visual_assertion", 0),
+                },
+            )
 
         completed = _utc_now()
         if ingest_batch_id:
@@ -5154,6 +6212,7 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 outputs={
                     "visual_assets": counts.get("visual_assets", 0),
                     "visual_semantic_assets": counts.get("visual_semantic_assets", 0),
+                    "visual_text_snippets": counts.get("visual_text_snippets", 0),
                 },
             )
             _finish_run_step(
@@ -5234,6 +6293,8 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     "definitions": counts.get("definitions", 0),
                     "targets": counts.get("targets", 0),
                     "monitoring": counts.get("monitoring", 0),
+                    "policy_matrices": counts.get("policy_matrices", 0),
+                    "policy_scopes": counts.get("policy_scopes", 0),
                 },
             )
             _finish_run_step(

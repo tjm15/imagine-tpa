@@ -21,7 +21,6 @@
     },
     "audience": { "type": ["string", "null"], "description": "E.g. planner, cabinet, public, inspector." },
     "style_guide": { "type": ["string", "null"], "description": "E.g. officer tone, plain English, GOV.UK." },
-    "time_budget_seconds": { "type": "number", "minimum": 1, "description": "Hard budget for a ‘quick draft’ path." },
     "context": {
       "type": "object",
       "description": "Optional anchors for plan-making or casework context.",
@@ -37,5 +36,5 @@
     "user_prompt": { "type": ["string", "null"] },
     "constraints": { "type": "object", "description": "Optional user constraints (what must/must not be included)." }
   },
-  "required": ["draft_request_id", "requested_at", "requested_by", "artefact_type", "time_budget_seconds"]
+  "required": ["draft_request_id", "requested_at", "requested_by", "artefact_type"]
 }

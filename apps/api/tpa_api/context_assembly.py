@@ -172,7 +172,6 @@ def build_or_refine_retrieval_frame_sync(
     framing: dict[str, Any],
     issues: list[dict[str, Any]],
     token_budget: int | None,
-    time_budget_seconds: float,
     max_candidates_per_query: int,
     max_atoms_per_issue: int,
 ) -> dict[str, Any]:
@@ -201,7 +200,6 @@ def build_or_refine_retrieval_frame_sync(
 
     budgets = {
         "token_budget": int(token_budget) if isinstance(token_budget, int) else None,
-        "time_budget_seconds": float(time_budget_seconds),
         "max_candidates_per_query": int(max_candidates_per_query),
         "max_atoms_per_issue": int(max_atoms_per_issue),
     }
@@ -306,7 +304,6 @@ def build_or_refine_retrieval_frame_sync(
         purpose="Plan move-specific retrieval (queries, modalities, budgets) without deciding conclusions.",
         system_template=sys,
         user_payload=user_payload,
-        time_budget_seconds=min(90.0, max(10.0, time_budget_seconds)),
         output_schema_ref="schemas/RetrievalFrame.schema.json",
     )
 
@@ -548,7 +545,6 @@ def assemble_curated_evidence_set_sync(
     issues: list[dict[str, Any]],
     evidence_per_issue: int,
     token_budget: int | None,
-    time_budget_seconds: float,
 ) -> dict[str, Any]:
     """
     Context Assembly v1: hybrid candidate generation (text) + LLM-logged selection, producing a Move 3 CuratedEvidenceSet.
@@ -574,7 +570,6 @@ def assemble_curated_evidence_set_sync(
         framing=framing,
         issues=issues,
         token_budget=token_budget,
-        time_budget_seconds=time_budget_seconds,
         max_candidates_per_query=max_candidates_per_query,
         max_atoms_per_issue=max_atoms_per_issue,
     )
@@ -1013,7 +1008,6 @@ def assemble_curated_evidence_set_sync(
         purpose="Select diverse, cited evidence atoms (including countervailing evidence) for Move 3 under a framing.",
         system_template=sys,
         user_payload=selection_payload,
-        time_budget_seconds=min(120.0, max(10.0, time_budget_seconds)),
         output_schema_ref="schemas/ContextAssemblySelection.schema.json",
     )
     selection_errs = selection_errs if isinstance(selection_errs, list) else []
@@ -1113,7 +1107,6 @@ def assemble_curated_evidence_set_sync(
             purpose="Ensure countervailing coverage when candidates exist (planner-shaped, normative).",
             system_template=rerun_sys,
             user_payload=rerun_payload,
-            time_budget_seconds=min(90.0, max(10.0, time_budget_seconds)),
             output_schema_ref="schemas/ContextAssemblySelection.schema.json",
         )
         if isinstance(rerun_tool_run_id, str):
