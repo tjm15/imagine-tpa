@@ -10,7 +10,11 @@ from fastapi import HTTPException
 
 
 def _spec_root() -> Path:
-    return Path(os.environ.get("TPA_SPEC_ROOT", "/app/spec")).resolve()
+    configured = Path(os.environ.get("TPA_SPEC_ROOT", "/app/spec")).resolve()
+    if configured.exists():
+        return configured
+    repo_root = Path(__file__).resolve().parents[3]
+    return repo_root
 
 
 def _read_yaml(path: Path) -> Any:
@@ -29,4 +33,3 @@ def _read_json(path: Path) -> Any:
         raise HTTPException(status_code=404, detail=f"Not found: {path}") from exc
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"Failed to read JSON: {path}") from exc
-

@@ -21,7 +21,11 @@ def culp_artefact_registry() -> JSONResponse:
 def selected_authorities() -> JSONResponse:
     root = _spec_root()
     selected_path = root / "authorities" / "SELECTED_AUTHORITIES.yaml"
-    return JSONResponse(content=_read_yaml(selected_path))
+    payload = _read_yaml(selected_path)
+    if isinstance(payload, dict) and "selected_authorities" not in payload:
+        if "authorities" in payload:
+            payload["selected_authorities"] = payload.get("authorities")
+    return JSONResponse(content=payload)
 
 
 def political_framings() -> JSONResponse:

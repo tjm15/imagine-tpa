@@ -55,8 +55,23 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
                 const items = Array.isArray(data.selected_authorities) ? data.selected_authorities : [];
                 const mapped = items
                     .map((item) => {
-                        const authorityId = typeof item.authority_id === 'string' ? item.authority_id : null;
-                        const rawName = typeof item.name === 'string' ? item.name : authorityId || 'Unknown authority';
+                        if (typeof item === 'string') {
+                            return { id: item, name: stripLpaSuffix(item), slug: item };
+                        }
+                        const authorityId =
+                            typeof item.authority_id === 'string'
+                                ? item.authority_id
+                                : typeof item.lpa24cd === 'string'
+                                  ? item.lpa24cd
+                                  : typeof item.id === 'string'
+                                    ? item.id
+                                    : null;
+                        const rawName =
+                            typeof item.name === 'string'
+                                ? item.name
+                                : typeof item.authority_name === 'string'
+                                  ? item.authority_name
+                                  : authorityId || 'Unknown authority';
                         const name = stripLpaSuffix(rawName);
                         if (!authorityId) {
                             return null;

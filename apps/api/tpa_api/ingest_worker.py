@@ -1853,6 +1853,16 @@ def _segment_visual_assets(
                 raise RuntimeError(f"mask_upload_failed:{store_err}")
 
             bbox = mask.get("bbox")
+            if isinstance(bbox, list) and len(bbox) == 4:
+                try:
+                    x0, y0, x1, y1 = [int(float(v)) for v in bbox]
+                    if x1 <= x0 or y1 <= y0:
+                        # SAM2 auto masks return [x, y, w, h]; convert to corner coords.
+                        x1 = x0 + max(0, x1)
+                        y1 = y0 + max(0, y1)
+                    bbox = [x0, y0, x1, y1]
+                except Exception:  # noqa: BLE001
+                    bbox = None
             bbox_quality = "exact" if isinstance(bbox, list) and len(bbox) == 4 else "none"
             mask_id = str(uuid4())
             _db_execute(
@@ -4641,6 +4651,12 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
                 step_name="visual_segmentation",
+                inputs={"document_count": len(documents)},
+            )
+            _start_run_step(
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
+                step_name="visual_vectorization",
                 inputs={"document_count": len(documents)},
             )
             _start_run_step(

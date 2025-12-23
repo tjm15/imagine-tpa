@@ -125,6 +125,7 @@ services:
     environment:
       TPA_PROFILE: oss
       TPA_SPEC_ROOT: /app/spec
+      TPA_DEBUG_ENABLED: ${TPA_DEBUG_ENABLED:-true}
       TPA_DB_DSN: "postgresql://${TPA_POSTGRES_USER:-tpa}:${TPA_POSTGRES_PASSWORD:-tpa}@${TPA_POSTGRES_HOST:-tpa-db}:${TPA_POSTGRES_PORT:-5432}/${TPA_POSTGRES_DB:-tpa}"
       TPA_REDIS_URL: ${TPA_REDIS_URL:-redis://tpa-redis:6379/0}
       TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
@@ -416,7 +417,7 @@ services:
       context: ../
       dockerfile: apps/vision_tools/Dockerfile
       args:
-        PYTHON_IMAGE: ${TPA_VISION_PYTHON_IMAGE:-python:3.13-slim}
+        PYTHON_IMAGE: ${TPA_VISION_PYTORCH_IMAGE:-pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime}
     environment:
       PORT: "8086"
       TOOL_MODE: segmentation
@@ -430,11 +431,9 @@ services:
       context: ../
       dockerfile: apps/vision_tools/Dockerfile
       args:
-        PYTHON_IMAGE: ${TPA_VISION_PYTHON_IMAGE:-python:3.13-slim}
+        PYTHON_IMAGE: ${TPA_VISION_PYTORCH_IMAGE:-pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime}
     environment:
       PORT: "8088"
-      TOOL_MODE: sam2
-      TPA_SAM2_PROXY_URL: ${TPA_SAM2_PROXY_URL:-}
     ports:
       - "${TPA_SAM2_SEGMENTATION_PORT:-8088}:8088"
     gpus: all
