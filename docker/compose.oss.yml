@@ -134,6 +134,7 @@ services:
       TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
       # Local fixture packs (optional). Used by the Slice A bootstrap ingestion endpoint.
       TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
+      TPA_DEBUG_UPLOAD_ROOT: ${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
       # OSS DocParseProvider (Docling service). If unset, API falls back to local parsing.
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_DOCPARSE_PROVIDER: ${TPA_DOCPARSE_PROVIDER:-docling}
@@ -159,6 +160,7 @@ services:
       PHOENIX_PORT: "6006"
     volumes:
       - ../authority_packs:${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}:ro
+      - tpa_debug_uploads:${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
     depends_on:
       tpa-db:
         condition: service_healthy
@@ -220,6 +222,7 @@ services:
       TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
       TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
       TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
+      TPA_DEBUG_UPLOAD_ROOT: ${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-sam2-segmentation:8088}
@@ -236,6 +239,7 @@ services:
       TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
     volumes:
       - ../authority_packs:${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}:ro
+      - tpa_debug_uploads:${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
     depends_on:
       tpa-db:
         condition: service_healthy
@@ -474,3 +478,4 @@ volumes:
   tpa_minio_data:
   tpa_models:
   tpa_ui_node_modules:
+  tpa_debug_uploads:

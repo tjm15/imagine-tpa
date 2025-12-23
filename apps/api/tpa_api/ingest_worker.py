@@ -3520,8 +3520,7 @@ def _apply_document_weight_rules(
     elif doc_family in {"NPPF_PPG_NATIONAL_POLICY"}:
         weight_class = "MATERIAL_CONSIDERATION"
         applied_rules.append("R4_NATIONAL_POLICY")
-    elif doc_family
-    in {
+    elif doc_family in {
         "EVIDENCE_BASE",
         "TECHNICAL_REPORT",
         "CONSULTEE_RESPONSE",

@@ -524,8 +524,8 @@ def upload_and_ingest_file(file_bytes: bytes, filename: str) -> JSONResponse:
     from ..db import _db_execute
 
     # 1. Save file to debug pack directory
-    pack_root = Path(os.environ.get("TPA_AUTHORITY_PACKS_ROOT", "/authority_packs")).resolve()
-    debug_dir = pack_root / "debug"
+    debug_root = Path(os.environ.get("TPA_DEBUG_UPLOAD_ROOT", "/debug_uploads")).resolve()
+    debug_dir = debug_root / "debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
     
     file_path = debug_dir / filename
