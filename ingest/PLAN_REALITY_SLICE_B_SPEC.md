@@ -5,7 +5,8 @@ This component handles the registration of "Plans" (PDF/Images) to "Reality" (GI
 This is a **slice acceptance test spec**; see `tests/SLICES_SPEC.md` for how slices are used to drive implementation and testing.
 
 ## Requirements
-* **Tier 0 Registration**: Every visual asset must have a `Transform` (World Matrix) or a `Frame`.
+* **Tier 0 Registration**: Every visual asset must have a `Frame` (image-space). A `Transform` (world matrix)
+  exists only when georeferencing succeeds; otherwise the run must record an explicit skip or failure.
 * **SAM2 Segmentation (Raster)**: Use SAM2 to extract features from **raster** plans/images (north arrows, scale bars, boundaries, key symbols).
   * This is implemented via the `SegmentationProvider` interface (see `platform/PROVIDER_INTERFACES.md`).
   * Vector geoprocessing (buffers/intersections/tiling) is handled by GIS tools (PostGIS/GeoPandas/GDAL) and logged as `ToolRun`s, not by the segmentation provider.
@@ -13,15 +14,21 @@ This is a **slice acceptance test spec**; see `tests/SLICES_SPEC.md` for how sli
 * **Overlays**: Must produce `ProjectionArtifact` (the plan warped onto the map).
 
 ## Agentic georeferencing loop
-Every map-like visual asset must trigger an auto-georef attempt. The agentic loop is executed via a macro toolchain:
+Auto-georef is attempted **only when worthwhile** (map-like cues detected). The agentic loop is executed via a macro toolchain:
 * `export-map-observation` (snapshot for visual QA)
 * `detect-candidate-gcps` (grid/road/label anchors)
 * `apply-gcps` (warp with TPS/affine/polynomial as appropriate)
 * `evaluate-georef` (RMSE + alignment metrics)
 * `publish-outputs` (GeoTIFF + overlays + provenance)
 
-Hard failures are allowed but must be logged in `tool_runs` with explicit reasons. The output is only valid if a
-`Transform` exists; otherwise the attempt is reported as an unsuccessful registration.
+Hard failures are allowed but must be logged in `tool_runs` with explicit reasons. Skips are also logged with
+`georef_status=skipped` and a `georef_skip_reason`.
+
+Defaults:
+* Reference layer: **OSM** (override via config; log `TPA_GEOREF_REFERENCE_LAYER`).
+* Success threshold: `TPA_GEOREF_RMSE_THRESHOLD` (tweakable).
+
+The output is only valid if a `Transform` exists; otherwise the attempt is reported as unsuccessful.
 
 ## Uncertainty
 * Every transform has an `uncertainty_score` (0.0 - 1.0).

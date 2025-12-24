@@ -8,7 +8,7 @@ from uuid import uuid4
 import httpx
 
 from .db import _db_execute
-from .model_clients import _ensure_model_role_sync, _llm_model_id
+from .model_clients import _ensure_model_role_sync, _llm_model_id, _vlm_json_sync
 from .observability.phoenix import trace_span
 from .text_utils import _extract_json_object
 from .time_utils import _utc_now
@@ -166,6 +166,96 @@ def _llm_structured_sync(
             ended_at,
             "medium" if obj is not None else "low",
             "LLM outputs are non-deterministic; traceability is achieved by persisting move outputs and context bundles.",
+        ),
+    )
+
+    return obj, tool_run_id, errors
+
+
+def _vlm_structured_sync(
+    *,
+    prompt_id: str,
+    prompt_version: int,
+    prompt_name: str,
+    purpose: str,
+    prompt: str,
+    image_bytes: bytes,
+    model_id: str | None = None,
+    output_schema_ref: str | None = None,
+    ingest_batch_id: str | None = None,
+    run_id: str | None = None,
+    **_: Any,
+) -> tuple[dict[str, Any] | None, str | None, list[str]]:
+    """
+    Calls the configured VLM provider and returns (json, tool_run_id, errors).
+    """
+    _prompt_upsert(
+        prompt_id=prompt_id,
+        prompt_version=prompt_version,
+        name=prompt_name,
+        purpose=purpose,
+        template=prompt,
+        input_schema_ref=None,
+        output_schema_ref=output_schema_ref,
+    )
+
+    tool_run_id = str(uuid4())
+    started_at = _utc_now()
+    errors: list[str] = []
+    obj: dict[str, Any] | None = None
+
+    span_attributes = {
+        "tpa.prompt_id": prompt_id,
+        "tpa.prompt_version": prompt_version,
+        "tpa.prompt_name": prompt_name,
+        "tpa.purpose": purpose,
+        "tpa.model_id": model_id,
+        "tpa.run_id": run_id,
+        "tpa.ingest_batch_id": ingest_batch_id,
+        "tpa.tool": "vlm_structured",
+    }
+
+    with trace_span("vlm.structured", span_attributes) as span:
+        obj, errors = _vlm_json_sync(prompt=prompt, image_bytes=image_bytes, model_id=model_id)
+        if errors and span is not None:
+            span.set_attribute("tpa.errors", ";".join(errors[:5]))
+
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, ingest_batch_id, run_id, tool_name, inputs_logged, outputs_logged, status,
+          started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+        """,
+        (
+            tool_run_id,
+            ingest_batch_id,
+            run_id,
+            "vlm_generate_structured",
+            json.dumps(
+                {
+                    "prompt_id": prompt_id,
+                    "prompt_version": prompt_version,
+                    "prompt_name": prompt_name,
+                    "purpose": purpose,
+                    "model_id": model_id,
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                {
+                    "ok": obj is not None,
+                    "errors": errors[:10],
+                    "parsed_json": obj if obj is not None else None,
+                },
+                ensure_ascii=False,
+            ),
+            "success" if obj is not None and not errors else ("partial" if obj is not None else "error"),
+            started_at,
+            _utc_now(),
+            "medium" if obj is not None else "low",
+            "VLM outputs are non-deterministic; verify limitations and trace to tool runs.",
         ),
     )
 

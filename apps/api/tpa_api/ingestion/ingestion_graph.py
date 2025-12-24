@@ -32,6 +32,7 @@ from tpa_api.ingestion.ops import (
     _persist_bundle_evidence_refs,
     _persist_visual_features,
     _persist_visual_semantic_features,
+    _persist_visual_rich_enrichment,
     _extract_visual_asset_facts,
     _extract_visual_text_snippets,
     _segment_visual_assets,
@@ -421,7 +422,13 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             image_bytes, _, err = read_blob_bytes(blob_path)
             if err or not image_bytes:
                 continue
-            rich_meta = _vlm_enrich_visual_asset(asset, image_bytes, run_id=state.get("run_id"))
+            rich_meta, tool_run_id, _ = _vlm_enrich_visual_asset(asset, image_bytes, run_id=state.get("run_id"))
+            _persist_visual_rich_enrichment(
+                visual_asset_id=visual_asset_id,
+                run_id=state.get("run_id"),
+                tool_run_id=tool_run_id,
+                enrichment=rich_meta,
+            )
             _db_execute(
                 "UPDATE visual_assets SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb WHERE id = %s::uuid",
                 (json.dumps({"rich_enrichment": rich_meta}, ensure_ascii=False), visual_asset_id),
@@ -520,13 +527,6 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
                 "projection_artifacts": state["counts"].get("projection_artifacts", 0),
             },
         )
-
-        agent_count = _extract_visual_agent_findings(
-            ingest_batch_id=state["ingest_batch_id"],
-            run_id=state.get("run_id"),
-            visual_assets=visual_rows,
-        )
-        _bump(state, "visual_semantic_agents", agent_count)
 
         return state
     except Exception as exc:  # noqa: BLE001
@@ -682,6 +682,13 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
             targets=targets,
             monitoring=monitoring,
         )
+
+        agent_count = _extract_visual_agent_findings(
+            ingest_batch_id=state["ingest_batch_id"],
+            run_id=state.get("run_id"),
+            visual_assets=state.get("visual_rows") or [],
+        )
+        _bump(state, "visual_semantic_agents", agent_count)
 
         _mark_step(state, "structural_llm")
         _mark_step(state, "edges_llm")
@@ -956,28 +963,33 @@ def node_embeddings(state: IngestionState) -> IngestionState:
         return {**state, "error": str(exc)}
 
 
-def build_ingestion_graph(checkpointer=None):
+def build_ingestion_graph(checkpointer=None, *, mode: str = "full"):
     workflow = StateGraph(IngestionState)
 
     workflow.add_node("anchor_raw", node_anchor_raw)
     workflow.add_node("docparse", node_docparse)
     workflow.add_node("canonical_load", node_canonical_load)
-    workflow.add_node("visual_pipeline", node_visual_pipeline)
-    workflow.add_node("document_identity", node_document_identity)
-    workflow.add_node("structural_llm", node_structural_llm)
-    workflow.add_node("visual_linking", node_visual_linking)
-    workflow.add_node("imagination", node_imagination)
-    workflow.add_node("embeddings", node_embeddings)
 
     workflow.set_entry_point("anchor_raw")
     workflow.add_edge("anchor_raw", "docparse")
     workflow.add_edge("docparse", "canonical_load")
-    workflow.add_edge("canonical_load", "visual_pipeline")
-    workflow.add_edge("visual_pipeline", "document_identity")
-    workflow.add_edge("document_identity", "structural_llm")
-    workflow.add_edge("structural_llm", "visual_linking")
-    workflow.add_edge("visual_linking", "imagination")
-    workflow.add_edge("imagination", "embeddings")
-    workflow.add_edge("embeddings", END)
+
+    if mode == "cpu_only":
+        workflow.add_edge("canonical_load", END)
+    else:
+        workflow.add_node("visual_pipeline", node_visual_pipeline)
+        workflow.add_node("document_identity", node_document_identity)
+        workflow.add_node("structural_llm", node_structural_llm)
+        workflow.add_node("visual_linking", node_visual_linking)
+        workflow.add_node("imagination", node_imagination)
+        workflow.add_node("embeddings", node_embeddings)
+
+        workflow.add_edge("canonical_load", "visual_pipeline")
+        workflow.add_edge("visual_pipeline", "document_identity")
+        workflow.add_edge("document_identity", "structural_llm")
+        workflow.add_edge("structural_llm", "visual_linking")
+        workflow.add_edge("visual_linking", "imagination")
+        workflow.add_edge("imagination", "embeddings")
+        workflow.add_edge("embeddings", END)
 
     return workflow.compile(checkpointer=checkpointer or MemorySaver())

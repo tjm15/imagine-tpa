@@ -8,13 +8,11 @@ description: >
   toward reasonable evidence coverage (including counter-evidence) and executable
   tool requests across text + spatial + visual modalities.
 
+  No quantitative caps are specified here; tuning is handled at runtime.
+
   Modes:
     - plan_studio: local plan / spatial strategy work (CULP aligned)
     - casework: development management work (applications / officer reports)
-
-defaults:
-  max_global_queries_per_template: 8
-  max_instrument_hints_per_template: 6
 
 templates:
   - template_id: plan_studio.baselining_and_place_portrait.evidence_curation.v1

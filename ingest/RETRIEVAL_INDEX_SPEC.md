@@ -37,8 +37,7 @@ Downstream LLM/VLM agents need **multimodal context engineering**, including:
 * diversity-aware selection (avoid near-duplicate chunks),
 * countervailing evidence surfacing (where plausible),
 * KG expansion (bounded multi-hop),
-* modality-aware packs (policy / spatial / visual / precedent / consultation),
-* explicit token/time budgets per move.
+* modality-aware packs (policy / spatial / visual / precedent / consultation).
 
 This is defined as a separate layer (“Context Assembly”), not as “better ranking”.
 Spec: `agents/CONTEXT_ASSEMBLY_SPEC.md`.

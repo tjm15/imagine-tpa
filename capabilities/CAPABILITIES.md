@@ -24,7 +24,7 @@ The grammar remains the only way the system produces judgement outputs:
 * provenance is mandatory (`db/PROVENANCE_STANDARD.md`)
 * governance linting is mandatory (`governance/REASONABLENESS_LINTER_SPEC.md`)
 
-Scenario comparison in Spatial Strategy is done via **tabs representing Scenario × Political Framing** combinations. Each tab runs (or replays) the grammar under a specific framing for a specific scenario, producing a `Trajectory` and `ScenarioJudgementSheet` for that combination.
+Scenario comparison in Spatial Strategy is done via **tabs representing Scenario × Political Framing** combinations. Each tab runs the grammar under a specific framing for a specific scenario, producing a `Trajectory` and `ScenarioJudgementSheet` for that combination (with cached results allowed only when provenance is explicit).
 
 ## 3) Implementation contract
 For every capability entry in `capabilities/CAPABILITIES_CATALOGUE.yaml`:

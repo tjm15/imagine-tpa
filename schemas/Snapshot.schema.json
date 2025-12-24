@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "Snapshot",
   "type": "object",
-  "description": "A frozen, versioned snapshot of workspace state used for auditability, diffing, and answering 'what information was before the decision-maker?'. Snapshots enable replay without requiring deterministic model outputs.",
+  "description": "A frozen, versioned snapshot of workspace state used for auditability, diffing, and answering 'what information was before the decision-maker?'. Snapshots support forensic review without requiring deterministic model outputs.",
   "properties": {
     "snapshot_id": { "type": "string", "format": "uuid" },
     "plan_project_id": {
@@ -42,4 +42,3 @@
     }
   ]
 }
-

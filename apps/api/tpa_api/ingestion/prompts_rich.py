@@ -1,15 +1,15 @@
 import json
 from typing import List, Dict, Any
-from tpa_api.model_clients import _vlm_json_sync
+
 from tpa_api.observability.phoenix import trace_span
-from tpa_api.prompting import _llm_structured_sync
+from tpa_api.prompting import _llm_structured_sync, _vlm_structured_sync
 
 def _vlm_enrich_visual_asset(
     asset: Dict[str, Any],
     file_bytes: bytes,
     *,
     run_id: str | None = None,
-) -> Dict[str, Any]:
+) -> tuple[Dict[str, Any], str | None, list[str]]:
     """
     High-level reasoning pass for a visual asset.
     """
@@ -53,10 +53,18 @@ Rules:
         "tpa.asset_type": asset.get("asset_type"),
     }
     with trace_span("vlm.visual_enrich", span_attrs) as span:
-        obj, errs = _vlm_json_sync(prompt=prompt, image_bytes=file_bytes)
+        obj, tool_run_id, errs = _vlm_structured_sync(
+            prompt_id="visual_rich_enrichment_v1",
+            prompt_version=1,
+            prompt_name="Planner visual enrichment",
+            purpose="High-level visual asset enrichment for planner navigation.",
+            prompt=prompt,
+            image_bytes=file_bytes,
+            run_id=run_id,
+        )
         if errs and span is not None:
             span.set_attribute("tpa.errors", ";".join(errs[:5]))
-    return obj or {}
+    return obj or {}, tool_run_id, errs
 
 def _llm_enrich_policy_structure(document_title: str, blocks: List[Dict[str, Any]], run_id: str) -> List[Dict[str, Any]]:
     """

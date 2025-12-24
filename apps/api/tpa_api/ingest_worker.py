@@ -13,13 +13,14 @@ from uuid import UUID, uuid4
 
 import httpx
 from celery import Celery
+from kombu import Queue
 
 from PIL import Image
 
 from .blob_store import minio_client_or_none, read_blob_bytes, write_blob_bytes
 from .db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one, init_db_pool, shutdown_db_pool
 from .evidence import _ensure_evidence_ref_row, _parse_evidence_ref
-from .model_clients import _embed_multimodal_sync, _embed_texts_sync, _vlm_json_sync
+from .model_clients import _embed_multimodal_sync, _embed_texts_sync, _ensure_model_role_sync, _vlm_json_sync
 from .prompting import _llm_structured_sync, _prompt_upsert
 from .policy_utils import _normalize_policy_speech_act
 from .time_utils import _utc_now, _utc_now_iso
@@ -38,6 +39,20 @@ from .services.ingest import (
 
 BROKER_URL = os.environ.get("TPA_REDIS_URL") or "redis://localhost:6379/0"
 celery_app = Celery("tpa_ingest", broker=BROKER_URL, backend=BROKER_URL)
+celery_app.conf.task_default_queue = "ingest_cpu"
+celery_app.conf.task_queues = (
+    Queue("ingest_cpu"),
+    Queue("ingest_vlm"),
+    Queue("ingest_llm"),
+    Queue("ingest_embed"),
+)
+celery_app.conf.task_routes = {
+    "tpa_api.ingest_worker.process_ingest_job": {"queue": "ingest_cpu"},
+    "tpa_api.ingest_worker.run_graph_job": {"queue": "ingest_cpu"},
+    "tpa_api.ingest_worker.run_vlm_stage": {"queue": "ingest_vlm"},
+    "tpa_api.ingest_worker.run_llm_stage": {"queue": "ingest_llm"},
+    "tpa_api.ingest_worker.run_embeddings_stage": {"queue": "ingest_embed"},
+}
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -181,6 +196,113 @@ def _create_ingest_run(
             json.dumps({}, ensure_ascii=False),
         ),
     )
+
+
+def _load_ingest_run_context(run_id: str) -> dict[str, Any]:
+    row = _db_fetch_one(
+        """
+        SELECT id, ingest_batch_id, authority_id, plan_cycle_id
+        FROM ingest_runs
+        WHERE id = %s::uuid
+        """,
+        (run_id,),
+    )
+    if not isinstance(row, dict):
+        raise RuntimeError("ingest_run_not_found")
+    return row
+
+
+def _load_documents_for_run(run_id: str) -> list[dict[str, Any]]:
+    return _db_fetch_all(
+        """
+        SELECT id, authority_id, plan_cycle_id, metadata, raw_artifact_id, raw_source_uri, raw_content_type
+        FROM documents
+        WHERE run_id = %s::uuid
+        ORDER BY created_at ASC
+        """,
+        (run_id,),
+    )
+
+
+def _load_blocks_for_document(document_id: str, run_id: str | None) -> list[dict[str, Any]]:
+    return _db_fetch_all(
+        """
+        SELECT block_id, page_number, block_type, text, section_path,
+               span_start, span_end, span_quality, evidence_ref_id, metadata_jsonb
+        FROM layout_blocks
+        WHERE document_id = %s::uuid
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY page_number ASC, block_id ASC
+        """,
+        (document_id, run_id, run_id),
+    )
+
+
+def _load_chunks_for_document(document_id: str, run_id: str | None) -> list[dict[str, Any]]:
+    return _db_fetch_all(
+        """
+        SELECT id AS chunk_id, text, page_number, section_path, span_start, span_end, span_quality, metadata_jsonb
+        FROM chunks
+        WHERE document_id = %s::uuid
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY page_number ASC, id ASC
+        """,
+        (document_id, run_id, run_id),
+    )
+
+
+def _load_visual_assets_for_run(run_id: str | None) -> list[dict[str, Any]]:
+    return _db_fetch_all(
+        """
+        SELECT id AS visual_asset_id, document_id, page_number, blob_path, asset_type, metadata, evidence_ref_id
+        FROM visual_assets
+        WHERE %s::uuid IS NULL OR run_id = %s::uuid
+        ORDER BY document_id ASC, page_number ASC
+        """,
+        (run_id, run_id),
+    )
+
+
+def _load_parse_bundle_semantic(document_id: str, run_id: str | None) -> dict[str, Any]:
+    row = _db_fetch_one(
+        """
+        SELECT blob_path
+        FROM parse_bundles
+        WHERE document_id = %s::uuid
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (document_id, run_id, run_id),
+    )
+    if not isinstance(row, dict):
+        return {}
+    blob_path = row.get("blob_path")
+    if not isinstance(blob_path, str) or not blob_path:
+        return {}
+    bundle = _load_parse_bundle(blob_path)
+    return bundle.get("semantic") if isinstance(bundle, dict) else {}
+
+
+def _load_parse_bundle_for_document(document_id: str, run_id: str | None) -> dict[str, Any]:
+    row = _db_fetch_one(
+        """
+        SELECT blob_path
+        FROM parse_bundles
+        WHERE document_id = %s::uuid
+          AND (%s::uuid IS NULL OR run_id = %s::uuid)
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (document_id, run_id, run_id),
+    )
+    if not isinstance(row, dict):
+        return {}
+    blob_path = row.get("blob_path")
+    if not isinstance(blob_path, str) or not blob_path:
+        return {}
+    bundle = _load_parse_bundle(blob_path)
+    return bundle if isinstance(bundle, dict) else {}
     return run_id
 
 
@@ -890,6 +1012,130 @@ def _extract_visual_asset_facts(
     return inserted
 
 
+def _persist_visual_rich_enrichment(
+    *,
+    visual_asset_id: str,
+    run_id: str | None,
+    tool_run_id: str | None,
+    enrichment: dict[str, Any] | None,
+) -> dict[str, int]:
+    if not enrichment or not visual_asset_id:
+        return {"enrichments": 0, "layers": 0, "toponyms": 0, "policy_codes": 0}
+
+    asset_category = enrichment.get("asset_category") if isinstance(enrichment.get("asset_category"), str) else None
+    map_scale_declared = enrichment.get("map_scale_declared") if isinstance(enrichment.get("map_scale_declared"), str) else None
+    orientation = enrichment.get("orientation") if isinstance(enrichment.get("orientation"), str) else None
+    interpretation_notes = enrichment.get("interpretation_notes") if isinstance(enrichment.get("interpretation_notes"), str) else None
+    legibility_score = enrichment.get("legibility_score") if isinstance(enrichment.get("legibility_score"), (int, float)) else None
+
+    enrichment_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO visual_rich_enrichments (
+          id, visual_asset_id, run_id, asset_category, map_scale_declared, orientation,
+          legibility_score, interpretation_notes, tool_run_id, metadata_jsonb, created_at
+        )
+        VALUES (%s, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb, %s)
+        """,
+        (
+            enrichment_id,
+            visual_asset_id,
+            run_id,
+            asset_category,
+            map_scale_declared,
+            orientation,
+            float(legibility_score) if isinstance(legibility_score, (int, float)) else None,
+            interpretation_notes,
+            tool_run_id,
+            json.dumps(enrichment, ensure_ascii=False),
+            _utc_now(),
+        ),
+    )
+
+    layer_count = 0
+    layers = enrichment.get("detected_layers") if isinstance(enrichment.get("detected_layers"), list) else []
+    for layer in layers:
+        if not isinstance(layer, dict):
+            continue
+        _db_execute(
+            """
+            INSERT INTO visual_rich_layers (
+              id, enrichment_id, visual_asset_id, run_id, layer_name, layer_type,
+              representation_style, color_hex_guess, is_legend_item, tool_run_id, metadata_jsonb, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb, %s)
+            """,
+            (
+                str(uuid4()),
+                enrichment_id,
+                visual_asset_id,
+                run_id,
+                layer.get("layer_name") if isinstance(layer.get("layer_name"), str) else None,
+                layer.get("layer_type") if isinstance(layer.get("layer_type"), str) else None,
+                layer.get("representation_style") if isinstance(layer.get("representation_style"), str) else None,
+                layer.get("color_hex_guess") if isinstance(layer.get("color_hex_guess"), str) else None,
+                bool(layer.get("is_legend_item")) if isinstance(layer.get("is_legend_item"), bool) else None,
+                tool_run_id,
+                json.dumps(layer, ensure_ascii=False),
+                _utc_now(),
+            ),
+        )
+        layer_count += 1
+
+    toponym_count = 0
+    toponyms = enrichment.get("extracted_toponyms") if isinstance(enrichment.get("extracted_toponyms"), list) else []
+    for name in toponyms:
+        if not isinstance(name, str) or not name.strip():
+            continue
+        _db_execute(
+            """
+            INSERT INTO visual_rich_toponyms (
+              id, visual_asset_id, run_id, toponym, tool_run_id, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::uuid, %s)
+            """,
+            (
+                str(uuid4()),
+                visual_asset_id,
+                run_id,
+                name.strip(),
+                tool_run_id,
+                _utc_now(),
+            ),
+        )
+        toponym_count += 1
+
+    policy_count = 0
+    codes = enrichment.get("linked_policy_codes") if isinstance(enrichment.get("linked_policy_codes"), list) else []
+    for code in codes:
+        if not isinstance(code, str) or not code.strip():
+            continue
+        _db_execute(
+            """
+            INSERT INTO visual_rich_policy_codes (
+              id, visual_asset_id, run_id, policy_code, tool_run_id, created_at
+            )
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::uuid, %s)
+            """,
+            (
+                str(uuid4()),
+                visual_asset_id,
+                run_id,
+                code.strip(),
+                tool_run_id,
+                _utc_now(),
+            ),
+        )
+        policy_count += 1
+
+    return {
+        "enrichments": 1,
+        "layers": layer_count,
+        "toponyms": toponym_count,
+        "policy_codes": policy_count,
+    }
+
+
 def _build_material_index(assertions: list[dict[str, Any]]) -> dict[str, Any]:
     index: dict[str, dict[str, Any]] = {}
     for assertion in assertions:
@@ -1321,6 +1567,14 @@ def _mask_png_to_rle(mask_png_bytes: bytes) -> dict[str, Any] | None:
     return {"size": [height, width], "counts": counts}
 
 
+def _segmentation_base_url() -> str | None:
+    return (
+        _ensure_model_role_sync(role="sam2", timeout_seconds=180.0)
+        or os.environ.get("TPA_SAM2_BASE_URL")
+        or os.environ.get("TPA_SEGMENTATION_BASE_URL")
+    )
+
+
 def _truncate_text(text: str | None, limit: int) -> str:
     if not text:
         return ""
@@ -1378,6 +1632,7 @@ def _vectorize_segmentation_masks(
     if not asset_ids:
         return 0
     page_by_asset = {a.get("visual_asset_id"): int(a.get("page_number") or 0) for a in visual_assets}
+    blob_by_asset = {a.get("visual_asset_id"): a.get("blob_path") for a in visual_assets}
 
     mask_rows = _db_fetch_all(
         """
@@ -1412,12 +1667,14 @@ def _vectorize_segmentation_masks(
             run_id=run_id,
         )
         if not redline_mask_b64:
-            redline_mask_b64, redline_mask_id = _detect_redline_boundary_mask(
-                ingest_batch_id=ingest_batch_id,
-                run_id=run_id,
-                visual_asset_id=visual_asset_id,
-                blob_path=blob_path,
-            )
+            blob_path = blob_by_asset.get(visual_asset_id)
+            if isinstance(blob_path, str):
+                redline_mask_b64, redline_mask_id = _detect_redline_boundary_mask(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    visual_asset_id=visual_asset_id,
+                    blob_path=blob_path,
+                )
         _db_execute(
             """
             INSERT INTO tool_runs (
@@ -1542,10 +1799,9 @@ def _segment_visual_assets(
     document_id: str,
     visual_assets: list[dict[str, Any]],
 ) -> tuple[int, int]:
-    base_url = os.environ.get("TPA_SEGMENTATION_BASE_URL")
+    base_url = _segmentation_base_url()
     if not base_url:
         raise RuntimeError("segmentation_unconfigured")
-    timeout = None
     prefix = f"docparse/{authority_id}/{plan_cycle_id or 'none'}/{document_id}"
 
     mask_total = 0
@@ -1765,7 +2021,7 @@ def _detect_redline_boundary_mask(
     visual_asset_id: str,
     blob_path: str,
 ) -> tuple[str | None, str | None]:
-    segmentation_url = os.environ.get("TPA_SEGMENTATION_BASE_URL")
+    segmentation_url = _segmentation_base_url()
     if not segmentation_url:
         return None, None
 
@@ -1957,8 +2213,73 @@ def _detect_redline_boundary_mask(
 
     return base64.b64encode(mask_bytes).decode("ascii"), mask_id
 
-def _should_attempt_georef(asset_type: str | None, canonical_facts: dict[str, Any]) -> bool:
-    return True
+def _should_attempt_georef(asset_type: str | None, canonical_facts: dict[str, Any]) -> tuple[bool, str | None]:
+    if not isinstance(canonical_facts, dict) or not canonical_facts:
+        return False, "missing_canonical_facts"
+
+    asset_type_norm = asset_type.lower() if isinstance(asset_type, str) else ""
+    non_map_types = {
+        "photo_existing",
+        "photomontage",
+        "render_cgi",
+        "streetscape_montage",
+        "floor_plan",
+        "roof_plan",
+        "elevation",
+        "section",
+        "axonometric_or_3d",
+        "design_material_palette",
+    }
+    if asset_type_norm in non_map_types:
+        return False, "non_map_asset_type"
+
+    map_types = {
+        "location_plan",
+        "site_plan_existing",
+        "site_plan_proposed",
+        "diagram_access_transport",
+        "diagram_landscape_trees",
+        "diagram_flood_drainage",
+        "diagram_heritage_townscape",
+        "diagram_phasing_construction",
+        "other_diagram",
+    }
+
+    depiction = canonical_facts.get("depiction") if isinstance(canonical_facts.get("depiction"), dict) else {}
+    depiction_kind = depiction.get("depiction_kind") if isinstance(depiction.get("depiction_kind"), str) else ""
+    view_kind = depiction.get("view_kind") if isinstance(depiction.get("view_kind"), str) else ""
+
+    orientation = canonical_facts.get("orientation") if isinstance(canonical_facts.get("orientation"), dict) else {}
+    scale = canonical_facts.get("scale_signals") if isinstance(canonical_facts.get("scale_signals"), dict) else {}
+    boundary = canonical_facts.get("boundary_representation") if isinstance(canonical_facts.get("boundary_representation"), dict) else {}
+    annotations = canonical_facts.get("annotations") if isinstance(canonical_facts.get("annotations"), dict) else {}
+
+    cues = 0
+    if asset_type_norm in map_types:
+        cues += 1
+    if depiction_kind in {"map", "diagram", "drawing", "mixed"}:
+        cues += 1
+    if view_kind == "plan":
+        cues += 1
+    if boundary.get("site_boundary_present") is True:
+        cues += 1
+    if scale.get("scale_bar_present") is True or scale.get("written_scale_present") is True:
+        cues += 1
+    if orientation.get("north_arrow_present") is True:
+        cues += 1
+    if annotations.get("legend_present") is True or annotations.get("key_present") is True:
+        cues += 1
+
+    plan_like = (
+        asset_type_norm in map_types
+        or view_kind == "plan"
+        or depiction_kind in {"map", "diagram", "drawing"}
+    )
+    if not plan_like:
+        return False, "not_plan_like"
+    if cues < 2:
+        return False, "insufficient_map_cues"
+    return True, None
 
 
 def _merge_visual_asset_metadata(*, visual_asset_id: str, patch: dict[str, Any]) -> None:
@@ -2199,10 +2520,29 @@ def _auto_georef_visual_assets(
         canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row.get("canonical_facts_jsonb"), dict) else {}
         asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row.get("asset_specific_facts_jsonb"), dict) else {}
 
-        if not _should_attempt_georef(asset_type, canonical_facts):
+        should_georef, skip_reason = _should_attempt_georef(asset_type, canonical_facts)
+        if not should_georef:
+            _merge_visual_asset_metadata(
+                visual_asset_id=visual_asset_id,
+                patch={
+                    "georef_status": "skipped",
+                    "georef_skip_reason": skip_reason,
+                },
+            )
             continue
 
         attempts += 1
+        redline_mask_b64, redline_mask_id = _load_redline_mask_base64(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+        )
+        if not redline_mask_b64:
+            redline_mask_b64, redline_mask_id = _detect_redline_boundary_mask(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                visual_asset_id=visual_asset_id,
+                blob_path=blob_path,
+            )
         tool_run_id = str(uuid4())
         started = _utc_now()
         _db_execute(
@@ -2866,6 +3206,589 @@ def _slice_blocks_for_llm(
     max_blocks: int = 140,
 ) -> list[list[dict[str, Any]]]:
     return [blocks]
+
+
+def _queue_mode() -> str:
+    return os.environ.get("TPA_INGEST_QUEUE_MODE", "").lower()
+
+
+@celery_app.task(name="tpa_api.ingest_worker.run_vlm_stage")
+def run_vlm_stage(run_id: str) -> dict[str, Any]:
+    init_db_pool()
+    counts: dict[str, int] = {
+        "visual_assets": 0,
+        "visual_semantic_assets": 0,
+        "visual_text_snippets": 0,
+        "segmentation_masks": 0,
+        "visual_asset_regions": 0,
+        "vector_paths": 0,
+        "visual_semantic_assertions": 0,
+        "georef_attempts": 0,
+        "georef_success": 0,
+        "transforms": 0,
+        "projection_artifacts": 0,
+    }
+    errors: list[str] = []
+    try:
+        run_ctx = _load_ingest_run_context(run_id)
+        ingest_batch_id = str(run_ctx.get("ingest_batch_id"))
+        visual_rows = _load_visual_assets_for_run(run_id)
+        counts["visual_assets"] = len(visual_rows)
+        if not visual_rows:
+            _finish_run_step(run_id=run_id, step_name="visual_semantics_asset", status="partial", outputs={"visual_assets": 0})
+            _finish_run_step(run_id=run_id, step_name="visual_segmentation", status="partial", outputs={"segmentation_masks": 0})
+            _finish_run_step(run_id=run_id, step_name="visual_vectorization", status="partial", outputs={"vector_paths": 0})
+            _finish_run_step(run_id=run_id, step_name="visual_semantics_regions", status="partial", outputs={"visual_semantic_assertions": 0})
+            _finish_run_step(run_id=run_id, step_name="visual_georef", status="partial", outputs={"georef_attempts": 0})
+            return {"counts": counts, "errors": []}
+
+        from tpa_api.ingestion.prompts_rich import _vlm_enrich_visual_asset  # noqa: PLC0415
+
+        for asset in visual_rows:
+            visual_asset_id = asset.get("visual_asset_id")
+            if not visual_asset_id:
+                continue
+            metadata = asset.get("metadata") if isinstance(asset.get("metadata"), dict) else {}
+            if metadata.get("rich_enrichment"):
+                continue
+            blob_path = asset.get("blob_path")
+            if not isinstance(blob_path, str):
+                continue
+            image_bytes, _, err = read_blob_bytes(blob_path)
+            if err or not image_bytes:
+                continue
+            rich_meta, tool_run_id, _ = _vlm_enrich_visual_asset(asset, image_bytes, run_id=run_id)
+            _persist_visual_rich_enrichment(
+                visual_asset_id=visual_asset_id,
+                run_id=run_id,
+                tool_run_id=tool_run_id,
+                enrichment=rich_meta,
+            )
+            _db_execute(
+                "UPDATE visual_assets SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb WHERE id = %s::uuid",
+                (json.dumps({"rich_enrichment": rich_meta}, ensure_ascii=False), visual_asset_id),
+            )
+
+        counts["visual_semantic_assets"] = _extract_visual_asset_facts(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            visual_assets=visual_rows,
+        )
+        counts["visual_text_snippets"] = _extract_visual_text_snippets(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            visual_assets=visual_rows,
+        )
+        visual_by_doc: dict[str, list[dict[str, Any]]] = {}
+        for asset in visual_rows:
+            doc_id = asset.get("document_id")
+            if not doc_id:
+                continue
+            visual_by_doc.setdefault(str(doc_id), []).append(asset)
+
+        for doc_id, assets in visual_by_doc.items():
+            mask_count, region_count = _segment_visual_assets(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                authority_id=run_ctx.get("authority_id") or "unknown",
+                plan_cycle_id=run_ctx.get("plan_cycle_id"),
+                document_id=doc_id,
+                visual_assets=assets,
+            )
+            counts["segmentation_masks"] += mask_count
+            counts["visual_asset_regions"] += region_count
+            counts["vector_paths"] += _vectorize_segmentation_masks(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=doc_id,
+                visual_assets=assets,
+            )
+            counts["visual_semantic_assertions"] += _extract_visual_region_assertions(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                visual_assets=assets,
+            )
+        target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
+        georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            visual_assets=visual_rows,
+            target_epsg=target_epsg,
+        )
+        counts["georef_attempts"] = georef_attempts
+        counts["georef_success"] = georef_success
+        counts["transforms"] = transform_count
+        counts["projection_artifacts"] = projection_count
+
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_semantics_asset",
+            status="success",
+            outputs={
+                "visual_assets": counts["visual_assets"],
+                "visual_semantic_assets": counts["visual_semantic_assets"],
+                "visual_text_snippets": counts["visual_text_snippets"],
+            },
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_segmentation",
+            status="success" if counts["segmentation_masks"] > 0 else "partial",
+            outputs={
+                "segmentation_masks": counts["segmentation_masks"],
+                "visual_asset_regions": counts["visual_asset_regions"],
+            },
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_vectorization",
+            status="success" if counts["vector_paths"] > 0 else "partial",
+            outputs={"vector_paths": counts["vector_paths"]},
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_semantics_regions",
+            status="success" if counts["visual_semantic_assertions"] > 0 else "partial",
+            outputs={"visual_semantic_assertions": counts["visual_semantic_assertions"]},
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_georef",
+            status="success" if counts["georef_attempts"] > 0 else "partial",
+            outputs={
+                "georef_attempts": counts["georef_attempts"],
+                "georef_success": counts["georef_success"],
+                "transforms": counts["transforms"],
+                "projection_artifacts": counts["projection_artifacts"],
+            },
+        )
+        return {"counts": counts, "errors": errors}
+    except Exception as exc:  # noqa: BLE001
+        errors.append(str(exc))
+        _finish_run_step(run_id=run_id, step_name="visual_semantics_asset", status="error", outputs={"error": str(exc)})
+        return {"counts": counts, "errors": errors}
+    finally:
+        shutdown_db_pool()
+
+
+@celery_app.task(name="tpa_api.ingest_worker.run_llm_stage")
+def run_llm_stage(run_id: str) -> dict[str, Any]:
+    init_db_pool()
+    counts: dict[str, int] = {
+        "document_identity_status": 0,
+        "policy_sections": 0,
+        "policy_clauses": 0,
+        "definitions": 0,
+        "targets": 0,
+        "monitoring": 0,
+        "policy_matrices": 0,
+        "policy_scopes": 0,
+        "visual_asset_links": 0,
+        "visual_semantic_agents": 0,
+    }
+    errors: list[str] = []
+    try:
+        run_ctx = _load_ingest_run_context(run_id)
+        ingest_batch_id = str(run_ctx.get("ingest_batch_id"))
+        documents = _load_documents_for_run(run_id)
+        visual_rows = _load_visual_assets_for_run(run_id)
+        from tpa_api.ingestion.prompts_rich import _llm_imagination_synthesis  # noqa: PLC0415
+
+        for doc in documents:
+            document_id = str(doc.get("id"))
+            if not document_id:
+                continue
+            doc_meta = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+            title = doc_meta.get("title") or document_id
+            block_rows = _load_blocks_for_document(document_id, run_id)
+            chunk_rows = _load_chunks_for_document(document_id, run_id)
+            bundle = _load_parse_bundle_for_document(document_id, run_id)
+            semantic = bundle.get("semantic") if isinstance(bundle.get("semantic"), dict) else {}
+            evidence_ref_map = _persist_bundle_evidence_refs(
+                run_id=run_id,
+                evidence_refs=bundle.get("evidence_refs") if isinstance(bundle.get("evidence_refs"), list) else [],
+            )
+            policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
+
+            identity_bundle, _, identity_errors = _extract_document_identity_status(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                title=title,
+                filename=doc.get("raw_source_uri"),
+                content_type=doc.get("raw_content_type"),
+                block_rows=block_rows,
+            )
+            if identity_bundle:
+                counts["document_identity_status"] += 1
+            if identity_errors:
+                errors.extend([f"document_identity:{err}" for err in identity_errors])
+
+            sections, _, struct_errors = _llm_extract_policy_structure(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                document_title=title,
+                blocks=block_rows,
+                policy_headings=policy_headings,
+            )
+            if policy_headings and not sections:
+                fallback_sections, _, fallback_errors = _llm_extract_policy_structure(
+                    ingest_batch_id=ingest_batch_id,
+                    run_id=run_id,
+                    document_id=document_id,
+                    document_title=title,
+                    blocks=block_rows,
+                )
+                sections = fallback_sections
+                struct_errors.extend([f"policy_structure_fallback:{err}" for err in fallback_errors])
+            if not policy_headings:
+                sections = _merge_policy_headings(sections=sections, policy_headings=policy_headings, block_rows=block_rows)
+            if struct_errors:
+                errors.extend([f"policy_structure:{err}" for err in struct_errors])
+
+            policy_sections, policy_clauses, definitions, targets, monitoring = _persist_policy_structure(
+                document_id=document_id,
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                source_artifact_id=doc.get("raw_artifact_id"),
+                sections=sections,
+                block_rows=block_rows,
+            )
+            counts["policy_sections"] += len(policy_sections)
+            counts["policy_clauses"] += len(policy_clauses)
+            counts["definitions"] += len(definitions)
+            counts["targets"] += len(targets)
+            counts["monitoring"] += len(monitoring)
+
+            llm_matrices, llm_scopes, logic_errors = _llm_extract_policy_logic_assets(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                document_id=document_id,
+                document_title=title,
+                policy_sections=policy_sections,
+                block_rows=block_rows,
+            )
+            if logic_errors:
+                errors.extend([f"policy_logic_assets:{err}" for err in logic_errors])
+
+            merged_matrices, merged_scopes = _merge_policy_logic_assets(
+                docparse_matrices=semantic.get("standard_matrices") if isinstance(semantic.get("standard_matrices"), list) else [],
+                llm_matrices=llm_matrices,
+                docparse_scopes=semantic.get("scope_candidates") if isinstance(semantic.get("scope_candidates"), list) else [],
+                llm_scopes=llm_scopes,
+                sections=sections,
+                policy_sections=policy_sections,
+                block_rows=block_rows,
+            )
+
+            matrix_count, scope_count = _persist_policy_logic_assets(
+                document_id=document_id,
+                run_id=run_id,
+                sections=sections,
+                policy_sections=policy_sections,
+                standard_matrices=merged_matrices,
+                scope_candidates=merged_scopes,
+                evidence_ref_map=evidence_ref_map,
+                block_rows=block_rows,
+            )
+            counts["policy_matrices"] += matrix_count
+            counts["policy_scopes"] += scope_count
+
+            policy_codes = [s.get("policy_code") for s in policy_sections if s.get("policy_code")]
+            citations, mentions, conditions, edge_tool_run_ids, edge_errors = _llm_extract_edges(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                policy_clauses=policy_clauses,
+                policy_codes=policy_codes,
+            )
+            if edge_errors:
+                errors.extend([f"policy_edges:{err}" for err in edge_errors])
+            _persist_policy_edges(
+                policy_sections=policy_sections,
+                policy_clauses=policy_clauses,
+                definitions=definitions,
+                targets=targets,
+                monitoring=monitoring,
+                citations=citations,
+                mentions=mentions,
+                conditions=conditions,
+                block_rows=block_rows,
+                tool_run_ids=edge_tool_run_ids,
+                run_id=run_id,
+            )
+
+            doc_visuals = [v for v in visual_rows if str(v.get("document_id")) == document_id]
+            page_texts: dict[int, str] = {}
+            page_buckets: dict[int, list[str]] = {}
+            for block in block_rows:
+                page_number = int(block.get("page_number") or 0)
+                text = block.get("text")
+                if page_number > 0 and isinstance(text, str) and text.strip():
+                    page_buckets.setdefault(page_number, []).append(text.strip())
+            for page_number, texts in page_buckets.items():
+                page_texts[page_number] = "\n".join(texts)
+
+            link_proposals, _ = _propose_visual_policy_links(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                visual_assets=doc_visuals,
+                policy_sections=policy_sections,
+                page_texts=page_texts,
+            )
+            _, link_count = _persist_visual_policy_links_from_proposals(
+                run_id=run_id,
+                proposals_by_asset=link_proposals,
+                visual_assets=doc_visuals,
+                policy_sections=policy_sections,
+            )
+            counts["visual_asset_links"] += link_count
+
+            _persist_kg_nodes(
+                document_id=document_id,
+                chunks=chunk_rows,
+                visual_assets=doc_visuals,
+                policy_sections=policy_sections,
+                policy_clauses=policy_clauses,
+                definitions=definitions,
+                targets=targets,
+                monitoring=monitoring,
+            )
+
+            policy_briefs = [
+                {
+                    "policy_code": s.get("policy_code"),
+                    "title": s.get("title"),
+                    "summary": (s.get("text") or "")[:800],
+                    "clause_snippets": [
+                        {"clause_ref": c.get("clause_ref"), "text": c.get("text")}
+                        for c in policy_clauses
+                        if c.get("policy_section_id") == s.get("policy_section_id")
+                    ][:6],
+                }
+                for s in policy_sections
+            ]
+            visual_briefs = []
+            if doc_visuals:
+                for row in doc_visuals:
+                    metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                    visual_briefs.append(
+                        {
+                            "asset_id": row.get("visual_asset_id"),
+                            "asset_type": row.get("asset_type"),
+                            "page_number": row.get("page_number"),
+                            "caption": metadata.get("caption"),
+                            "classification": metadata.get("classification") or {},
+                            "rich_enrichment": metadata.get("rich_enrichment") or {},
+                        }
+                    )
+            synthesis = _llm_imagination_synthesis(document_id, policy_briefs, visual_briefs, run_id)
+            _db_execute(
+                "UPDATE documents SET metadata = metadata || %s::jsonb WHERE id = %s::uuid",
+                (json.dumps({"imagination_synthesis": synthesis}, ensure_ascii=False), document_id),
+            )
+
+        counts["visual_semantic_agents"] = _extract_visual_agent_findings(
+            ingest_batch_id=ingest_batch_id,
+            run_id=run_id,
+            visual_assets=visual_rows,
+        )
+
+        _finish_run_step(
+            run_id=run_id,
+            step_name="document_identity_status",
+            status="success" if counts["document_identity_status"] > 0 else "partial",
+            outputs={"documents": counts["document_identity_status"]},
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="structural_llm",
+            status="success" if counts["policy_sections"] > 0 else "partial",
+            outputs={
+                "policy_sections": counts["policy_sections"],
+                "policy_clauses": counts["policy_clauses"],
+                "definitions": counts["definitions"],
+                "targets": counts["targets"],
+                "monitoring": counts["monitoring"],
+                "policy_matrices": counts["policy_matrices"],
+                "policy_scopes": counts["policy_scopes"],
+            },
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="edges_llm",
+            status="success" if counts["policy_clauses"] > 0 else "partial",
+            outputs={"documents": len(documents)},
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_linking",
+            status="success" if counts["visual_asset_links"] > 0 else "partial",
+            outputs={
+                "visual_assets": len(visual_rows),
+                "visual_asset_links": counts["visual_asset_links"],
+            },
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="imagination_synthesis",
+            status="success",
+            outputs={"documents": len(documents)},
+        )
+        return {"counts": counts, "errors": errors}
+    except Exception as exc:  # noqa: BLE001
+        errors.append(str(exc))
+        _finish_run_step(run_id=run_id, step_name="structural_llm", status="error", outputs={"error": str(exc)})
+        return {"counts": counts, "errors": errors}
+    finally:
+        shutdown_db_pool()
+
+
+@celery_app.task(name="tpa_api.ingest_worker.run_embeddings_stage")
+def run_embeddings_stage(run_id: str) -> dict[str, Any]:
+    init_db_pool()
+    counts: dict[str, int] = {
+        "unit_embeddings_chunk": 0,
+        "unit_embeddings_policy_section": 0,
+        "unit_embeddings_policy_clause": 0,
+        "unit_embeddings_visual": 0,
+        "unit_embeddings_visual_assertion": 0,
+    }
+    errors: list[str] = []
+    try:
+        run_ctx = _load_ingest_run_context(run_id)
+        ingest_batch_id = str(run_ctx.get("ingest_batch_id"))
+        documents = _load_documents_for_run(run_id)
+        visual_rows = _load_visual_assets_for_run(run_id)
+        all_policy_sections = _db_fetch_all(
+            """
+            SELECT id AS policy_section_id, text, policy_code, title
+            FROM policy_sections
+            WHERE (%s::uuid IS NULL OR run_id = %s::uuid)
+            """,
+            (run_id, run_id),
+        )
+        link_rows = _db_fetch_all(
+            """
+            SELECT visual_asset_id, target_id
+            FROM visual_asset_links
+            WHERE (%s::uuid IS NULL OR run_id = %s::uuid)
+              AND target_type = 'policy_section'
+              AND link_type = 'policy_reference'
+            """,
+            (run_id, run_id),
+        )
+        links_by_asset: dict[str, list[str]] = {}
+        for row in link_rows:
+            asset_id = row.get("visual_asset_id")
+            target_id = row.get("target_id")
+            if not asset_id or not isinstance(target_id, str):
+                continue
+            links_by_asset.setdefault(str(asset_id), []).append(target_id)
+
+        for doc in documents:
+            document_id = str(doc.get("id"))
+            if not document_id:
+                continue
+            chunk_rows = _load_chunks_for_document(document_id, run_id)
+            policy_sections = _db_fetch_all(
+                """
+                SELECT id AS policy_section_id, text
+                FROM policy_sections
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, run_id, run_id),
+            )
+            policy_clauses = _db_fetch_all(
+                """
+                SELECT id AS policy_clause_id, text
+                FROM policy_clauses
+                WHERE policy_section_id = ANY(
+                  SELECT id FROM policy_sections WHERE document_id = %s::uuid
+                )
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, run_id, run_id),
+            )
+
+            counts["unit_embeddings_chunk"] += _embed_units(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                unit_type="chunk",
+                rows=chunk_rows,
+                text_key="text",
+                id_key="chunk_id",
+            )
+            counts["unit_embeddings_policy_section"] += _embed_units(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                unit_type="policy_section",
+                rows=policy_sections,
+                text_key="text",
+                id_key="policy_section_id",
+            )
+            counts["unit_embeddings_policy_clause"] += _embed_units(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                unit_type="policy_clause",
+                rows=policy_clauses,
+                text_key="text",
+                id_key="policy_clause_id",
+            )
+
+        if visual_rows:
+            counts["unit_embeddings_visual"] += _embed_visual_assets(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+                visual_assets=visual_rows,
+                policy_sections=all_policy_sections,
+                links_by_asset=links_by_asset,
+            )
+        if _db_fetch_one(
+            """
+            SELECT id
+            FROM visual_semantic_outputs
+            WHERE (%s::uuid IS NULL OR run_id = %s::uuid)
+              AND jsonb_array_length(assertions_jsonb) > 0
+            LIMIT 1
+            """,
+            (run_id, run_id),
+        ):
+            counts["unit_embeddings_visual_assertion"] += _embed_visual_assertions(
+                ingest_batch_id=ingest_batch_id,
+                run_id=run_id,
+            )
+
+        _finish_run_step(
+            run_id=run_id,
+            step_name="embeddings",
+            status="success",
+            outputs={
+                "unit_embeddings_chunk": counts["unit_embeddings_chunk"],
+                "unit_embeddings_policy_section": counts["unit_embeddings_policy_section"],
+                "unit_embeddings_policy_clause": counts["unit_embeddings_policy_clause"],
+            },
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_embeddings",
+            status="success" if counts["unit_embeddings_visual"] > 0 else "partial",
+            outputs={"unit_embeddings_visual": counts["unit_embeddings_visual"]},
+        )
+        _finish_run_step(
+            run_id=run_id,
+            step_name="visual_assertion_embeddings",
+            status="success" if counts["unit_embeddings_visual_assertion"] > 0 else "partial",
+            outputs={"unit_embeddings_visual_assertion": counts["unit_embeddings_visual_assertion"]},
+        )
+        return {"counts": counts, "errors": errors}
+    except Exception as exc:  # noqa: BLE001
+        errors.append(str(exc))
+        _finish_run_step(run_id=run_id, step_name="embeddings", status="error", outputs={"error": str(exc)})
+        return {"counts": counts, "errors": errors}
+    finally:
+        shutdown_db_pool()
 
 
 def _build_sections_from_headings(
@@ -5041,7 +5964,9 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     inputs={"document_count": len(documents)},
                 )
 
-        graph = build_ingestion_graph()
+        queue_mode = _queue_mode()
+        graph_mode = "cpu_only" if queue_mode == "separated" else "full"
+        graph = build_ingestion_graph(mode=graph_mode)
 
         for doc in documents:
             rel_path = doc.get("file_path")
@@ -5118,6 +6043,28 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
             if result.get("error"):
                 errors.append(str(result.get("error")))
 
+        if queue_mode == "separated":
+            vlm_result = run_vlm_stage.delay(run_id).get()
+            if isinstance(vlm_result, dict):
+                for key, value in (vlm_result.get("counts") or {}).items():
+                    if isinstance(value, int):
+                        counts[key] = counts.get(key, 0) + value
+                errors.extend([str(e) for e in vlm_result.get("errors") or [] if e])
+
+            llm_result = run_llm_stage.delay(run_id).get()
+            if isinstance(llm_result, dict):
+                for key, value in (llm_result.get("counts") or {}).items():
+                    if isinstance(value, int):
+                        counts[key] = counts.get(key, 0) + value
+                errors.extend([str(e) for e in llm_result.get("errors") or [] if e])
+
+            embed_result = run_embeddings_stage.delay(run_id).get()
+            if isinstance(embed_result, dict):
+                for key, value in (embed_result.get("counts") or {}).items():
+                    if isinstance(value, int):
+                        counts[key] = counts.get(key, 0) + value
+                errors.extend([str(e) for e in embed_result.get("errors") or [] if e])
+
         completed = _utc_now()
         if ingest_batch_id:
             visuals_present = counts.get("visual_assets", 0) > 0
@@ -5147,128 +6094,135 @@ def process_ingest_job(ingest_job_id: str) -> dict[str, Any]:
                     "visual_assets": counts.get("visual_assets", 0),
                 },
             )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="document_identity_status",
-                status="success" if step_counts.get("document_identity_status", 0) > 0 else "partial",
-                outputs={
-                    "documents": step_counts.get("document_identity_status", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_semantics_asset",
-                status="success" if (not visuals_present or step_counts.get("visual_semantics_asset", 0) > 0) else "partial",
-                outputs={
-                    "visual_assets": counts.get("visual_assets", 0),
-                    "visual_semantic_assets": counts.get("visual_semantic_assets", 0),
-                    "visual_text_snippets": counts.get("visual_text_snippets", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_segmentation",
-                status="success" if (not visuals_present or step_counts.get("visual_segmentation", 0) > 0) else "partial",
-                outputs={
-                    "visual_assets": counts.get("visual_assets", 0),
-                    "segmentation_masks": counts.get("segmentation_masks", 0),
-                    "visual_asset_regions": counts.get("visual_asset_regions", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_vectorization",
-                status="success" if (not visuals_present or step_counts.get("visual_vectorization", 0) > 0) else "partial",
-                outputs={
-                    "vector_paths": counts.get("vector_paths", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_semantics_regions",
-                status="success"
-                if (not visuals_present or step_counts.get("visual_semantics_regions", 0) > 0)
-                else "partial",
-                outputs={
-                    "visual_assets": counts.get("visual_assets", 0),
-                    "visual_semantic_assertions": counts.get("visual_semantic_assertions", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_georef",
-                status="success" if (not visuals_present or step_counts.get("visual_georef", 0) > 0) else "partial",
-                outputs={
-                    "georef_attempts": counts.get("georef_attempts", 0),
-                    "georef_success": counts.get("georef_success", 0),
-                    "transforms": counts.get("transforms", 0),
-                    "projection_artifacts": counts.get("projection_artifacts", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_linking",
-                status="success" if (not visuals_present or step_counts.get("visual_linking", 0) > 0) else "partial",
-                outputs={
-                    "visual_assets": counts.get("visual_assets", 0),
-                    "visual_asset_links": counts.get("visual_asset_links", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_embeddings",
-                status="success" if (not visuals_present or step_counts.get("visual_embeddings", 0) > 0) else "partial",
-                outputs={
-                    "visual_assets": counts.get("visual_assets", 0),
-                    "unit_embeddings_visual": counts.get("unit_embeddings_visual", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="visual_assertion_embeddings",
-                status="success"
-                if (not visuals_present or step_counts.get("visual_assertion_embeddings", 0) > 0)
-                else "partial",
-                outputs={
-                    "unit_embeddings_visual_assertion": counts.get("unit_embeddings_visual_assertion", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="structural_llm",
-                status="success" if step_counts.get("structural_llm", 0) > 0 else "partial",
-                outputs={
-                    "policy_sections": counts.get("policy_sections", 0),
-                    "policy_clauses": counts.get("policy_clauses", 0),
-                    "definitions": counts.get("definitions", 0),
-                    "targets": counts.get("targets", 0),
-                    "monitoring": counts.get("monitoring", 0),
-                    "policy_matrices": counts.get("policy_matrices", 0),
-                    "policy_scopes": counts.get("policy_scopes", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="edges_llm",
-                status="success" if step_counts.get("edges_llm", 0) > 0 else "partial",
-                outputs={"documents": step_counts.get("edges_llm", 0)},
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="embeddings",
-                status="success" if step_counts.get("embeddings", 0) > 0 else "partial",
-                outputs={
-                    "unit_embeddings_chunk": counts.get("unit_embeddings_chunk", 0),
-                    "unit_embeddings_policy_section": counts.get("unit_embeddings_policy_section", 0),
-                    "unit_embeddings_policy_clause": counts.get("unit_embeddings_policy_clause", 0),
-                },
-            )
-            _finish_run_step(
-                run_id=run_id,
-                step_name="imagination_synthesis",
-                status="success" if step_counts.get("imagination_synthesis", 0) > 0 else "partial",
-                outputs={"documents": step_counts.get("imagination_synthesis", 0)},
-            )
+            if queue_mode != "separated":
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="document_identity_status",
+                    status="success" if step_counts.get("document_identity_status", 0) > 0 else "partial",
+                    outputs={
+                        "documents": step_counts.get("document_identity_status", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_semantics_asset",
+                    status="success"
+                    if (not visuals_present or step_counts.get("visual_semantics_asset", 0) > 0)
+                    else "partial",
+                    outputs={
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "visual_semantic_assets": counts.get("visual_semantic_assets", 0),
+                        "visual_text_snippets": counts.get("visual_text_snippets", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_segmentation",
+                    status="success"
+                    if (not visuals_present or step_counts.get("visual_segmentation", 0) > 0)
+                    else "partial",
+                    outputs={
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "segmentation_masks": counts.get("segmentation_masks", 0),
+                        "visual_asset_regions": counts.get("visual_asset_regions", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_vectorization",
+                    status="success"
+                    if (not visuals_present or step_counts.get("visual_vectorization", 0) > 0)
+                    else "partial",
+                    outputs={
+                        "vector_paths": counts.get("vector_paths", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_semantics_regions",
+                    status="success"
+                    if (not visuals_present or step_counts.get("visual_semantics_regions", 0) > 0)
+                    else "partial",
+                    outputs={
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "visual_semantic_assertions": counts.get("visual_semantic_assertions", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_georef",
+                    status="success" if (not visuals_present or step_counts.get("visual_georef", 0) > 0) else "partial",
+                    outputs={
+                        "georef_attempts": counts.get("georef_attempts", 0),
+                        "georef_success": counts.get("georef_success", 0),
+                        "transforms": counts.get("transforms", 0),
+                        "projection_artifacts": counts.get("projection_artifacts", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_linking",
+                    status="success" if (not visuals_present or step_counts.get("visual_linking", 0) > 0) else "partial",
+                    outputs={
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "visual_asset_links": counts.get("visual_asset_links", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_embeddings",
+                    status="success" if (not visuals_present or step_counts.get("visual_embeddings", 0) > 0) else "partial",
+                    outputs={
+                        "visual_assets": counts.get("visual_assets", 0),
+                        "unit_embeddings_visual": counts.get("unit_embeddings_visual", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="visual_assertion_embeddings",
+                    status="success"
+                    if (not visuals_present or step_counts.get("visual_assertion_embeddings", 0) > 0)
+                    else "partial",
+                    outputs={
+                        "unit_embeddings_visual_assertion": counts.get("unit_embeddings_visual_assertion", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="structural_llm",
+                    status="success" if step_counts.get("structural_llm", 0) > 0 else "partial",
+                    outputs={
+                        "policy_sections": counts.get("policy_sections", 0),
+                        "policy_clauses": counts.get("policy_clauses", 0),
+                        "definitions": counts.get("definitions", 0),
+                        "targets": counts.get("targets", 0),
+                        "monitoring": counts.get("monitoring", 0),
+                        "policy_matrices": counts.get("policy_matrices", 0),
+                        "policy_scopes": counts.get("policy_scopes", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="edges_llm",
+                    status="success" if step_counts.get("edges_llm", 0) > 0 else "partial",
+                    outputs={"documents": step_counts.get("edges_llm", 0)},
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="embeddings",
+                    status="success" if step_counts.get("embeddings", 0) > 0 else "partial",
+                    outputs={
+                        "unit_embeddings_chunk": counts.get("unit_embeddings_chunk", 0),
+                        "unit_embeddings_policy_section": counts.get("unit_embeddings_policy_section", 0),
+                        "unit_embeddings_policy_clause": counts.get("unit_embeddings_policy_clause", 0),
+                    },
+                )
+                _finish_run_step(
+                    run_id=run_id,
+                    step_name="imagination_synthesis",
+                    status="success" if step_counts.get("imagination_synthesis", 0) > 0 else "partial",
+                    outputs={"documents": step_counts.get("imagination_synthesis", 0)},
+                )
         outputs = {"counts": counts, "errors": errors[:20]}
         run_status = "success" if not errors else "partial"
         if run_id:

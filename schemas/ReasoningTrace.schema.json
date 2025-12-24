@@ -2,41 +2,74 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "ReasoningTrace",
   "type": "object",
-  "description": "A structured, traceable log of interpretive steps taken within a move (not just final outputs).",
+  "description": "Trace bundle capturing context bundles, tool runs, prompts, and model outputs without requiring replayability.",
   "properties": {
     "trace_id": { "type": "string", "format": "uuid" },
-    "move_type": {
-      "type": "string",
-      "enum": [
-        "framing",
-        "issue_surfacing",
-        "evidence_curation",
-        "evidence_interpretation",
-        "considerations_formation",
-        "weighing_and_balance",
-        "negotiation_and_alteration",
-        "positioning_and_narration"
-      ]
+    "run_id": { "type": ["string", "null"], "format": "uuid" },
+    "scope_type": {
+      "type": ["string", "null"],
+      "enum": ["run", "move", "capability", "scenario", "document", "application", "none", null]
     },
-    "steps": {
+    "scope_id": { "type": ["string", "null"] },
+    "capture_level": {
+      "type": ["string", "null"],
+      "enum": ["summary", "inspector", "forensic", null]
+    },
+    "capture_mode": {
+      "type": ["string", "null"],
+      "enum": ["auto", "manual", "policy", "unspecified", null]
+    },
+    "capture_reason": { "type": ["string", "null"] },
+    "capture_decision_tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "records": {
       "type": "array",
-      "items": {
-        "type": "object",
-        "properties": {
-          "step_id": { "type": "string", "format": "uuid" },
-          "statement": { "type": "string" },
-          "evidence_refs": {
-            "type": "array",
-            "items": { "$ref": "EvidenceRef.schema.json" }
-          },
-          "assumptions_used": {
-            "type": "array",
-            "items": { "type": "string", "format": "uuid" }
-          }
-        },
-        "required": ["step_id", "statement"]
-      }
-    }
+      "items": { "$ref": "#/definitions/TraceRecord" }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "created_by": { "type": ["string", "null"] }
   },
-  "required": ["trace_id", "move_type", "steps"]
+  "required": ["trace_id", "records", "created_at"],
+  "definitions": {
+    "TraceRecord": {
+      "type": "object",
+      "properties": {
+        "record_id": { "type": "string", "format": "uuid" },
+        "record_type": {
+          "type": "string",
+          "enum": [
+            "context_bundle_ref",
+            "tool_run_ref",
+            "prompt_version_ref",
+            "model_output",
+            "forensic_artifact",
+            "note"
+          ]
+        },
+        "context_bundle_ref": { "type": ["string", "null"] },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "prompt_version_id": { "type": ["string", "null"], "format": "uuid" },
+        "model_output": { "$ref": "#/definitions/ModelOutput" },
+        "artifact_ref": { "type": ["string", "null"] },
+        "note": { "type": ["string", "null"] },
+        "created_at": { "type": ["string", "null"], "format": "date-time" }
+      },
+      "required": ["record_id", "record_type"]
+    },
+    "ModelOutput": {
+      "type": "object",
+      "properties": {
+        "output_kind": { "type": "string", "enum": ["main", "reasoning"] },
+        "storage_class": { "type": "string", "enum": ["interface", "forensic"] },
+        "content_ref": { "type": "string" },
+        "content_mime_type": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] },
+        "model_id": { "type": ["string", "null"] },
+        "prompt_version_id": { "type": ["string", "null"], "format": "uuid" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "tokens_input": { "type": ["integer", "null"] },
+        "tokens_output": { "type": ["integer", "null"] }
+      },
+      "required": ["output_kind", "storage_class", "content_ref"]
+    }
+  }
 }

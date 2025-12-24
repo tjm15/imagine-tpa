@@ -118,4 +118,4 @@ Optional (advanced):
 ## 5) Provenance and traceability
 * Every model/tool call is logged as `ToolRun`.
 * Any derived image/overlay is stored as an artefact and referenced via `EvidenceRef`.
-* Output verbosity is controlled at the UI layer (summary/inspect/forensic); no deterministic replay requirement.
+* Output verbosity is controlled at the UI layer (summary/inspect/forensic) and is **not** persisted in trace data or used for reasonableness linting.

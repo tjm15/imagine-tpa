@@ -1,3 +1,4 @@
+import os
 import sys
 import asyncio
 from langgraph.checkpoint.memory import MemorySaver
@@ -39,7 +40,9 @@ async def run_graph_for_job(job_id: str) -> dict[str, object]:
     )
 
     checkpointer = MemorySaver()
-    graph = build_ingestion_graph(checkpointer)
+    queue_mode = os.environ.get("TPA_INGEST_QUEUE_MODE", "").lower()
+    graph_mode = "cpu_only" if queue_mode == "separated" else "full"
+    graph = build_ingestion_graph(checkpointer, mode=graph_mode)
 
     processed = 0
     skipped: list[str] = []
@@ -72,6 +75,13 @@ async def run_graph_for_job(job_id: str) -> dict[str, object]:
         async for _event in graph.astream(initial_state, config):
             pass
         processed += 1
+
+    if queue_mode == "separated":
+        from tpa_api.ingest_worker import run_vlm_stage, run_llm_stage, run_embeddings_stage  # noqa: PLC0415
+
+        run_vlm_stage.delay(run_id).get()
+        run_llm_stage.delay(run_id).get()
+        run_embeddings_stage.delay(run_id).get()
 
     return {
         "status": "ok",

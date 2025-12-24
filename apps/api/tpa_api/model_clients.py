@@ -327,7 +327,11 @@ def _embed_multimodal_sync(
     text: str,
     model_id: str | None = None,
 ) -> list[float] | None:
-    base_url = _ensure_model_role_sync(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_MM_BASE_URL") or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
+    base_url = (
+        _ensure_model_role_sync(role="embeddings_mm", timeout_seconds=180.0)
+        or os.environ.get("TPA_EMBEDDINGS_MM_BASE_URL")
+        or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
+    )
     if not base_url:
         return None
 

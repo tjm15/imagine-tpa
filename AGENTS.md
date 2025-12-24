@@ -13,6 +13,8 @@ Build a **procedurally explainable planning judgement system** that:
 - Treats external models as **evidence instruments** (logged inputs/outputs + limitations).
 - Ships **two non‑hybrid deployment profiles** (Azure vs OSS) behind provider interfaces.
 
+System name: **The Planner's Assistant**.
+
 ### Frozen 8‑move grammar (canonical)
 
 1. Framing

@@ -4,7 +4,7 @@ You are building a **procedurally explainable planning judgement system** that:
 
 * **Imitates the grammar of planning judgement** (not just “material considerations” or final outputs).
 * Works for **development management (DM)** *and* **plan‑making / scenario work**.
-* Makes reasoning **legible, contestable, and replayable** to planners through **procedural imitation** (explicit moves + logged artefacts), not SHAP/confidence/post‑hoc summaries.
+* Makes reasoning **legible and contestable** to planners through **procedural imitation** (explicit moves + logged artefacts), not SHAP/confidence/post‑hoc summaries.
 * Produces **conditional suggestions under explicit political framings**:
 
   > “Under framing X, a reasonable position would be Y, because…”
@@ -243,7 +243,7 @@ You do not replace canonical tables with the KG; the KG is the **join fabric** a
 * `ASSUMED_IN` (Assumption → Interpretation/Consideration/Trajectory)
 * `SUPPORTS` / `CONTRADICTS` (Interpretation/Consideration ↔ Interpretation/Consideration)
 
-This is enough to support abductive reasoning and replayability without pretending the KG itself “is planning”.
+This is enough to support abductive reasoning without pretending the KG itself “is planning”.
 
 ---
 
@@ -259,12 +259,12 @@ A run creates:
 * a **RunGraph** subgraph (hot slice of KG, expandable by tool calls)
 * a `MoveEvent[]` stream (procedure log)
 
-The run is replayable because:
+The run is traceable because:
 
 * every tool call is logged (`ToolRun`)
 * every claim is supported by `EvidenceRef` or marked as `Assumption`
 
-Replay does *not* mean identical prose; it means the **reasoning path is inspectable**.
+Traceability does *not* mean identical prose; it means the **reasoning path is inspectable**.
 
 ---
 
@@ -622,7 +622,7 @@ This is the “contract pack” that freezes the system’s shape.
 
 * `tests/INVARIANT_TESTS_SPEC.md` (grammar completeness, provenance, no leaked IDs)
 * `tests/FIXTURES_SPEC.md` (CULP fixture plan + sites + maps + images)
-* `tests/REPLAYABILITY_SPEC.md` (reconstruct sheet from MoveEvents + artefacts)
+* `tests/REPLAYABILITY_SPEC.md` (legacy: reconstruct sheet from MoveEvents + artefacts)
 
 ---
 

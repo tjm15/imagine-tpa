@@ -27,7 +27,7 @@ reasoning_chain:
       purpose: "Form and weigh the balance, identify what is decisive."
     - id: explanation
       label: Explanation
-      purpose: "Draft defensible narrative outputs with citations and replayable traces."
+      purpose: "Draft defensible narrative outputs with citations and trace bundles."
 
 pipelines:
   - id: spatial_strategy
@@ -301,4 +301,3 @@ capabilities:
     primary_outputs:
       - ScenarioJudgementSheet
       - EvidenceCard
-

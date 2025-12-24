@@ -11,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 
 
-Role = Literal["llm", "vlm", "embeddings", "reranker"]
+Role = Literal["llm", "vlm", "embeddings", "embeddings_mm", "reranker", "sam2"]
 
 
 @dataclass(frozen=True)
@@ -49,12 +49,28 @@ ROLE_SPECS: dict[Role, RoleSpec] = {
         ready_path="/health",
         gpu_exclusive=True,
     ),
+    "embeddings_mm": RoleSpec(
+        role="embeddings_mm",
+        compose_service=os.environ.get("TPA_EMBEDDINGS_MM_COMPOSE_SERVICE", "tpa-embeddings-mm"),
+        base_url_env="TPA_EMBEDDINGS_MM_BASE_URL",
+        default_base_url="http://tpa-embeddings-mm:8080",
+        ready_path="/health",
+        gpu_exclusive=True,
+    ),
     "reranker": RoleSpec(
         role="reranker",
         compose_service=os.environ.get("TPA_RERANKER_COMPOSE_SERVICE", "tpa-reranker"),
         base_url_env="TPA_RERANKER_BASE_URL",
         default_base_url="http://tpa-reranker:8080",
         ready_path="/health",
+        gpu_exclusive=True,
+    ),
+    "sam2": RoleSpec(
+        role="sam2",
+        compose_service=os.environ.get("TPA_SAM2_COMPOSE_SERVICE", "tpa-sam2-segmentation"),
+        base_url_env="TPA_SAM2_BASE_URL",
+        default_base_url="http://tpa-sam2-segmentation:8088",
+        ready_path="/healthz",
         gpu_exclusive=True,
     ),
 }
@@ -167,7 +183,8 @@ def _missing_container_error(service: str) -> HTTPException:
         detail=(
             f"Compose container for service '{service}' not found. "
             "Create model containers once with: "
-            "`docker compose -f docker/compose.oss.yml --profile models create tpa-llm tpa-vlm tpa-embeddings tpa-reranker`."
+            "`docker compose -f docker/compose.oss.yml --profile models create "
+            "tpa-llm tpa-vlm tpa-embeddings tpa-embeddings-mm tpa-reranker tpa-sam2-segmentation`."
         ),
     )
 

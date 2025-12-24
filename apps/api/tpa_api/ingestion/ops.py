@@ -532,6 +532,7 @@ from tpa_api.ingest_worker import (
     _insert_parse_bundle_record,
     _persist_tool_runs,
     _extract_visual_asset_facts,
+    _persist_visual_rich_enrichment,
     _extract_visual_text_snippets,
     _segment_visual_assets,
     _vectorize_segmentation_masks,

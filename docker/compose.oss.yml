@@ -139,6 +139,7 @@ services:
       TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
       TPA_DOCPARSE_PROVIDER: ${TPA_DOCPARSE_PROVIDER:-docling}
       TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
+      TPA_SAM2_BASE_URL: ${TPA_SAM2_BASE_URL:-http://tpa-sam2-segmentation:8088}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-sam2-segmentation:8088}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
       TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
@@ -150,12 +151,14 @@ services:
       # Model IDs used in outbound requests (should match the served model IDs).
       TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
+      TPA_INGEST_QUEUE_MODE: ${TPA_INGEST_QUEUE_MODE:-separated}
       TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
       TPA_EMBEDDINGS_MM_MODEL_ID: ${TPA_EMBEDDINGS_MM_MODEL_ID:-nomic-ai/colnomic-embed-multimodal-7b}
       TPA_RERANKER_MODEL_ID: ${TPA_RERANKER_MODEL_ID:-Qwen/Qwen3-Reranker-4B}
       # Optional (OSS dev): model supervisor auto-starts/stops model services so you don't run LLM+VLM simultaneously on one GPU.
       TPA_MODEL_SUPERVISOR_URL: ${TPA_MODEL_SUPERVISOR_URL:-}
       TPA_MODEL_SUPERVISOR_TOKEN: ${TPA_MODEL_SUPERVISOR_TOKEN:-}
+      TPA_INGEST_QUEUE_MODE: ${TPA_INGEST_QUEUE_MODE:-separated}
       PHOENIX_HOST: tpa-phoenix
       PHOENIX_PORT: "6006"
     volumes:
@@ -202,6 +205,7 @@ services:
       TPA_LLM_MODEL_ID: ""
       TPA_VLM_MODEL_ID: ""
       TPA_DOCPARSE_DISABLE_LLM: "true"
+      TPA_SAM2_BASE_URL: ${TPA_SAM2_BASE_URL:-http://tpa-sam2-segmentation:8088}
       TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-segmentation-worker:8086}
       TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
     ports:
@@ -210,6 +214,53 @@ services:
     <<: *service_defaults
 
   tpa-ingest-worker:
+    build:
+      context: ../
+      dockerfile: apps/api/Dockerfile
+    environment:
+      TPA_PROFILE: oss
+      TPA_SPEC_ROOT: /app/spec
+      TPA_DB_DSN: "postgresql://${TPA_POSTGRES_USER:-tpa}:${TPA_POSTGRES_PASSWORD:-tpa}@${TPA_POSTGRES_HOST:-tpa-db}:${TPA_POSTGRES_PORT:-5432}/${TPA_POSTGRES_DB:-tpa}"
+      TPA_REDIS_URL: ${TPA_REDIS_URL:-redis://tpa-redis:6379/0}
+      TPA_S3_ENDPOINT: ${TPA_S3_ENDPOINT:-http://tpa-minio:9000}
+      TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
+      TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
+      TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
+      TPA_AUTHORITY_PACKS_ROOT: ${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}
+      TPA_DEBUG_UPLOAD_ROOT: ${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
+      TPA_DOCPARSE_BASE_URL: ${TPA_DOCPARSE_BASE_URL:-http://tpa-docparse:8084}
+      TPA_WEB_AUTOMATION_BASE_URL: ${TPA_WEB_AUTOMATION_BASE_URL:-http://tpa-web-automation:8085}
+      TPA_SAM2_BASE_URL: ${TPA_SAM2_BASE_URL:-http://tpa-sam2-segmentation:8088}
+      TPA_SEGMENTATION_BASE_URL: ${TPA_SEGMENTATION_BASE_URL:-http://tpa-sam2-segmentation:8088}
+      TPA_VECTORIZE_BASE_URL: ${TPA_VECTORIZE_BASE_URL:-http://tpa-vectorization-worker:8087}
+      TPA_GEOREF_BASE_URL: ${TPA_GEOREF_BASE_URL:-http://tpa-georef-agent:8090}
+      TPA_EMBEDDINGS_BASE_URL: ${TPA_EMBEDDINGS_BASE_URL:-http://tpa-embeddings:8080}
+      TPA_EMBEDDINGS_MM_BASE_URL: ${TPA_EMBEDDINGS_MM_BASE_URL:-http://tpa-embeddings:8080}
+      TPA_RERANKER_BASE_URL: ${TPA_RERANKER_BASE_URL:-http://tpa-reranker:8080}
+      TPA_LLM_BASE_URL: ${TPA_LLM_BASE_URL:-http://tpa-llm:8000/v1}
+      TPA_VLM_BASE_URL: ${TPA_VLM_BASE_URL:-http://tpa-vlm:8000/v1}
+      TPA_EMBEDDINGS_MODEL_ID: ${TPA_EMBEDDINGS_MODEL_ID:-Qwen/Qwen3-Embedding-8B}
+      TPA_EMBEDDINGS_MM_MODEL_ID: ${TPA_EMBEDDINGS_MM_MODEL_ID:-nomic-ai/colnomic-embed-multimodal-7b}
+      TPA_LLM_MODEL_ID: ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
+      TPA_VLM_MODEL_ID: ${TPA_VLM_MODEL_ID:-nvidia/NVIDIA-Nemotron-Nano-12B-v2-VL-FP8}
+      TPA_INGEST_QUEUE_MODE: ${TPA_INGEST_QUEUE_MODE:-separated}
+    volumes:
+      - ../authority_packs:${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}:ro
+      - tpa_debug_uploads:${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
+      - ../apps/api/tpa_api:/app/tpa_api
+    depends_on:
+      tpa-db:
+        condition: service_healthy
+      tpa-minio-init:
+        condition: service_completed_successfully
+      tpa-redis:
+        condition: service_started
+      tpa-docparse:
+        condition: service_started
+    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO --concurrency=${TPA_INGEST_CPU_CONCURRENCY:-16} --queues ingest_cpu
+    <<: *service_defaults
+
+  tpa-ingest-gpu:
     build:
       context: ../
       dockerfile: apps/api/Dockerfile
@@ -249,9 +300,8 @@ services:
         condition: service_completed_successfully
       tpa-redis:
         condition: service_started
-      tpa-docparse:
-        condition: service_started
-    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO
+    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO --concurrency=1 --queues ingest_vlm,ingest_llm,ingest_embed
+    gpus: all
     <<: *service_defaults
 
   tpa-ui:
@@ -390,6 +440,23 @@ services:
       - tpa_models:/models
     <<: *service_defaults
 
+  tpa-embeddings-mm:
+    # Optional multimodal embeddings service (separate GPU service for supervisor gating).
+    profiles: ["embeddings-mm", "models"]
+    image: vllm/vllm-openai:latest
+    user: "${UID:-1000}:${GID:-1000}"
+    command: --model ${TPA_EMBEDDINGS_MM_MODEL_ID:-nomic-ai/colnomic-embed-multimodal-7b} --task embedding --trust-remote-code --max-model-len 32768 --port 8080
+    environment:
+      HF_HOME: /models/cache
+      HF_TOKEN: ${HF_TOKEN:-}
+    gpus: all
+    shm_size: '8gb'
+    ports:
+      - "8031:8080"
+    volumes:
+      - tpa_models:/models
+    <<: *service_defaults
+
   # Optional reranker (cross-encoder). Used by the OSS RetrievalProvider for better ranking.
   # Enable with: `--profile reranker up -d tpa-reranker` (or `--profile models`).
   tpa-reranker:
@@ -481,7 +548,9 @@ services:
       TPA_S3_BUCKET: ${TPA_S3_BUCKET:-tpa}
       TPA_S3_ACCESS_KEY: ${TPA_S3_ACCESS_KEY:-tpa}
       TPA_S3_SECRET_KEY: ${TPA_S3_SECRET_KEY:-change-me}
-      TPA_GEOREF_MACRO_BASE_URL: ${TPA_GEOREF_MACRO_BASE_URL:-}
+      TPA_GEOREF_MACRO_BASE_URL: ${TPA_GEOREF_MACRO_BASE_URL:-http://tpa-georef-agent:8090}
+      TPA_GEOREF_RMSE_THRESHOLD: ${TPA_GEOREF_RMSE_THRESHOLD:-10}
+      TPA_GEOREF_REFERENCE_LAYER: ${TPA_GEOREF_REFERENCE_LAYER:-osm}
     ports:
       - "${TPA_GEOREF_PORT:-8090}:8090"
     <<: *service_defaults

@@ -1,6 +1,7 @@
 # Grammar of Planning Judgement
 
-This document defines the 8-move grammar that dictates the system's logic.
+This document defines the 8-move grammar that guides the system's logic.
+The grammar is a **procedural scaffold**, not a deterministic algorithm; agents should not overfit to it.
 
 ## 1. Framing
 **Goal**: Establish the "lens" for the session.
@@ -20,10 +21,9 @@ This document defines the 8-move grammar that dictates the system's logic.
 
 ## 4. Evidence Interpretation (The Reasoning Engine)
 **Goal**: Make sense of the evidence employing statutory tests and heuristics.
-* **Mechanism**: VLM / LLM reasoning + Spatial Tools + **Reasoning Pattern Execution**.
-* **Patterns Applied**: 'Operational Tests' (Flood, Ecology, Retail) and 'Case Law Heuristics' (Fallback, Hillside, Finney).
-* **Outputs**: `Interpretation[]`, `ReasoningTrace[]` (step-by-step logic logs), `PlanRealityInterpretation`.
-* **Constraint**: Must distinguish facts from inferences. Must validate lawfulness (e.g., s73 scope) using case law patterns.
+* **Mechanism**: LLM/VLM reasoning + Spatial Tools.
+* **Outputs**: `Interpretation[]`, `ReasoningTrace[]`, `PlanRealityInterpretation`.
+* **Constraint**: Must distinguish facts from inferences. Lawfulness checks should use available heuristics when present.
 
 ## 5. Considerations Formation (The Ledger)
 **Goal**: Produce the "bricks" of the argument.
@@ -47,3 +47,18 @@ This document defines the 8-move grammar that dictates the system's logic.
 * **Mechanism**: Narrative generation conditional on the Framing and Weighing.
 * **Outputs**: `Trajectory` + `ScenarioJudgementSheet` per **Scenario × Political Framing** tab.
 * **Key**: "Under framing X, for scenario S, a reasonable position is Y..."
+
+## ReasoningTrace (TraceBundle)
+`ReasoningTrace[]` entries are **trace bundles** that make reasoning inspectable without forcing determinism.
+They should reference:
+* `context_bundle_ref`
+* `tool_run_ids`
+* `prompt_id` / `prompt_version` entries used by tools
+* optional forensic reasoning artefacts (stored separately from UI outputs)
+
+ReasoningTrace is for planner‑friendly visualization (trace canvas), not for enforcing a single chain of thought.
+
+## Roadmap (Planned Reasoning Patterns)
+Planned patterns and heuristics (not yet canonical):
+* Operational tests (Flood, Ecology, Retail)
+* Case law heuristics (Fallback, Hillside, Finney)

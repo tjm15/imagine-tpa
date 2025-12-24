@@ -605,6 +605,71 @@ CREATE TABLE IF NOT EXISTS visual_semantic_outputs (
 CREATE INDEX IF NOT EXISTS visual_semantic_outputs_asset_idx
   ON visual_semantic_outputs (visual_asset_id);
 
+CREATE TABLE IF NOT EXISTS visual_rich_enrichments (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  asset_category text,
+  map_scale_declared text,
+  orientation text,
+  legibility_score double precision,
+  interpretation_notes text,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_rich_enrichments_asset_idx
+  ON visual_rich_enrichments (visual_asset_id);
+
+CREATE INDEX IF NOT EXISTS visual_rich_enrichments_run_idx
+  ON visual_rich_enrichments (run_id);
+
+CREATE TABLE IF NOT EXISTS visual_rich_layers (
+  id uuid PRIMARY KEY,
+  enrichment_id uuid NOT NULL REFERENCES visual_rich_enrichments (id) ON DELETE CASCADE,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  layer_name text,
+  layer_type text,
+  representation_style text,
+  color_hex_guess text,
+  is_legend_item boolean,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  metadata_jsonb jsonb NOT NULL DEFAULT '{}'::jsonb,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_rich_layers_asset_idx
+  ON visual_rich_layers (visual_asset_id);
+
+CREATE INDEX IF NOT EXISTS visual_rich_layers_enrichment_idx
+  ON visual_rich_layers (enrichment_id);
+
+CREATE TABLE IF NOT EXISTS visual_rich_toponyms (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  toponym text NOT NULL,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_rich_toponyms_asset_idx
+  ON visual_rich_toponyms (visual_asset_id);
+
+CREATE TABLE IF NOT EXISTS visual_rich_policy_codes (
+  id uuid PRIMARY KEY,
+  visual_asset_id uuid NOT NULL REFERENCES visual_assets (id) ON DELETE CASCADE,
+  run_id uuid REFERENCES ingest_runs (id) ON DELETE SET NULL,
+  policy_code text NOT NULL,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS visual_rich_policy_codes_asset_idx
+  ON visual_rich_policy_codes (visual_asset_id);
+
 CREATE TABLE IF NOT EXISTS frames (
   id uuid PRIMARY KEY,
   frame_type text NOT NULL,

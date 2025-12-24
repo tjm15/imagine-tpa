@@ -1,8 +1,9 @@
 # Document Parsing Specification (ParseBundle v2)
 
 ## Strategy
-* **OSS Profile**: Docparse emits a ParseBundle v2, using Docling/PyPDF plus LLM/VLM assistance.
+* **OSS Profile**: Docparse emits a ParseBundle v2 using Docling/PyPDF + OCR only. Docparse is **CPU-only** and must not call LLM/VLM services.
 * **Azure Profile**: (Not implemented yet; keep the same output contract.)
+* **Semantic enrichment happens downstream** in the ingest worker; Docparse only provides deterministic scaffolding.
 
 ## Output Contract
 Docparse outputs a versioned ParseBundle (schema: `schemas/ParseBundle.schema.json`). This bundle is the only
@@ -62,8 +63,8 @@ Minimum fields:
     {
       "asset_id": "va-001",
       "page_number": 12,
-      "asset_type": "map|diagram|photo|render|decorative",
-      "role": "governance|context|exemplar",
+      "asset_type": "map|diagram|photo|render|decorative|unknown",
+      "role": "governance|context|exemplar|unknown",
       "blob_path": "visual_assets/.../va-001.png",
       "bbox": [x0, y0, x1, y1],
       "caption": "Good example of active frontage",
@@ -99,15 +100,19 @@ Minimum fields:
 ```
 
 ## Visual Governance Classification
-Every visual is classified into one of three governance classes:
+Classification into governance classes happens **in the ingest worker**, not in Docparse:
 1. **Governing Geometry** (maps, red-line boundaries) -> DesignationInstance / AllocationSite candidates.
 2. **Governing Logic** (diagrams with metrics) -> VisualConstraint / StandardMatrix candidates.
 3. **Context & Strategy** (photos/renders, key diagrams) -> DesignExemplar / SpatialStrategyElement candidates.
 
+Docparse may emit `asset_type`/`role` as `unknown` or as provisional hints. The ingest worker must reclassify with
+VLM/OCR + structured prompts and log the outputs as `ToolRun`.
+
 Exemplars are a **subcategory of photos/renders**, not a separate asset type.
 
 ## Notes
-* ParseBundle is stored in blob storage; only derived assets and bundles are uploaded (no original PDFs).
+* ParseBundle is stored in blob storage; only derived assets and bundles are uploaded by Docparse.
+  Raw PDFs are stored by the ingest worker **before** Docparse is called.
 * `bbox` is best-effort and may be null depending on the source/PDF structure.
 * `parse_flags` must include explicit fallback markers (e.g., `docling_fallback`, `docling_errors`) when Docling cannot be used.
 * The ingest worker is responsible for persistence, KG wiring, and provenance logging.

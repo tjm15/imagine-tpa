@@ -2,17 +2,25 @@ from __future__ import annotations
 
 import base64
 import io
+import math
 import os
+import re
 from io import BytesIO
 from typing import Any
 from uuid import uuid4
 from urllib.parse import urlparse
 
 import httpx
+import numpy as np
+import pytesseract
+import rasterio
+from pyproj import Transformer
+from rasterio.control import GroundControlPoint
+from rasterio.io import MemoryFile
 from fastapi import FastAPI, HTTPException
 from minio import Minio
 from pydantic import BaseModel, Field
-from PIL import Image
+from PIL import Image, ImageFilter
 
 
 def _decode_image(image_base64: str) -> tuple[bytes, int, int]:
@@ -67,6 +75,18 @@ def _macro_base_url() -> str | None:
     return os.environ.get("TPA_GEOREF_MACRO_BASE_URL")
 
 
+def _rmse_threshold() -> float:
+    raw = os.environ.get("TPA_GEOREF_RMSE_THRESHOLD", "10")
+    try:
+        return float(raw)
+    except Exception:  # noqa: BLE001
+        return 10.0
+
+
+def _reference_layer() -> str:
+    return os.environ.get("TPA_GEOREF_REFERENCE_LAYER", "osm")
+
+
 def _macro_call(path: str, payload: dict[str, Any]) -> tuple[dict[str, Any] | None, list[str]]:
     base_url = _macro_base_url()
     if not base_url:
@@ -103,6 +123,148 @@ def _store_artifact(*, visual_asset_id: str, artifact_type: str, data: bytes) ->
     blob_path = f"georef/{visual_asset_id}/{uuid4()}.{ext}"
     _upload_bytes(client=client, bucket=bucket, blob_path=blob_path, data=data, content_type=content_type)
     return blob_path
+
+
+def _parse_coord_from_text(text: str) -> tuple[float, float] | None:
+    cleaned = text.strip().upper().replace(",", " ")
+    if not cleaned:
+        return None
+
+    matches = re.findall(r"([EN])\s*([0-9]{5,7})", cleaned)
+    if matches:
+        easting = None
+        northing = None
+        for axis, value in matches:
+            if axis == "E":
+                easting = float(value)
+            elif axis == "N":
+                northing = float(value)
+        if easting is not None and northing is not None:
+            return easting, northing
+
+    nums = re.findall(r"[0-9]{5,7}", cleaned)
+    if len(nums) >= 2:
+        return float(nums[0]), float(nums[1])
+    return None
+
+
+def _extract_candidate_gcps(image: Image.Image) -> tuple[list[CandidateGcp], str]:
+    ocr = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+    gcps: list[CandidateGcp] = []
+    text_items = ocr.get("text", []) if isinstance(ocr, dict) else []
+    for idx, text in enumerate(text_items):
+        if not isinstance(text, str):
+            continue
+        coord = _parse_coord_from_text(text)
+        if coord is None:
+            continue
+        try:
+            left = float(ocr["left"][idx])
+            top = float(ocr["top"][idx])
+            width = float(ocr["width"][idx])
+            height = float(ocr["height"][idx])
+            conf_raw = ocr.get("conf", ["0"])[idx]
+            conf_val = float(conf_raw) if isinstance(conf_raw, (int, float, str)) else 0.0
+        except Exception:  # noqa: BLE001
+            continue
+        pixel = [left + width / 2.0, top + height / 2.0]
+        gcps.append(CandidateGcp(pixel=pixel, world_guess=[coord[0], coord[1]], confidence=max(min(conf_val / 100.0, 1.0), 0.0)))
+    limitations = "OCR-derived GCPs; verify coordinate labels before relying on results."
+    return gcps, limitations
+
+
+def _fetch_osm_highways(*, south: float, west: float, north: float, east: float) -> tuple[list[list[tuple[float, float]]], str | None]:
+    overpass_url = os.environ.get("TPA_OVERPASS_URL", "https://overpass-api.de/api/interpreter")
+    query = f"""
+[out:json];
+(
+  way["highway"]({south},{west},{north},{east});
+);
+out geom;
+"""
+    try:
+        with httpx.Client(timeout=None) as client:
+            resp = client.post(overpass_url, data=query)
+            resp.raise_for_status()
+            data = resp.json()
+    except Exception as exc:  # noqa: BLE001
+        return [], f"osm_query_failed:{exc}"
+
+    elements = data.get("elements") if isinstance(data, dict) else None
+    if not isinstance(elements, list):
+        return [], "osm_invalid_response"
+
+    lines: list[list[tuple[float, float]]] = []
+    for el in elements:
+        geom = el.get("geometry") if isinstance(el, dict) else None
+        if not isinstance(geom, list):
+            continue
+        coords: list[tuple[float, float]] = []
+        for pt in geom:
+            if not isinstance(pt, dict):
+                continue
+            lat = pt.get("lat")
+            lon = pt.get("lon")
+            if isinstance(lat, (int, float)) and isinstance(lon, (int, float)):
+                coords.append((lon, lat))
+        if len(coords) >= 2:
+            lines.append(coords)
+    return lines, None
+
+
+def _osm_alignment_score(
+    *,
+    image: Image.Image,
+    transform: rasterio.Affine,
+    target_epsg: int,
+) -> tuple[float | None, dict[str, Any]]:
+    width, height = image.size
+    corners = [
+        transform * (0, 0),
+        transform * (width, 0),
+        transform * (0, height),
+        transform * (width, height),
+    ]
+    xs = [pt[0] for pt in corners]
+    ys = [pt[1] for pt in corners]
+    if not xs or not ys:
+        return None, {"reason": "corner_transform_failed"}
+
+    to_latlon = Transformer.from_crs(f"EPSG:{target_epsg}", "EPSG:4326", always_xy=True)
+    west, south = to_latlon.transform(min(xs), min(ys))
+    east, north = to_latlon.transform(max(xs), max(ys))
+
+    lines, err = _fetch_osm_highways(south=south, west=west, north=north, east=east)
+    if err:
+        return None, {"reason": err}
+    if not lines:
+        return None, {"reason": "osm_empty"}
+
+    edges = image.convert("L").filter(ImageFilter.FIND_EDGES)
+    edge_np = np.array(edges)
+    edge_mask = edge_np > 20
+
+    to_target = Transformer.from_crs("EPSG:4326", f"EPSG:{target_epsg}", always_xy=True)
+    inv_transform = ~transform
+
+    hits = 0
+    total = 0
+    for line in lines:
+        for idx, (lon, lat) in enumerate(line):
+            if idx % 5 != 0:
+                continue
+            x, y = to_target.transform(lon, lat)
+            col, row = inv_transform * (x, y)
+            col_i = int(round(col))
+            row_i = int(round(row))
+            if 0 <= col_i < width and 0 <= row_i < height:
+                total += 1
+                if edge_mask[row_i, col_i]:
+                    hits += 1
+
+    if total == 0:
+        return None, {"reason": "osm_no_samples"}
+    return hits / total, {"samples": total, "hits": hits, "osm_lines": len(lines)}
 
 
 class CandidateGcp(BaseModel):
@@ -175,6 +337,7 @@ class ExportMapObservationResponse(BaseModel):
 
 class DetectCandidateGcpsRequest(BaseModel):
     image_base64: str
+    redline_mask_base64: str | None = None
     method: str = "auto"
     target_epsg: int = 27700
 
@@ -248,6 +411,7 @@ def auto_georef(req: AutoGeorefRequest) -> AutoGeorefResponse:
         "target_epsg": req.target_epsg,
         "asset_type": req.asset_type,
         "redline_mask_provided": bool(req.redline_mask_base64),
+        "reference_layer": _reference_layer(),
     }
     provenance: dict[str, Any] = {"engine": "tpa-georef-agent", "policy": "closed-loop"}
 
@@ -417,18 +581,42 @@ def auto_georef(req: AutoGeorefRequest) -> AutoGeorefResponse:
     if isinstance(evaluate_resp, dict):
         metrics["evaluation"] = evaluate_resp.get("metrics") or {}
 
+    rmse_threshold = _rmse_threshold()
+    rmse = None
+    if isinstance(apply_resp, dict):
+        meta = apply_resp.get("metadata") if isinstance(apply_resp.get("metadata"), dict) else {}
+        if isinstance(meta.get("rmse"), (int, float)):
+            rmse = float(meta["rmse"])
+
+    metrics["rmse"] = rmse
+    metrics["rmse_threshold"] = rmse_threshold
+
     transform = GeorefTransform(**transform_obj)
+    ok = rmse is not None and rmse <= rmse_threshold
+    status = "success" if ok else "needs_manual_anchors"
+    if not ok:
+        errors.append("rmse_threshold_failed")
+    limitations_text = (
+        "RMSE threshold met; verify alignment before relying on overlays."
+        if ok
+        else "RMSE exceeds threshold or unavailable; manual anchors required."
+    )
     return AutoGeorefResponse(
-        ok=True,
-        status="success",
+        ok=ok,
+        status=status,
         attempts=attempts,
         errors=errors,
-        limitations_text="Macro toolchain executed; verify alignment and uncertainty before relying on overlays.",
+        limitations_text=limitations_text,
         transform=transform,
         control_points=control_points or (transform.control_points or []),
         projection_artifacts=projection_artifacts,
         metrics=metrics,
-        provenance={**provenance, "mode": "macro", "macro_base_url": _macro_base_url()},
+        provenance={
+            **provenance,
+            "mode": "macro",
+            "macro_base_url": _macro_base_url(),
+            "reference_layer": _reference_layer(),
+        },
     )
 
 
@@ -445,18 +633,31 @@ def export_map_observation(req: ExportMapObservationRequest) -> ExportMapObserva
 
 @app.post("/macros/detect-candidate-gcps", response_model=DetectCandidateGcpsResponse)
 def detect_candidate_gcps(req: DetectCandidateGcpsRequest) -> DetectCandidateGcpsResponse:
-    _decode_image(req.image_base64)
+    raw, _, _ = _decode_image(req.image_base64)
+    try:
+        with Image.open(BytesIO(raw)) as img:
+            img = img.convert("RGB")
+            gcps, limitations = _extract_candidate_gcps(img)
+    except Exception as exc:  # noqa: BLE001
+        return DetectCandidateGcpsResponse(
+            ok=False,
+            gcps=[],
+            limitations_text=f"OCR failed: {exc}",
+            metadata={"method": req.method, "target_epsg": req.target_epsg},
+        )
+
+    ok = bool(gcps)
     return DetectCandidateGcpsResponse(
-        ok=False,
-        gcps=[],
-        limitations_text="GCP auto-detection not configured; integrate QGIS macros for grid/junction detection.",
-        metadata={"method": req.method, "target_epsg": req.target_epsg},
+        ok=ok,
+        gcps=gcps,
+        limitations_text=limitations,
+        metadata={"method": req.method, "target_epsg": req.target_epsg, "gcps": len(gcps)},
     )
 
 
 @app.post("/macros/apply-gcps", response_model=ApplyGcpsResponse)
 def apply_gcps(req: ApplyGcpsRequest) -> ApplyGcpsResponse:
-    _decode_image(req.image_base64)
+    raw, width, height = _decode_image(req.image_base64)
     if not req.gcps:
         return ApplyGcpsResponse(
             ok=False,
@@ -466,13 +667,143 @@ def apply_gcps(req: ApplyGcpsRequest) -> ApplyGcpsResponse:
             limitations_text="Cannot warp without control points.",
             metadata={"method": req.method, "target_epsg": req.target_epsg},
         )
+
+    try:
+        with Image.open(BytesIO(raw)) as img:
+            img = img.convert("RGB")
+            image_np = np.array(img)
+    except Exception as exc:  # noqa: BLE001
+        return ApplyGcpsResponse(
+            ok=False,
+            status="image_invalid",
+            transform=None,
+            errors=[f"image_open_failed:{exc}"],
+            limitations_text="Image could not be decoded for georeferencing.",
+            metadata={"method": req.method, "target_epsg": req.target_epsg},
+        )
+
+    gcp_objs: list[GroundControlPoint] = []
+    control_points: list[ControlPoint] = []
+    for gcp in req.gcps:
+        try:
+            pixel = gcp.get("pixel") if isinstance(gcp, dict) else None
+            world = gcp.get("world_guess") if isinstance(gcp, dict) else None
+            if not (isinstance(pixel, list) and isinstance(world, list) and len(pixel) >= 2 and len(world) >= 2):
+                continue
+            col = float(pixel[0])
+            row = float(pixel[1])
+            x = float(world[0])
+            y = float(world[1])
+        except Exception:  # noqa: BLE001
+            continue
+        gcp_objs.append(GroundControlPoint(row=row, col=col, x=x, y=y))
+        control_points.append(ControlPoint(src={"x": col, "y": row}, dst={"x": x, "y": y}))
+
+    if len(gcp_objs) < 3:
+        return ApplyGcpsResponse(
+            ok=False,
+            status="insufficient_gcps",
+            transform=None,
+            errors=["gcps_insufficient"],
+            limitations_text="At least three control points are required for an affine transform.",
+            metadata={"method": req.method, "target_epsg": req.target_epsg, "gcps": len(gcp_objs)},
+        )
+
+    try:
+        transform = rasterio.transform.from_gcps(gcp_objs)
+    except Exception as exc:  # noqa: BLE001
+        return ApplyGcpsResponse(
+            ok=False,
+            status="transform_failed",
+            transform=None,
+            errors=[f"transform_failed:{exc}"],
+            limitations_text="Failed to compute georeferencing transform.",
+            metadata={"method": req.method, "target_epsg": req.target_epsg, "gcps": len(gcp_objs)},
+        )
+
+    residuals: list[float] = []
+    for cp in control_points:
+        world_x, world_y = transform * (cp.src["x"], cp.src["y"])
+        resid = math.hypot(world_x - cp.dst["x"], world_y - cp.dst["y"])
+        cp.residual = resid
+        residuals.append(resid)
+
+    rmse = math.sqrt(sum(r * r for r in residuals) / len(residuals)) if residuals else None
+
+    alignment_score = None
+    alignment_meta: dict[str, Any] = {}
+    try:
+        alignment_score, alignment_meta = _osm_alignment_score(
+            image=Image.fromarray(image_np),
+            transform=transform,
+            target_epsg=req.target_epsg,
+        )
+    except Exception as exc:  # noqa: BLE001
+        alignment_meta = {"reason": f"alignment_failed:{exc}"}
+
+    matrix = [
+        [float(transform.a), float(transform.b), float(transform.c)],
+        [float(transform.d), float(transform.e), float(transform.f)],
+        [0.0, 0.0, 1.0],
+    ]
+    inverse_matrix = None
+    try:
+        inv = np.linalg.inv(np.array(matrix))
+        inverse_matrix = inv.tolist()
+    except Exception:  # noqa: BLE001
+        inverse_matrix = None
+
+    geotiff_b64 = None
+    try:
+        with MemoryFile() as memfile:
+            with memfile.open(
+                driver="GTiff",
+                height=height,
+                width=width,
+                count=3,
+                dtype=image_np.dtype,
+                crs=f"EPSG:{req.target_epsg}",
+                transform=transform,
+            ) as dst:
+                dst.write(np.transpose(image_np, (2, 0, 1)))
+            geotiff_b64 = base64.b64encode(memfile.read()).decode("ascii")
+    except Exception:  # noqa: BLE001
+        geotiff_b64 = None
+
+    transform_obj = GeorefTransform(
+        method=req.method,
+        matrix=matrix,
+        matrix_shape=[3, 3],
+        uncertainty_score=rmse,
+        metadata={
+            "rmse": rmse,
+            "alignment_score": alignment_score,
+            "alignment_meta": alignment_meta,
+            "gcps_used": len(gcp_objs),
+            "target_epsg": req.target_epsg,
+            "inverse_matrix": inverse_matrix,
+            "reference_layer": _reference_layer(),
+        },
+        control_points=control_points,
+    )
+
+    metadata = {
+        "method": req.method,
+        "target_epsg": req.target_epsg,
+        "gcps": len(gcp_objs),
+        "rmse": rmse,
+        "alignment_score": alignment_score,
+        "alignment_meta": alignment_meta,
+        "geotiff_base64": geotiff_b64,
+    }
+
     return ApplyGcpsResponse(
-        ok=False,
-        status="warp_unavailable",
-        transform=None,
-        errors=["warp_unimplemented"],
-        limitations_text="Warping not implemented in stub service.",
-        metadata={"method": req.method, "target_epsg": req.target_epsg, "gcps": len(req.gcps)},
+        ok=True,
+        status="success",
+        transform=transform_obj,
+        errors=[],
+        limitations_text="Affine transform derived from OCR-detected control points; verify alignment.",
+        metadata=metadata,
     )
 
 
