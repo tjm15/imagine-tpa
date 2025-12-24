@@ -36,6 +36,11 @@ class DebugIngestRequeue(BaseModel):
     note: str | None = None
 
 
+class DebugIngestGraph(BaseModel):
+    ingest_job_id: str
+    note: str | None = None
+
+
 @router.get("/debug/overview")
 def debug_overview() -> JSONResponse:
     return service_debug_overview()
@@ -139,3 +144,10 @@ def debug_requeue_ingest(body: DebugIngestRequeue) -> JSONResponse:
     from ..services.debug import requeue_ingest_job as service_requeue_ingest_job
 
     return service_requeue_ingest_job(body.ingest_job_id, note=body.note)
+
+
+@router.post("/debug/ingest/run-graph")
+def debug_run_graph_ingest(body: DebugIngestGraph) -> JSONResponse:
+    from ..services.debug import run_graph_ingest_job as service_run_graph_ingest_job
+
+    return service_run_graph_ingest_job(body.ingest_job_id, note=body.note)

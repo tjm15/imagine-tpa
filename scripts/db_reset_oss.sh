@@ -20,6 +20,12 @@ DB_VOLUME="${PROJECT}_tpa_db_data"
 echo "Stopping DB service (project=${PROJECT})…" >&2
 docker compose -f "$COMPOSE_FILE" stop tpa-db >/dev/null 2>&1 || true
 
+echo "Removing DB container (project=${PROJECT})…" >&2
+docker compose -f "$COMPOSE_FILE" rm -f tpa-db >/dev/null 2>&1 || true
+
+echo "Cleaning any stray containers holding volume ${DB_VOLUME}…" >&2
+docker ps -a --filter "volume=${DB_VOLUME}" -q | xargs -r docker rm -f >/dev/null 2>&1 || true
+
 echo "Removing volume: ${DB_VOLUME}…" >&2
 docker volume rm -f "$DB_VOLUME"
 
@@ -28,4 +34,3 @@ docker compose -f "$COMPOSE_FILE" up -d tpa-db
 
 echo "Done. If other services were running, restart them with:" >&2
 echo "  docker compose -f $COMPOSE_FILE up -d" >&2
-

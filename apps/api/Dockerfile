@@ -11,6 +11,8 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 
 # App code
 COPY apps/api/tpa_api /app/tpa_api
+COPY agents /app/agents
+COPY schemas /app/schemas
 
 # Spec pack (mounted in the same image so the API/UI can serve and validate against it)
 COPY schemas /app/spec/schemas

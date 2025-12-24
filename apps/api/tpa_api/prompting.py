@@ -9,6 +9,7 @@ import httpx
 
 from .db import _db_execute
 from .model_clients import _ensure_model_role_sync, _llm_model_id
+from .observability.phoenix import trace_span
 from .text_utils import _extract_json_object
 from .time_utils import _utc_now
 
@@ -101,17 +102,31 @@ def _llm_structured_sync(
     _ = temperature
     _ = max_tokens
 
-    try:
-        with httpx.Client(timeout=timeout) as client:
-            resp = client.post(url, json=payload)
-            resp.raise_for_status()
-            data = resp.json()
-        raw_text = data["choices"][0]["message"]["content"]
-        obj = _extract_json_object(raw_text)
-        if not obj:
-            errors.append("llm_output_not_json_object")
-    except Exception as exc:  # noqa: BLE001
-        errors.append(f"llm_call_failed: {exc}")
+    span_attributes = {
+        "tpa.prompt_id": prompt_id,
+        "tpa.prompt_version": prompt_version,
+        "tpa.prompt_name": prompt_name,
+        "tpa.purpose": purpose,
+        "tpa.model_id": model_id,
+        "tpa.run_id": run_id,
+        "tpa.ingest_batch_id": ingest_batch_id,
+        "tpa.tool": "llm_structured",
+    }
+    with trace_span("llm.structured", span_attributes) as span:
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                resp = client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+            raw_text = data["choices"][0]["message"]["content"]
+            obj = _extract_json_object(raw_text)
+            if not obj:
+                errors.append("llm_output_not_json_object")
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"llm_call_failed: {exc}")
+            if span is not None:
+                span.record_exception(exc)
+                span.set_attribute("error", True)
 
     ended_at = _utc_now()
     inputs_logged = {

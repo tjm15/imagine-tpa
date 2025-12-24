@@ -139,6 +139,16 @@ The workbench is only as good as its evidence layer.
 * extract visual features/masks for plan reading and registration (`schemas/VisualFeature.schema.json`, `schemas/SegmentationMask.schema.json`)
 * create transforms and overlays with explicit uncertainty (`schemas/Transform.schema.json`, `schemas/ProjectionArtifact.schema.json`)
 
+### 4.4 Pre-computation enrichment prompts (planner agent needs)
+We precompute **imaginative, planner-shaped affordances** so the workbench feels like a colleague:
+* cross-modal link hypotheses (policy ↔ map/diagram/photo), with rationale
+* scenario levers ("what could shift outcomes?", "what evidence unlocks a different position?")
+* evidence gaps and contradictions that should be resolved before drafting
+* ready-made questions an officer or inspector is likely to ask
+* candidate bundles for evidence cards (what to cite together)
+
+These outputs are **non-deterministic, non-binding** and always traceable to their inputs.
+
 Evidence acceptance:
 * Loop B can retrieve and cite relevant policies/constraints reliably for the selected authorities.
 

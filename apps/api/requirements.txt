@@ -15,3 +15,6 @@ langgraph
 langchain-core
 boto3
 jsonschema
+opentelemetry-api>=1.27.0
+opentelemetry-sdk>=1.27.0
+opentelemetry-exporter-otlp>=1.27.0

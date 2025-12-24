@@ -2,8 +2,8 @@ import os
 import sys
 import time
 import json
-import psycopg2
-from psycopg2.extras import RealDictCursor
+import psycopg
+from psycopg.rows import dict_row
 import boto3
 from botocore.client import Config
 
@@ -19,7 +19,7 @@ S3_BUCKET = os.environ.get("TPA_S3_BUCKET", "tpa")
 
 class Examiner:
     def __init__(self):
-        self.conn = psycopg2.connect(DB_DSN)
+        self.conn = psycopg.connect(DB_DSN, row_factory=dict_row)
         self.s3 = boto3.client('s3',
             endpoint_url=S3_ENDPOINT,
             aws_access_key_id=S3_ACCESS_KEY,
@@ -29,18 +29,18 @@ class Examiner:
         )
 
     def get_ingest_job(self, job_id):
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with self.conn.cursor() as cur:
             cur.execute("SELECT * FROM ingest_runs WHERE run_id = %s", (job_id,))
             return cur.fetchone()
 
     def get_run_id_for_job(self, job_id):
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with self.conn.cursor() as cur:
             cur.execute("SELECT id FROM ingest_runs WHERE ingest_batch_id = (SELECT ingest_batch_id FROM ingest_jobs WHERE id = %s)", (job_id,))
             res = cur.fetchone()
             return res['id'] if res else None
 
     def get_run_steps(self, run_id):
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with self.conn.cursor() as cur:
             cur.execute("""
                 SELECT * FROM ingest_run_steps 
                 WHERE run_id = %s 
@@ -69,7 +69,7 @@ class Examiner:
                     seen_steps.add(step['id'])
             
             # Check top level run status
-            with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with self.conn.cursor() as cur:
                 cur.execute("SELECT status FROM ingest_runs WHERE id = %s", (run_id,))
                 run = cur.fetchone()
             
@@ -93,7 +93,7 @@ class Examiner:
             print("Run not found")
             return
 
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with self.conn.cursor() as cur:
             if stage_name == 'canonical_load':
                 # Dump chunks
                 cur.execute("SELECT * FROM chunks WHERE run_id = %s LIMIT 50", (run_id,))
@@ -116,7 +116,7 @@ class Examiner:
             print(json.dumps({"error": "run_not_found"}))
             return
 
-        with self.conn.cursor(cursor_factory=RealDictCursor) as cur:
+        with self.conn.cursor() as cur:
             cur.execute("""
                 SELECT step_name, started_at, status 
                 FROM ingest_run_steps 
@@ -148,10 +148,6 @@ class Examiner:
             "embeddings": "tpa-embeddings"
         }
 
-        # Handling special case for segmentation based on compose config if possible, 
-        # but defaulting to likely suspect. tpa-segmentation-worker is legacy, sam2 is new.
-        # The logs earlier showed TPA_SEGMENTATION_BASE_URL pointing to 8088 (sam2).
-        
         service = service_map.get(step['step_name'], "tpa-api")
         
         print(json.dumps({

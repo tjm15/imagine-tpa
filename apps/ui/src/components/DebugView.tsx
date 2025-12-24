@@ -532,6 +532,18 @@ export function DebugView() {
     }
   }, [load]);
 
+  const handleRunGraphJob = useCallback(async (ingestJobId: string) => {
+    const res = await postJson<{ ingest_job_id: string; enqueued: boolean; mode?: string }>('/debug/ingest/run-graph', {
+      ingest_job_id: ingestJobId,
+    });
+    if (res.ok) {
+      setActionMessage(`Graph run queued for job ${ingestJobId.slice(0, 8)}.`);
+      load();
+    } else {
+      setActionMessage(`Graph run failed: ${res.error || 'unknown error'}`);
+    }
+  }, [load]);
+
   useEffect(() => {
     const controller = new AbortController();
     load(controller.signal);
@@ -988,6 +1000,9 @@ export function DebugView() {
                               onClick={() => handleResetIngest({ ingest_job_id: job.ingest_job_id })}
                             >
                               Reset
+                            </Button>
+                            <Button variant="outline" size="sm" onClick={() => handleRunGraphJob(job.ingest_job_id)}>
+                              Run graph
                             </Button>
                             <Button variant="outline" size="sm" onClick={() => handleRequeueJob(job.ingest_job_id)}>
                               Requeue

@@ -241,6 +241,7 @@ services:
     volumes:
       - ../authority_packs:${TPA_AUTHORITY_PACKS_ROOT:-/authority_packs}:ro
       - tpa_debug_uploads:${TPA_DEBUG_UPLOAD_ROOT:-/debug_uploads}
+      - ../apps/api/tpa_api:/app/tpa_api
     depends_on:
       tpa-db:
         condition: service_healthy

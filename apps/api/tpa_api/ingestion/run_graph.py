@@ -1,10 +1,90 @@
 import sys
 import asyncio
-import uuid
-from tpa_api.ingestion.ingestion_graph import build_ingestion_graph
-from tpa_api.db import init_db_pool, _db_fetch_one
-from tpa_api.blob_store import read_blob_bytes
 from langgraph.checkpoint.memory import MemorySaver
+from tpa_api.ingestion.ingestion_graph import build_ingestion_graph
+from tpa_api.db import init_db_pool, _db_fetch_one, _db_fetch_all
+from tpa_api.blob_store import read_blob_bytes
+
+
+async def run_graph_for_job(job_id: str) -> dict[str, object]:
+    init_db_pool()
+
+    job = _db_fetch_one("SELECT * FROM ingest_jobs WHERE id = %s::uuid", (job_id,))
+    if not job:
+        return {"status": "error", "error": f"Job {job_id} not found."}
+
+    docs = _db_fetch_all(
+        """
+        SELECT id, authority_id, plan_cycle_id, raw_blob_path, raw_source_uri, raw_content_type, metadata
+        FROM documents
+        WHERE ingest_batch_id = %s::uuid
+        ORDER BY created_at ASC
+        """,
+        (str(job["ingest_batch_id"]),),
+    )
+    if not docs:
+        return {"status": "error", "error": "No documents found for this job."}
+
+    from tpa_api.ingest_worker import _create_ingest_run
+
+    run_id = _create_ingest_run(
+        ingest_batch_id=str(job["ingest_batch_id"]),
+        authority_id=str(job["authority_id"]) if job.get("authority_id") is not None else None,
+        plan_cycle_id=job.get("plan_cycle_id"),
+        inputs={
+            "job_id": job_id,
+            "rescue": True,
+            "graph": "v4_freight_train",
+        },
+    )
+
+    checkpointer = MemorySaver()
+    graph = build_ingestion_graph(checkpointer)
+
+    processed = 0
+    skipped: list[str] = []
+    failures: list[str] = []
+
+    for idx, doc in enumerate(docs, start=1):
+        blob_path = doc.get("raw_blob_path")
+        if not blob_path:
+            skipped.append(str(doc.get("id")))
+            continue
+        file_bytes, _, err = read_blob_bytes(blob_path)
+        if err or not file_bytes:
+            failures.append(f"{doc.get('id')}: {err}")
+            continue
+
+        initial_state = {
+            "run_id": run_id,
+            "ingest_job_id": job_id,
+            "ingest_batch_id": str(job["ingest_batch_id"]),
+            "authority_id": str(doc.get("authority_id") or job.get("authority_id")),
+            "plan_cycle_id": doc.get("plan_cycle_id") or job.get("plan_cycle_id"),
+            "filename": blob_path.split("/")[-1],
+            "file_bytes": file_bytes,
+            "doc_metadata": doc.get("metadata") or {},
+            "source_url": doc.get("raw_source_uri"),
+            "content_type": doc.get("raw_content_type"),
+        }
+
+        config = {"configurable": {"thread_id": str(doc.get("id") or idx)}}
+        async for _event in graph.astream(initial_state, config):
+            pass
+        processed += 1
+
+    return {
+        "status": "ok",
+        "run_id": run_id,
+        "documents_processed": processed,
+        "documents_skipped": skipped,
+        "failures": failures,
+    }
+
+
+def run_graph_for_job_sync(job_id: str) -> dict[str, object]:
+    return asyncio.run(run_graph_for_job(job_id))
+
 
 async def main():
     if len(sys.argv) < 2:
@@ -12,79 +92,9 @@ async def main():
         return
 
     job_id = sys.argv[1]
-    init_db_pool()
-    
-    # 1. Load Job & Document info
-    job = _db_fetch_one("SELECT * FROM ingest_jobs WHERE id = %s::uuid", (job_id,))
-    if not job:
-        print(f"Job {job_id} not found.")
-        return
+    result = await run_graph_for_job(job_id)
+    print(result)
 
-    # Find the document created by this job (or batch)
-    # The legacy worker creates document row in 'anchor_raw' step.
-    # If we are rescuing a job that failed AFTER anchor_raw, document row exists.
-    
-    doc = _db_fetch_one("""
-        SELECT * FROM documents 
-        WHERE ingest_batch_id = %s::uuid 
-        LIMIT 1
-    """, (str(job['ingest_batch_id']),))
-    
-    if not doc:
-        print("Document not found for this job. Ensure 'anchor_raw' ran.")
-        return
-
-    print(f"Processing Document: {doc['id']} ({doc['raw_blob_path']})")
-    
-    # 2. Fetch Bytes
-    file_bytes, _, err = read_blob_bytes(doc['raw_blob_path'])
-    if err or not file_bytes:
-        print(f"Failed to read blob: {err}")
-        return
-
-    # 3. Create Run Record
-    from tpa_api.ingest_worker import _create_ingest_run
-    
-    run_id = _create_ingest_run(
-        ingest_batch_id=str(job['ingest_batch_id']),
-        authority_id=str(job['authority_id']),
-        plan_cycle_id=str(job['plan_cycle_id']),
-        inputs={
-            "job_id": job_id,
-            "rescue": True,
-            "graph": "v4_freight_train"
-        }
-    )
-    print(f"Created Run: {run_id}")
-
-    # 4. Setup Graph
-    checkpointer = MemorySaver()
-    graph = build_ingestion_graph(checkpointer)
-    
-    initial_state = {
-        "run_id": run_id,
-        "ingest_job_id": job_id,
-        "ingest_batch_id": str(job['ingest_batch_id']),
-        "authority_id": str(job['authority_id']),
-        "plan_cycle_id": str(job['plan_cycle_id']),
-        "document_id": str(doc['id']),
-        "filename": doc['raw_blob_path'].split('/')[-1],
-        "file_bytes": file_bytes,
-        "doc_metadata": doc.get('metadata') or {},
-        "visual_queue": [],
-        "text_queue": []
-    }
-    
-    print("🚀 Starting Freight Train Graph...")
-    config = {"configurable": {"thread_id": "1"}}
-    
-    async for event in graph.astream(initial_state, config):
-        for key, value in event.items():
-            print(f"✅ Node Finished: {key}")
-            if key == "vlm_batch":
-                print(f"   Processed {len(value.get('visual_queue', []))} visuals.")
-            if key == "llm_batch":
-                print(f"   Processed structures.")
 
 if __name__ == "__main__":
     asyncio.run(main())
