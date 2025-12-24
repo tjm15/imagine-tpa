@@ -7,6 +7,9 @@
 ## 1. Objective
 Build a planning judgement system that **imitates the grammar of planning judgement**, making reasoning legible and contestable through explicit moves and logged artefacts. It serves both development management and plan-making.
 
+A primary purpose of the system is to produce **targeted statutory deliverables** aligned to GOV.UK guidance,
+captured as alignment outputs in `culp/ALIGNMENT_OUTPUTS_2025_11.yaml`.
+
 The single reasoning spine is expressed across **three pipelines**:
 * Spatial Strategy (plan-making / scenarios)
 * Development Management (casework)

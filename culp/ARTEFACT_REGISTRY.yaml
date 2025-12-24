@@ -35,6 +35,14 @@ artefacts:
     publish_target: internal
     notes: "Record changes to timetable/milestones and reasons; supports audit and governance."
 
+  - artefact_key: project_initiation_document
+    title: "Project initiation document"
+    workspace: spatial_strategy
+    kind: authored_document
+    default_content_format: prosemirror_json
+    publish_target: internal
+    notes: "PID capturing scope, governance, resourcing, and delivery approach for the 30-month programme."
+
   - artefact_key: notice_html
     title: "Notice of plan-making (HTML)"
     workspace: spatial_strategy
@@ -188,6 +196,14 @@ artefacts:
     publish_target: public
     notes: "Summary of consultation responses with representative quotes and traceability."
 
+  - artefact_key: gateway_2_submission_pack
+    title: "Gateway 2 submission pack"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Curated pack for Gateway 2 submission; publishable outputs handled separately."
+
   - artefact_key: gateway_2_self_assessment
     title: "Gateway 2 self-assessment"
     workspace: spatial_strategy
@@ -213,6 +229,14 @@ artefacts:
     publish_target: public
     notes: "Draft plan text (chapters/policies) produced in the Living Document; must be exportable."
 
+  - artefact_key: policy_pages_html
+    title: "Policy pages (HTML)"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "HTML policy pages for the public portal; searchable and accessible."
+
   - artefact_key: policies_map_draft
     title: "Policies map (draft)"
     workspace: spatial_strategy
@@ -220,6 +244,22 @@ artefacts:
     default_content_format: binary_ref
     publish_target: public
     notes: "Draft policies map artefact; must be traceable to source geometries and limitations."
+
+  - artefact_key: policies_map_layers
+    title: "Policies map layers"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Layered geospatial data for policy categories/themes per policies map standards."
+
+  - artefact_key: policies_map_metadata
+    title: "Policies map metadata"
+    workspace: spatial_strategy
+    kind: dataset
+    default_content_format: binary_ref
+    publish_target: public
+    notes: "Legend, theme metadata, and click-through content for the policies map."
 
   - artefact_key: sds_conformity_consultation_if_applicable
     title: "SDS conformity consultation materials (if applicable)"
@@ -244,6 +284,14 @@ artefacts:
     default_content_format: prosemirror_json
     publish_target: internal
     notes: "Pre-submission readiness; should link to inspector-style risks and evidence gaps."
+
+  - artefact_key: gateway_3_submission_pack
+    title: "Gateway 3 submission pack"
+    workspace: spatial_strategy
+    kind: bundle
+    default_content_format: binary_ref
+    publish_target: internal
+    notes: "Curated pack for Gateway 3 submission; publishable outputs handled separately."
 
   - artefact_key: submission_ready_pack
     title: "Submission ready pack"
@@ -351,4 +399,3 @@ artefacts:
     default_content_format: binary_ref
     publish_target: internal
     notes: "Log of triggers and rationale for plan review actions; supports governance."
-

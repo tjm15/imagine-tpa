@@ -179,7 +179,7 @@ capabilities:
       delivered as drawings/parameters are updated.
     primary_outputs:
       - NegotiationMove
-      - ReasoningTrace
+      - ReasoningTrace[]
 
   - id: dm_condition_drafter
     pipeline: development_management

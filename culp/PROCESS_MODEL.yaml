@@ -45,6 +45,7 @@ stages:
     required_artefacts:
       - milestones_table
       - updates_log
+      - project_initiation_document
     gov_uk_ref: "https://www.gov.uk/guidance/getting-ready-to-prepare-a-new-plan"
 
   - id: notice_of_plan_making
@@ -122,6 +123,7 @@ stages:
     title: "Gateway 2"
     required_artefacts:
       - gateway_2_self_assessment
+      - gateway_2_submission_pack
       - updated_timetable
     gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 
@@ -131,7 +133,11 @@ stages:
     title: "Consult on proposed local plan"
     required_artefacts:
       - proposed_local_plan_draft
+      - policy_pages_html
       - policies_map_draft
+      - policies_map_layers
+      - policies_map_metadata
+      - responses_log
       - consultation_summary_report
       - sds_conformity_consultation_if_applicable
       - statement_of_consultation
@@ -142,6 +148,7 @@ stages:
     title: "Gateway 3"
     required_artefacts:
       - gateway_3_self_assessment
+      - gateway_3_submission_pack
       - submission_ready_pack
     gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 
@@ -170,7 +177,10 @@ stages:
     title: "Adoption + publish policies map"
     required_artefacts:
       - adopted_local_plan
+      - policy_pages_html
       - policies_map_final
+      - policies_map_layers
+      - policies_map_metadata
       - adoption_statement
     gov_uk_ref: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
 
