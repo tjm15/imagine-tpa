@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from fastapi import HTTPException
@@ -770,3 +771,31 @@ def requeue_ingest_job(ingest_job_id: str, note: str | None = None) -> JSONRespo
     if not enqueued:
         raise HTTPException(status_code=500, detail=f"Failed to enqueue ingest job: {error}")
     return JSONResponse(content=jsonable_encoder({"ingest_job_id": job_id, "enqueued": True}))
+
+
+def run_graph_ingest_job(ingest_job_id: str, note: str | None = None) -> JSONResponse:
+    job_id = _validate_uuid_or_400(ingest_job_id, field_name="ingest_job_id")
+    job = _db_fetch_one(
+        "SELECT id FROM ingest_jobs WHERE id = %s::uuid",
+        (job_id,),
+    )
+    if not job:
+        raise HTTPException(status_code=404, detail="Ingest job not found")
+    try:
+        from ..ingest_worker import celery_app  # noqa: PLC0415
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"celery_import_failed:{exc}") from exc
+    try:
+        celery_app.send_task("tpa_api.ingest_worker.run_graph_job", args=[job_id])
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"celery_enqueue_failed:{exc}") from exc
+    if note:
+        _db_execute(
+            """
+            UPDATE ingest_jobs
+            SET outputs_jsonb = outputs_jsonb || %s::jsonb
+            WHERE id = %s::uuid
+            """,
+            (json.dumps({"debug_note": note}, ensure_ascii=False), job_id),
+        )
+    return JSONResponse(content=jsonable_encoder({"ingest_job_id": job_id, "enqueued": True, "mode": "graph"}))
