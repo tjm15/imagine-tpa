@@ -14,6 +14,7 @@ RUN set -eux; \
       libgl1 \
       poppler-utils \
       tesseract-ocr \
+      jbig2dec \
     ; \
     rm -rf /var/lib/apt/lists/*
 

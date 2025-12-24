@@ -1,0 +1,530 @@
+{
+  "$defs": {
+    "DocumentAffordances": {
+      "description": "UX/Agent hints: 'What can I do with this document?'",
+      "properties": {
+        "contains_site_allocations": {
+          "default": false,
+          "title": "Contains Site Allocations",
+          "type": "boolean"
+        },
+        "contains_design_codes": {
+          "default": false,
+          "title": "Contains Design Codes",
+          "type": "boolean"
+        },
+        "contains_monitoring_indicators": {
+          "default": false,
+          "title": "Contains Monitoring Indicators",
+          "type": "boolean"
+        },
+        "contains_policies_map": {
+          "default": false,
+          "title": "Contains Policies Map",
+          "type": "boolean"
+        },
+        "primary_topics": {
+          "description": "Top 5 dominant themes.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Primary Topics",
+          "type": "array"
+        },
+        "canonical_questions": {
+          "description": "Examples: 'What is the affordable housing target?', 'List all strategic sites'.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Canonical Questions",
+          "type": "array"
+        }
+      },
+      "title": "DocumentAffordances",
+      "type": "object"
+    },
+    "DocumentLegalStatus": {
+      "description": "Precise legal standing of the document in the UK planning system.",
+      "properties": {
+        "functional_role": {
+          "default": "unknown",
+          "enum": [
+            "local_plan_dpd",
+            "neighbourhood_plan",
+            "spatial_development_strategy",
+            "supplementary_planning_document",
+            "design_code",
+            "statement_of_community_involvement",
+            "authority_monitoring_report",
+            "brownfield_register",
+            "evidence_base_technical",
+            "sustainability_appraisal",
+            "consultation_statement",
+            "committee_report",
+            "appeal_decision",
+            "unknown"
+          ],
+          "title": "Functional Role",
+          "type": "string"
+        },
+        "legal_weight": {
+          "default": "material_consideration_moderate",
+          "enum": [
+            "statutory_development_plan",
+            "material_consideration_strong",
+            "material_consideration_moderate",
+            "material_consideration_weak",
+            "procedural_administrative",
+            "informative_only"
+          ],
+          "title": "Legal Weight",
+          "type": "string"
+        },
+        "stage": {
+          "default": "adopted_made",
+          "enum": [
+            "regulation_18_draft",
+            "regulation_19_publication",
+            "submission",
+            "examination_modifications",
+            "adopted_made",
+            "withdrawn",
+            "superseded"
+          ],
+          "title": "Stage",
+          "type": "string"
+        },
+        "dates": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": "Key dates: 'adopted', 'published', 'period_start', 'period_end'.",
+          "title": "Dates",
+          "type": "object"
+        },
+        "relevant_jurisdiction_codes": {
+          "description": "ONS/GSS codes for the area this legally covers (e.g. 'E07000012').",
+          "items": {
+            "type": "string"
+          },
+          "title": "Relevant Jurisdiction Codes",
+          "type": "array"
+        }
+      },
+      "title": "DocumentLegalStatus",
+      "type": "object"
+    },
+    "MapLayerDetection": {
+      "description": "A specific semantic layer identified in a map.",
+      "properties": {
+        "layer_name": {
+          "title": "Layer Name",
+          "type": "string"
+        },
+        "layer_type": {
+          "enum": [
+            "constraint",
+            "allocation",
+            "administrative",
+            "context",
+            "infrastructure"
+          ],
+          "title": "Layer Type",
+          "type": "string"
+        },
+        "representation_style": {
+          "enum": [
+            "polygon_fill",
+            "hatching",
+            "boundary_line",
+            "point_symbol"
+          ],
+          "title": "Representation Style",
+          "type": "string"
+        },
+        "color_hex_guess": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Color Hex Guess"
+        },
+        "is_legend_item": {
+          "default": false,
+          "title": "Is Legend Item",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "layer_name",
+        "layer_type",
+        "representation_style"
+      ],
+      "title": "MapLayerDetection",
+      "type": "object"
+    },
+    "PolicyException": {
+      "description": "The 'UNLESS' - critical for reasoning.",
+      "properties": {
+        "exception_type": {
+          "enum": [
+            "viability",
+            "technical_feasibility",
+            "better_alternative",
+            "temporary_use"
+          ],
+          "title": "Exception Type",
+          "type": "string"
+        },
+        "description": {
+          "title": "Description",
+          "type": "string"
+        }
+      },
+      "required": [
+        "exception_type",
+        "description"
+      ],
+      "title": "PolicyException",
+      "type": "object"
+    },
+    "PolicyRequirement": {
+      "description": "The 'THEN' or 'MUST' of a policy.",
+      "properties": {
+        "modality": {
+          "enum": [
+            "must",
+            "should",
+            "support",
+            "resist",
+            "prohibit",
+            "require_contribution"
+          ],
+          "title": "Modality",
+          "type": "string"
+        },
+        "requirement_type": {
+          "enum": [
+            "performance_standard",
+            "submission_item",
+            "financial_contribution",
+            "physical_provision",
+            "design_principle"
+          ],
+          "title": "Requirement Type",
+          "type": "string"
+        },
+        "raw_text": {
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "target_metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Metric"
+        },
+        "target_value": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Value"
+        },
+        "target_unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target Unit"
+        },
+        "target_operator": {
+          "default": "min",
+          "enum": [
+            "min",
+            "max",
+            "exact",
+            "approx"
+          ],
+          "title": "Target Operator",
+          "type": "string"
+        }
+      },
+      "required": [
+        "modality",
+        "requirement_type",
+        "raw_text"
+      ],
+      "title": "PolicyRequirement",
+      "type": "object"
+    },
+    "PolicyTrigger": {
+      "description": "The 'IF' or 'WHERE' condition of a policy.",
+      "properties": {
+        "trigger_type": {
+          "enum": [
+            "spatial_zone",
+            "development_scale",
+            "development_use",
+            "temporal_event",
+            "feature_presence"
+          ],
+          "title": "Trigger Type",
+          "type": "string"
+        },
+        "raw_text": {
+          "title": "Raw Text",
+          "type": "string"
+        },
+        "normalized_value": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Normalized Value"
+        },
+        "spatial_layer_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Spatial Layer Ref"
+        }
+      },
+      "required": [
+        "trigger_type",
+        "raw_text"
+      ],
+      "title": "PolicyTrigger",
+      "type": "object"
+    },
+    "RichPolicyClause": {
+      "description": "A fully semanticized policy clause.",
+      "properties": {
+        "policy_code": {
+          "title": "Policy Code",
+          "type": "string"
+        },
+        "clause_ref": {
+          "title": "Clause Ref",
+          "type": "string"
+        },
+        "intent": {
+          "enum": [
+            "strategic_objective",
+            "development_management",
+            "site_allocation",
+            "implementation"
+          ],
+          "title": "Intent",
+          "type": "string"
+        },
+        "triggers": {
+          "items": {
+            "$ref": "#/$defs/PolicyTrigger"
+          },
+          "title": "Triggers",
+          "type": "array"
+        },
+        "requirements": {
+          "items": {
+            "$ref": "#/$defs/PolicyRequirement"
+          },
+          "title": "Requirements",
+          "type": "array"
+        },
+        "exceptions": {
+          "items": {
+            "$ref": "#/$defs/PolicyException"
+          },
+          "title": "Exceptions",
+          "type": "array"
+        },
+        "defined_terms": {
+          "description": "Terms defined in Glossary",
+          "items": {
+            "type": "string"
+          },
+          "title": "Defined Terms",
+          "type": "array"
+        },
+        "legislation_refs": {
+          "description": "NPPF paragraphs, Acts",
+          "items": {
+            "type": "string"
+          },
+          "title": "Legislation Refs",
+          "type": "array"
+        },
+        "related_policies": {
+          "description": "Cross-references",
+          "items": {
+            "type": "string"
+          },
+          "title": "Related Policies",
+          "type": "array"
+        }
+      },
+      "required": [
+        "policy_code",
+        "clause_ref",
+        "intent"
+      ],
+      "title": "RichPolicyClause",
+      "type": "object"
+    },
+    "VisualDeepMetadata": {
+      "description": "Comprehensive visual understanding.",
+      "properties": {
+        "asset_category": {
+          "enum": [
+            "proposals_map",
+            "constraints_map",
+            "masterplan",
+            "technical_diagram",
+            "illustrative_render",
+            "photo",
+            "other"
+          ],
+          "title": "Asset Category",
+          "type": "string"
+        },
+        "map_scale_declared": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Map Scale Declared"
+        },
+        "orientation": {
+          "default": "north_up",
+          "enum": [
+            "north_up",
+            "rotated",
+            "unknown"
+          ],
+          "title": "Orientation",
+          "type": "string"
+        },
+        "detected_layers": {
+          "items": {
+            "$ref": "#/$defs/MapLayerDetection"
+          },
+          "title": "Detected Layers",
+          "type": "array"
+        },
+        "extracted_toponyms": {
+          "description": "Place names found in image",
+          "items": {
+            "type": "string"
+          },
+          "title": "Extracted Toponyms",
+          "type": "array"
+        },
+        "linked_policy_codes": {
+          "description": "Policies this map visualizes",
+          "items": {
+            "type": "string"
+          },
+          "title": "Linked Policy Codes",
+          "type": "array"
+        },
+        "legibility_score": {
+          "description": "0-1 score of how readable this map is for automation",
+          "title": "Legibility Score",
+          "type": "number"
+        },
+        "interpretation_notes": {
+          "description": "VLM commentary on ambiguities or key features",
+          "title": "Interpretation Notes",
+          "type": "string"
+        }
+      },
+      "required": [
+        "asset_category",
+        "legibility_score",
+        "interpretation_notes"
+      ],
+      "title": "VisualDeepMetadata",
+      "type": "object"
+    }
+  },
+  "description": "The master container for extraction.",
+  "properties": {
+    "document_id": {
+      "title": "Document Id",
+      "type": "string"
+    },
+    "legal": {
+      "$ref": "#/$defs/DocumentLegalStatus"
+    },
+    "affordances": {
+      "$ref": "#/$defs/DocumentAffordances"
+    },
+    "policies": {
+      "items": {
+        "$ref": "#/$defs/RichPolicyClause"
+      },
+      "title": "Policies",
+      "type": "array"
+    },
+    "visuals": {
+      "items": {
+        "$ref": "#/$defs/VisualDeepMetadata"
+      },
+      "title": "Visuals",
+      "type": "array"
+    }
+  },
+  "required": [
+    "document_id",
+    "legal",
+    "affordances",
+    "policies",
+    "visuals"
+  ],
+  "title": "IngestionArtifact",
+  "type": "object"
+}

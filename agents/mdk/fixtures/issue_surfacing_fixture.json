@@ -1,0 +1,26 @@
+{
+  "run_id": "test-run-001",
+  "political_framing": "pro-development",
+  "input_context": {
+    "framing": {
+      "frame_id": "frame-123",
+      "frame_title": "Cambridge North Expansion",
+      "political_framing_id": "pro-development",
+      "purpose": "Identify potential for 500 new homes",
+      "scope": {
+        "area": "Cambridge North",
+        "sites": ["Site A", "Site B"],
+        "time_horizon": "2025-2030"
+      },
+      "decision_audience": "planner",
+      "explicit_goals": ["Maximize housing yield", "Ensure transit connectivity"],
+      "explicit_constraints": ["Green belt boundaries"],
+      "non_goals": ["Preserve low-density character"]
+    },
+    "slice": {
+      "metrics": {
+         "housing_need": "high"
+      }
+    }
+  }
+}

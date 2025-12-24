@@ -1,0 +1,17 @@
+move: "issue_surfacing"
+fixture: "issue_surfacing_fixture.json"
+
+mock_llm_response:
+  issues:
+    - issue_id: "iso-001"
+      title: "Housing Density Conflict"
+      why_material: "The proposed 500 homes exceed local density targets."
+      initial_evidence_hooks: ["cambridge::local_plan_2018::policy_3"]
+  issue_map:
+    issue_map_id: "map-001"
+    edges: []
+
+validation:
+  schemas:
+    issues: "Issue.schema.json"
+    issue_map: "IssueMap.schema.json"

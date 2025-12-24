@@ -317,6 +317,17 @@ services:
       - "${TPA_UI_DEV_PORT:-5173}:5173"
     <<: *service_defaults
 
+  # UAT runner (Playwright). Bring up with: `--profile uat`.
+  tpa-uat-runner:
+    profiles: ["uat"]
+    image: mcr.microsoft.com/playwright:v1.49.0-jammy
+    working_dir: /app/agents/mdk/uat
+    ipc: host
+    volumes:
+      - ../agents/mdk/uat:/app/agents/mdk/uat
+    command: sleep infinity
+    <<: *service_defaults
+
   # --- Optional model/tool services (bring up with: `--profile models`) ---
   # NOTE: These are intentionally opt-in because they require large model weights and (often) a GPU.
   tpa-llm:

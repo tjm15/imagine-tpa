@@ -1,0 +1,8 @@
+name: "Smoke Test"
+steps:
+  - action: "goto"
+    url: "/"
+  - action: "screenshot"
+    id: "landing_page"
+  - action: "judge"
+    prompt: "Is the page loaded?"

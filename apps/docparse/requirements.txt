@@ -7,3 +7,9 @@ minio>=7.2.0
 pypdf>=5.0.0
 pillow>=10.4.0
 pdf2image>=1.17.0
+langgraph
+langchain-core
+psycopg[binary]
+psycopg-pool
+boto3
+jsonschema
