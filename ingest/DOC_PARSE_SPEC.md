@@ -1,9 +1,17 @@
 # Document Parsing Specification (ParseBundle v2)
 
+
 ## Strategy
 * **OSS Profile**: Docparse emits a ParseBundle v2 using Docling/PyPDF + OCR only. Docparse is **CPU-only** and must not call LLM/VLM services.
 * **Azure Profile**: (Not implemented yet; keep the same output contract.)
-* **Semantic enrichment happens downstream** in the ingest worker; Docparse only provides deterministic scaffolding.
+* **Semantic enrichment happens downstream** in the ingest worker; Docparse provides comprehensive
+  structural scaffolding without subjective interpretation.
+* **No timeouts or hard caps** are enforced in Docparse for pages/bytes/visuals; operator cancellation only.
+* **Parallelism is CPU-only** (safe to use multiple workers on 16 cores).
+* **Conditional OCR**: run OCR only when native text confidence is low or pages are image‑heavy; store
+  `text_source` + `text_source_reason` on each page and log the decision in `parse_flags`.
+  When OCR runs, persist **both** native and OCR text in `text_alternates` with confidences; `pages[].text`
+  remains the chosen “best” text.
 
 ## Output Contract
 Docparse outputs a versioned ParseBundle (schema: `schemas/ParseBundle.schema.json`). This bundle is the only
@@ -29,6 +37,14 @@ Minimum fields:
       "text": "...",
       "width": 595,
       "height": 842,
+      "text_source": "docling_native|ocr",
+      "text_source_reason": "native_text_confident|image_heavy|ocr_fallback",
+      "text_alternates": {
+        "native_text": "...",
+        "ocr_text": "...",
+        "native_confidence": 0.92,
+        "ocr_confidence": 0.41
+      },
       "render_blob_path": "page_renders/.../p0001-full.png",
       "render_format": "png",
       "render_dpi": 300,
@@ -63,13 +79,10 @@ Minimum fields:
     {
       "asset_id": "va-001",
       "page_number": 12,
-      "asset_type": "map|diagram|photo|render|decorative|unknown",
-      "role": "governance|context|exemplar|unknown",
+      "asset_type": "unknown",
       "blob_path": "visual_assets/.../va-001.png",
       "bbox": [x0, y0, x1, y1],
-      "caption": "Good example of active frontage",
-      "classification": {"confidence": "medium"},
-      "metrics": [{"label": "height", "value": 21, "unit": "m"}]
+      "caption": "Good example of active frontage"
     }
   ],
   "vector_paths": [
@@ -105,7 +118,8 @@ Classification into governance classes happens **in the ingest worker**, not in 
 2. **Governing Logic** (diagrams with metrics) -> VisualConstraint / StandardMatrix candidates.
 3. **Context & Strategy** (photos/renders, key diagrams) -> DesignExemplar / SpatialStrategyElement candidates.
 
-Docparse may emit `asset_type`/`role` as `unknown` or as provisional hints. The ingest worker must reclassify with
+Docparse may emit a **structural** `asset_type` hint (e.g., image/figure/table_image/unknown) and an
+optional `role`. These are provisional hints only. The ingest worker must reclassify with
 VLM/OCR + structured prompts and log the outputs as `ToolRun`.
 
 Exemplars are a **subcategory of photos/renders**, not a separate asset type.
@@ -113,7 +127,10 @@ Exemplars are a **subcategory of photos/renders**, not a separate asset type.
 ## Notes
 * ParseBundle is stored in blob storage; only derived assets and bundles are uploaded by Docparse.
   Raw PDFs are stored by the ingest worker **before** Docparse is called.
+* `visual_assets` are limited to Docling “figure/image/table‑as‑image” outputs, not every page render.
 * `bbox` is best-effort and may be null depending on the source/PDF structure.
 * `parse_flags` must include explicit fallback markers (e.g., `docling_fallback`, `docling_errors`) when Docling cannot be used.
 * The ingest worker is responsible for persistence, KG wiring, and provenance logging.
 * Page renders are always full-resolution (default `TPA_DOCPARSE_RENDER_DPI=300`, `TPA_DOCPARSE_RENDER_FORMAT=png`) and stored in blob storage for explainability overlays.
+* `semantic` is present but empty; `policy_headings` is **not populated by Docparse**. The worker uses
+  `section_path` and heading hierarchy from `layout_blocks`.

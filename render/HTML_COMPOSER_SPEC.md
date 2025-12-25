@@ -1,4 +1,6 @@
 # HTML Composer Specification
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
+
 
 ## Core capability
 The composer renders **publishable HTML** from structured artefacts. Rendering is deterministic

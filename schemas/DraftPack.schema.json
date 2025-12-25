@@ -19,4 +19,3 @@
   },
   "required": ["draft_pack_id", "draft_request_id", "status", "suggestions", "created_at"]
 }
-

@@ -1,4 +1,5 @@
 # Planner-First UX Concept: The Planner's Assistant Testbed
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 ## 1. Conceptual Analysis: What's Missing
 

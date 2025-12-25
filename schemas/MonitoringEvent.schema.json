@@ -16,4 +16,3 @@
   },
   "required": ["monitoring_event_id", "authority_id", "event_type", "event_date"]
 }
-

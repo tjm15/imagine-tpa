@@ -16,4 +16,3 @@
   },
   "required": ["condition_id", "application_id", "condition_text", "status"]
 }
-

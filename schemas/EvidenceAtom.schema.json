@@ -26,4 +26,3 @@
   },
   "required": ["evidence_atom_id", "evidence_type", "evidence_ref"]
 }
-

@@ -40,4 +40,3 @@
   },
   "required": ["visual_asset_id", "asset_type", "artifact_path", "created_at"]
 }
-

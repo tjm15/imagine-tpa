@@ -1,292 +1,430 @@
 version: 1
-title: "TPA Alignment Outputs (Dec 2025 Guidance + Draft NPPF)"
-description: >
-  Alignment surface for the new plan-making system. Each item is a concrete output,
-  tied to a GOV.UK or Planning Data hook, and mapped to the artefact registry and
-  workflow gates. This list is used for compliance checklists and acceptance tests.
+title: TPA Alignment Outputs (Dec 2025 Guidance + Draft NPPF)
+description: 'Alignment surface for the new plan-making system. Each item is a concrete
+  output, tied to a GOV.UK or Planning Data hook, and mapped to the artefact registry
+  and workflow gates. This list is used for compliance checklists and acceptance tests.
 
+  '
 packs:
-  - id: start_pack
-    title: "Start Pack"
-    description: "Notice to commence + timetable + Gateway 1 HTML outputs."
-  - id: standards_pack
-    title: "Standards Pack"
-    description: "planning.data exports and permanent reference scheme."
-  - id: representation_pack
-    title: "Representation Pack"
-    description: "Consultation database + linkage + AI-assisted tagging (advisory)."
-
+- id: start_pack
+  title: Start Pack
+  description: Notice to commence + timetable + Gateway 1 HTML outputs.
+- id: standards_pack
+  title: Standards Pack
+  description: planning.data exports and permanent reference scheme.
+- id: representation_pack
+  title: Representation Pack
+  description: Consultation database + linkage + AI-assisted tagging (advisory).
 sources:
-  - id: gov_notice
-    label: "Giving notice of your plan-making"
-    url: "https://www.gov.uk/guidance/giving-notice-of-your-plan-making"
-  - id: gov_gateway_1
-    label: "Gateway 1: what you need to do"
-    url: "https://www.gov.uk/guidance/gateway-1-what-you-need-to-do"
-  - id: gov_30_month
-    label: "30-month local plan process overview"
-    url: "https://www.gov.uk/guidance/30-month-local-plan-process-an-overview"
-  - id: gov_baselining
-    label: "Gathering baselining information"
-    url: "https://www.gov.uk/guidance/gathering-baselining-information-to-inform-a-local-plan"
-  - id: gov_nppf_draft
-    label: "Draft NPPF Dec 2025"
-    url: "https://assets.publishing.service.gov.uk/media/6941965758a21370f58f304e/Draft_NPPF_December_2025.pdf"
-  - id: gov_case_study
-    label: "Hounslow and Chesterfield case study"
-    url: "https://www.gov.uk/government/case-studies/hounslow-and-chesterfield-cut-response-processing-time-by-45"
-  - id: gov_gateway_update
-    label: "New local plan system update"
-    url: "https://www.gov.uk/government/news/new-local-plan-system-launching-early-2026-latest-update"
-  - id: planning_data_local_plan
-    label: "Planning Data local plan dataset spec"
-    url: "https://www.planning.data.gov.uk/guidance/specifications/local-plan"
-  - id: gov_policies_map
-    label: "How to present your policies map"
-    url: "https://www.gov.uk/guidance/how-to-present-your-policies-map"
-
+- id: gov_notice
+  label: Giving notice of your plan-making
+  url: https://www.gov.uk/guidance/giving-notice-of-your-plan-making
+- id: gov_gateway_1
+  label: 'Gateway 1: what you need to do'
+  url: https://www.gov.uk/guidance/gateway-1-what-you-need-to-do
+- id: gov_30_month
+  label: 30-month local plan process overview
+  url: https://www.gov.uk/guidance/30-month-local-plan-process-an-overview
+- id: gov_baselining
+  label: Gathering baselining information
+  url: https://www.gov.uk/guidance/gathering-baselining-information-to-inform-a-local-plan
+- id: gov_nppf_draft
+  label: Draft NPPF Dec 2025
+  url: https://assets.publishing.service.gov.uk/media/6941965758a21370f58f304e/Draft_NPPF_December_2025.pdf
+- id: gov_case_study
+  label: Hounslow and Chesterfield case study
+  url: https://www.gov.uk/government/case-studies/hounslow-and-chesterfield-cut-response-processing-time-by-45
+- id: gov_gateway_update
+  label: New local plan system update
+  url: https://www.gov.uk/government/news/new-local-plan-system-launching-early-2026-latest-update
+- id: planning_data_local_plan
+  label: Planning Data local plan dataset spec
+  url: https://www.planning.data.gov.uk/guidance/specifications/local-plan
+- id: gov_policies_map
+  label: How to present your policies map
+  url: https://www.gov.uk/guidance/how-to-present-your-policies-map
 outputs:
-  # --- Start the plan (Notice -> Gateway 1) ---
-  - id: notice_html_generator
-    title: "Notice to commence HTML page generator"
-    pack: start_pack
-    hooks: [gov_notice]
-    artefacts: [notice_html]
-    publish_target: public
-    gates: [notice_published]
-
-  - id: notice_timing_validator
-    title: "Notice timing validator (scoping + 4-month rule)"
-    pack: start_pack
-    hooks: [gov_notice]
-    artefacts: [notice_html, scoping_consultation_materials]
-    gates: [notice_published]
-    validators: ["notice_before_scoping", "notice_>=_4_months_before_g1"]
-
-  - id: notice_content_autopopulator
-    title: "Notice content autopopulator"
-    pack: start_pack
-    hooks: [gov_notice]
-    artefacts: [notice_html]
-    notes: "Populate authority name(s), plan title, and minerals/waste flags."
-
-  - id: boundary_comm_pack
-    title: "Boundary communication pack"
-    pack: start_pack
-    hooks: [gov_notice]
-    artefacts: [boundary_map, geometry_download]
-    notes: "Written description + map; shapefile/GeoJSON when boundary does not align to national geography."
-
-  - id: timetable_preflight
-    title: "Timetable publish preflight"
-    pack: start_pack
-    hooks: [gov_notice]
-    artefacts: [milestones_table, updates_log]
-    validators: ["timetable_exists_before_notice"]
-
-  - id: gateway_1_html_generator
-    title: "Gateway 1 self-assessment HTML generator"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [self_assessment_summary]
-    publish_target: public
-
-  - id: gateway_1_template_filler
-    title: "Gateway 1 template filler (5 sections)"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [self_assessment_summary]
-    notes: "Auto-fill 5 required sections and optional section."
-
-  - id: readiness_checker_autopopulation
-    title: "Readiness checker autopopulation"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [readiness_checker_output, self_assessment_summary]
-    notes: "RAG statements feed narrative; advisory only."
-
-  - id: gateway_1_links_and_signup
-    title: "Gateway 1 supporting links + update sign-up"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [self_assessment_summary]
-    notes: "Include further reading links and update sign-up widget."
-
-  - id: gateway_1_record_lock
-    title: "Gateway 1 record lock (immutability + audit)"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [self_assessment_summary]
-    validators: ["gateway_1_immutable_after_publish"]
-
-  - id: gateway_1_clock_start
-    title: "Clock-start action on publish"
-    pack: start_pack
-    hooks: [gov_gateway_1]
-    artefacts: [self_assessment_summary, milestones_table]
-    validators: ["timetable_updated_on_gateway_1"]
-
-  - id: legacy_plan_deadline_warning
-    title: "Legacy-plan deadline warning"
-    pack: start_pack
-    hooks: [gov_30_month]
-    artefacts: [self_assessment_summary]
-    notes: "Warn if Gateway 1 not published within 5 years of adoption."
-
-  - id: baselining_pack_generator
-    title: "Baselining pack generator"
-    pack: start_pack
-    hooks: [gov_baselining]
-    artefacts: [place_portrait_sheet, evidence_base_index]
-    notes: "Data + analysis to seed vision and evidence gaps."
-
-  # --- Data standards exports (planning.data) ---
-  - id: local_plan_dataset_export
-    title: "Local plan dataset export (CSV/GeoJSON)"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [evidence_base_index]
-    exports: ["local_plan_dataset"]
-
-  - id: local_plan_boundary_export
-    title: "Local plan boundary dataset export"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [boundary_map, geometry_download]
-    exports: ["local_plan_boundary_dataset"]
-
-  - id: document_register_export
-    title: "Local plan document register export"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [evidence_base_index]
-    exports: ["local_plan_document_dataset"]
-
-  - id: document_typing_assistant
-    title: "Document typing assistant"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [evidence_base_index]
-    notes: "Assign document-type codes and URLs for planning.data."
-
-  - id: timetable_dataset_export
-    title: "Local plan timetable dataset export"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [milestones_table, updates_log]
-    exports: ["local_plan_timetable_dataset"]
-
-  - id: timetable_update_workflow
-    title: "Timetable update workflow (estimated -> actual)"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: [updates_log]
-    validators: ["regular_timetable_updates"]
-
-  - id: reference_scheme_manager
-    title: "Reference scheme manager (stable IDs)"
-    pack: standards_pack
-    hooks: [planning_data_local_plan]
-    artefacts: []
-    notes: "Permanent identifiers for plans, boundaries, documents, and events."
-
-  # --- Programme control ---
-  - id: pid_generator
-    title: "Project Initiation Document generator"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [project_initiation_document]
-
-  - id: gateway_2_3_pack_placeholders
-    title: "Gateway 2 / Gateway 3 pack placeholders"
-    pack: start_pack
-    hooks: [gov_gateway_update]
-    artefacts: [gateway_2_submission_pack, gateway_3_submission_pack]
-
-  - id: runway_monitor
-    title: "30-month runway monitor"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [milestones_table]
-    validators: ["runway_slippage_rag"]
-
-  # --- Vision + strategy ---
-  - id: vision_outcomes_builder
-    title: "Vision + outcomes builder (<=10)"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [vision_statement, outcomes_list_max_10]
-
-  - id: spatial_strategy_scaffold
-    title: "Spatial strategy scaffold"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [allocation_options_pack, constraints_register]
-
-  - id: plan_period_validator
-    title: "Plan period validator (>=15 years from adoption)"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    validators: ["plan_period_min_15_years"]
-
-  - id: allocation_record_generator
-    title: "Allocation record generator"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [site_assessments_bulk, allocation_options_pack]
-
-  # --- Policy discipline ---
-  - id: policy_bloat_linter
-    title: "Policy bloat linter (necessity + relevance)"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: []
-    validators: ["policy_necessity_relevance"]
-
-  - id: no_restatement_detector
-    title: "No-restatement detector (national policy)"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: []
-    validators: ["no_national_policy_restatement"]
-
-  - id: scope_guard_other_policies
-    title: "Scope guard for other policies"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: []
-    validators: ["other_policies_scope_guard"]
-
-  # --- Engagement + representations ---
-  - id: engagement_plan_generator
-    title: "Engagement plan generator"
-    pack: representation_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [consultation_materials_pack]
-
-  - id: representations_database
-    title: "Representations database + linking"
-    pack: representation_pack
-    hooks: [gov_case_study]
-    artefacts: [responses_log, consultation_summary_report]
-    notes: "Link representations to sites and evidence."
-
-  - id: ai_tagging_summarising
-    title: "AI-assisted tagging + summarising (advisory)"
-    pack: representation_pack
-    hooks: [gov_case_study]
-    artefacts: [consultation_summary_report]
-
-  # --- Publication UX ---
-  - id: plan_as_webpages_publisher
-    title: "Plan-as-webpages publisher"
-    pack: start_pack
-    hooks: [gov_nppf_draft]
-    artefacts: [policy_pages_html, evidence_base_index]
-
-  - id: policies_map_standards_pack
-    title: "Policies map standards pack"
-    pack: start_pack
-    hooks: [gov_policies_map]
-    artefacts: [policies_map_layers, policies_map_metadata]
-    notes: "Categories, themes, and click metadata per guidance."
+- id: notice_html_generator
+  title: Notice to commence HTML page generator
+  pack: start_pack
+  hooks:
+  - gov_notice
+  artefacts:
+  - notice_html
+  publish_target: public
+  gates:
+  - notice_published
+  stage_ids:
+  - notice_of_plan_making
+- id: notice_timing_validator
+  title: Notice timing validator (scoping + 4-month rule)
+  pack: start_pack
+  hooks:
+  - gov_notice
+  artefacts:
+  - notice_html
+  - scoping_consultation_materials
+  gates:
+  - notice_published
+  validators:
+  - notice_before_scoping
+  - notice_>=_4_months_before_g1
+  stage_ids:
+  - notice_of_plan_making
+- id: notice_content_autopopulator
+  title: Notice content autopopulator
+  pack: start_pack
+  hooks:
+  - gov_notice
+  artefacts:
+  - notice_html
+  notes: Populate authority name(s), plan title, and minerals/waste flags.
+  stage_ids:
+  - notice_of_plan_making
+- id: boundary_comm_pack
+  title: Boundary communication pack
+  pack: start_pack
+  hooks:
+  - gov_notice
+  artefacts:
+  - boundary_map
+  - geometry_download
+  notes: Written description + map; shapefile/GeoJSON when boundary does not align
+    to national geography.
+  stage_ids:
+  - notice_of_plan_making
+- id: timetable_preflight
+  title: Timetable publish preflight
+  pack: start_pack
+  hooks:
+  - gov_notice
+  artefacts:
+  - milestones_table
+  - updates_log
+  validators:
+  - timetable_exists_before_notice
+  stage_ids:
+  - timetable
+- id: gateway_1_html_generator
+  title: Gateway 1 self-assessment HTML generator
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - self_assessment_summary
+  publish_target: public
+  stage_ids:
+  - gateway_1
+- id: gateway_1_template_filler
+  title: Gateway 1 template filler (5 sections)
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - self_assessment_summary
+  notes: Auto-fill 5 required sections and optional section.
+  stage_ids:
+  - gateway_1
+- id: readiness_checker_autopopulation
+  title: Readiness checker autopopulation
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - readiness_checker_output
+  - self_assessment_summary
+  notes: RAG statements feed narrative; advisory only.
+  stage_ids:
+  - gateway_1
+- id: gateway_1_links_and_signup
+  title: Gateway 1 supporting links + update sign-up
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - self_assessment_summary
+  notes: Include further reading links and update sign-up widget.
+  stage_ids:
+  - gateway_1
+- id: gateway_1_record_lock
+  title: Gateway 1 record lock (immutability + audit)
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - self_assessment_summary
+  validators:
+  - gateway_1_immutable_after_publish
+  stage_ids:
+  - gateway_1
+- id: gateway_1_clock_start
+  title: Clock-start action on publish
+  pack: start_pack
+  hooks:
+  - gov_gateway_1
+  artefacts:
+  - self_assessment_summary
+  - milestones_table
+  validators:
+  - timetable_updated_on_gateway_1
+  stage_ids:
+  - gateway_1
+- id: legacy_plan_deadline_warning
+  title: Legacy-plan deadline warning
+  pack: start_pack
+  hooks:
+  - gov_30_month
+  artefacts:
+  - self_assessment_summary
+  notes: Warn if Gateway 1 not published within 5 years of adoption.
+  stage_ids:
+  - gateway_1
+- id: baselining_pack_generator
+  title: Baselining pack generator
+  pack: start_pack
+  hooks:
+  - gov_baselining
+  artefacts:
+  - place_portrait_sheet
+  - evidence_base_index
+  notes: Data + analysis to seed vision and evidence gaps.
+  stage_ids:
+  - baselining_and_place_portrait
+- id: local_plan_dataset_export
+  title: Local plan dataset export (CSV/GeoJSON)
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - evidence_base_index
+  exports:
+  - local_plan_dataset
+  stage_ids:
+  - adoption_and_publication
+- id: local_plan_boundary_export
+  title: Local plan boundary dataset export
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - boundary_map
+  - geometry_download
+  exports:
+  - local_plan_boundary_dataset
+  stage_ids:
+  - notice_of_plan_making
+  - adoption_and_publication
+- id: document_register_export
+  title: Local plan document register export
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - evidence_base_index
+  exports:
+  - local_plan_document_dataset
+  stage_ids:
+  - adoption_and_publication
+- id: document_typing_assistant
+  title: Document typing assistant
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - evidence_base_index
+  notes: Assign document-type codes and URLs for planning.data.
+  stage_ids:
+  - baselining_and_place_portrait
+  - options_and_evidence_development
+- id: timetable_dataset_export
+  title: Local plan timetable dataset export
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - milestones_table
+  - updates_log
+  exports:
+  - local_plan_timetable_dataset
+  stage_ids:
+  - timetable
+  - gateway_2
+  - gateway_3
+- id: timetable_update_workflow
+  title: Timetable update workflow (estimated -> actual)
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts:
+  - updates_log
+  validators:
+  - regular_timetable_updates
+  stage_ids:
+  - timetable
+  - gateway_2
+  - gateway_3
+- id: reference_scheme_manager
+  title: Reference scheme manager (stable IDs)
+  pack: standards_pack
+  hooks:
+  - planning_data_local_plan
+  artefacts: []
+  notes: Permanent identifiers for plans, boundaries, documents, and events.
+  stage_ids:
+  - timetable
+- id: pid_generator
+  title: Project Initiation Document generator
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - project_initiation_document
+  stage_ids:
+  - timetable
+- id: gateway_2_3_pack_placeholders
+  title: Gateway 2 / Gateway 3 pack placeholders
+  pack: start_pack
+  hooks:
+  - gov_gateway_update
+  artefacts:
+  - gateway_2_submission_pack
+  - gateway_3_submission_pack
+  stage_ids:
+  - gateway_2
+  - gateway_3
+- id: runway_monitor
+  title: 30-month runway monitor
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - milestones_table
+  validators:
+  - runway_slippage_rag
+  stage_ids:
+  - timetable
+  - gateway_1
+- id: vision_outcomes_builder
+  title: Vision + outcomes builder (<=10)
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - vision_statement
+  - outcomes_list_max_10
+  stage_ids:
+  - vision_and_outcomes
+- id: spatial_strategy_scaffold
+  title: Spatial strategy scaffold
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - allocation_options_pack
+  - constraints_register
+  stage_ids:
+  - options_and_evidence_development
+- id: plan_period_validator
+  title: Plan period validator (>=15 years from adoption)
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  validators:
+  - plan_period_min_15_years
+  stage_ids:
+  - vision_and_outcomes
+- id: allocation_record_generator
+  title: Allocation record generator
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - site_assessments_bulk
+  - allocation_options_pack
+  stage_ids:
+  - options_and_evidence_development
+- id: policy_bloat_linter
+  title: Policy bloat linter (necessity + relevance)
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts: []
+  validators:
+  - policy_necessity_relevance
+  stage_ids:
+  - vision_and_outcomes
+- id: no_restatement_detector
+  title: No-restatement detector (national policy)
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts: []
+  validators:
+  - no_national_policy_restatement
+  stage_ids:
+  - vision_and_outcomes
+- id: scope_guard_other_policies
+  title: Scope guard for other policies
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts: []
+  validators:
+  - other_policies_scope_guard
+  stage_ids:
+  - vision_and_outcomes
+- id: engagement_plan_generator
+  title: Engagement plan generator
+  pack: representation_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - consultation_materials_pack
+  stage_ids:
+  - consult_on_proposed_content_and_evidence
+- id: representations_database
+  title: Representations database + linking
+  pack: representation_pack
+  hooks:
+  - gov_case_study
+  artefacts:
+  - responses_log
+  - consultation_summary_report
+  notes: Link representations to sites and evidence.
+  stage_ids:
+  - scoping_consultation
+  - consult_on_proposed_content_and_evidence
+  - consult_on_proposed_local_plan
+- id: ai_tagging_summarising
+  title: AI-assisted tagging + summarising (advisory)
+  pack: representation_pack
+  hooks:
+  - gov_case_study
+  artefacts:
+  - consultation_summary_report
+  stage_ids:
+  - consult_on_proposed_content_and_evidence
+  - consult_on_proposed_local_plan
+- id: plan_as_webpages_publisher
+  title: Plan-as-webpages publisher
+  pack: start_pack
+  hooks:
+  - gov_nppf_draft
+  artefacts:
+  - policy_pages_html
+  - evidence_base_index
+  stage_ids:
+  - consult_on_proposed_local_plan
+  - adoption_and_publication
+- id: policies_map_standards_pack
+  title: Policies map standards pack
+  pack: start_pack
+  hooks:
+  - gov_policies_map
+  artefacts:
+  - policies_map_layers
+  - policies_map_metadata
+  notes: Categories, themes, and click metadata per guidance.
+  stage_ids:
+  - consult_on_proposed_local_plan
+  - adoption_and_publication

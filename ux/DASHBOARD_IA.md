@@ -1,4 +1,5 @@
-# Dashboard Information Architecture (Planner Workbench / Digital Case Officer)
+# Dashboard Information Architecture (Planner’s Assistant)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 ## Core Principle: planners work the file through a process
 The dashboard is not “multiple apps” (maps app, judgement app, trace app). It is one **planning file workspace** that:
@@ -24,6 +25,7 @@ Both workspaces reuse the same Workbench Shell (below), but their “left rail�
 Naming note:
 * Workspace names shown in the header are product copy; the architectural requirement is that both workspaces exist and remain distinct.
 * Current UI labels: **Plan Studio** (plan-making/CULP) ↔ **Casework** (DM).
+* The canonical product name is **The Planner’s Assistant**.
 
 ## Mode + view naming (B1: keep the views, change the language)
 The four views are a stable workbench mental model (“same file, different lens”), but the labels should be planner-native and mode-aware.

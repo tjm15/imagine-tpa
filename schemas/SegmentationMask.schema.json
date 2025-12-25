@@ -15,4 +15,3 @@
   },
   "required": ["mask_id", "visual_asset_id", "label", "mask_artifact_path", "created_at"]
 }
-

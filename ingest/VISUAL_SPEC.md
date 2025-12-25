@@ -1,5 +1,6 @@
 # Visual / Visuospatial Reasoning Specification (Visual Context Layer)
 
+
 TPA must not lose the planner nuance of **visuospatial judgement**:
 * maps (constraints, allocations, accessibility catchments, heatmaps),
 * plans and policy maps (often raster PDFs/images),
@@ -12,8 +13,10 @@ This spec defines the visual context layer as an evidence substrate and reasonin
 ## 1) Providers (by profile)
 * **Azure**: `VLMProvider = AzureOpenAI` (multimodal), `SegmentationProvider` (SAM2), optional `WebAutomationProvider` for web captures.
 * **OSS**: `VLMProvider = NVIDIA-Nemotron-Nano-12B-v2-VL-FP8`, `SegmentationProvider = SAM2`, optional `WebAutomationProvider` (Playwright-backed).
+* **Embeddings**: ColNomic for visual pages (multi-vector); Qwen3 for OCR/captions/linked refs (dense text).
 
 All model outputs must be **structured JSON**, logged as `ToolRun` with prompt versioning where applicable.
+No timeouts are enforced in model calls; cancellation is an explicit operator action.
 
 ## 2) Canonical objects (what must be storable and citeable)
 Visual reasoning requires first-class, traceable artefacts:
@@ -27,6 +30,9 @@ Visual reasoning requires first-class, traceable artefacts:
   - General multimodal interpretations: `schemas/Interpretation.schema.json`
 
 These objects must be referenced via `EvidenceRef` and surfaced as `EvidenceCard`s.
+Visual assets are limited to Docling “figure/image/table‑as‑image” outputs (not every page render).
+Full‑resolution page renders are stored separately for explainability; the UI should not rely on
+client‑side PDF viewers for evidence citation.
 
 ## 3) Visual tasks (planner-shaped, not generic CV)
 
@@ -40,6 +46,7 @@ Goal: extract cues that enable registration and interpretation:
 Outputs:
 * `VisualFeature[]` (with image-space geometry)
 * `SegmentationMask[]` where promptable segmentation is useful (e.g., boundary trace)
+* OCR/VLM text capture for labels, captions, and dimension callouts (stored as evidence-anchored text units)
 
 ### 3.2 Map reasoning (interactive + exported)
 Goal: treat maps as an evidence instrument:
@@ -94,6 +101,7 @@ Goal: allow “find similar schemes” and “find similar street character” i
 * store visual embeddings for `VisualAsset`s (image-level and region-level where supported)
 * join visual embeddings to policy + spatial context via cross-modal retrieval
 * surface results as evidence cards (precedent analogues), not as recommendations
+* index **full pages by default** for auditability and layout context; add region‑level indexes later as an optimisation
 
 ### 3.7 Two-phase visual semantics (asset → region)
 Required pass ordering for planner-legible semantics:
@@ -104,6 +112,7 @@ Required pass ordering for planner-legible semantics:
 
 Traceability rule:
 * Assertions MUST carry region evidence anchors (region id + evidence refs); fall back to asset evidence only when no region match exists.
+* Exemplars are a **subcategory of photos/renders**, not a separate asset type.
 
 ## 4) Registration and overlays (plan ↔ world / camera ↔ world)
 Registration is the bridge between “plan text” and “physical consequences”.
@@ -119,3 +128,4 @@ Optional (advanced):
 * Every model/tool call is logged as `ToolRun`.
 * Any derived image/overlay is stored as an artefact and referenced via `EvidenceRef`.
 * Output verbosity is controlled at the UI layer (summary/inspect/forensic) and is **not** persisted in trace data or used for reasonableness linting.
+* Batch by model class (VLM/SAM2/embeddings) to avoid GPU model thrash.

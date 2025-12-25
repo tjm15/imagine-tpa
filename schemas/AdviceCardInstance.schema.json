@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdviceCardInstance",
+  "type": "object",
+  "description": "Instance of an AdviceCard attached to a scope (document, section, policy, or visual). Advisory only.",
+  "properties": {
+    "instance_id": { "type": "string", "format": "uuid" },
+    "card_id": { "type": "string" },
+    "card_version": { "type": ["string", "null"] },
+    "scope_type": { "type": "string" },
+    "scope_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["active", "dismissed", "suppressed"]
+    },
+    "trigger_cues": { "type": "array", "items": { "type": "string" } },
+    "evidence_refs": { "type": "array", "items": { "$ref": "EvidenceRef.schema.json" } },
+    "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "notes": { "type": ["string", "null"] }
+  },
+  "required": ["instance_id", "card_id", "scope_type", "scope_id", "status", "created_at"]
+}

@@ -1,3 +1,4 @@
+# WARNING: Provisional/outdated/incomplete spec. TODO: review and update.
 name: "Smoke Test"
 steps:
   - action: "goto"

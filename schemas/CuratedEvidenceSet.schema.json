@@ -34,4 +34,3 @@
   },
   "required": ["curated_evidence_set_id", "evidence_atoms", "evidence_by_issue"]
 }
-

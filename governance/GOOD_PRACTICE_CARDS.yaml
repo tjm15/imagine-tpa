@@ -1,0 +1,2355 @@
+catalogue_id: tpa_good_practice_cards_v1
+version: "1.0"
+cards:
+  - card_id: GP-PL-001
+    title: Document status and version control
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["local plan", "spd", "design code", "evidence report", "draft", "adopted", "submission", "examination"]
+    prompt: "Make the plan's status, stage, adoption date, and version explicit (and whether it supersedes earlier documents)."
+    source_ids: ["PM-01", "LP-01"]
+
+  - card_id: GP-PL-002
+    title: Plan period and base date clarity
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [numeric, text]
+    trigger_cues: ["plan period", "to 20", "baseline year"]
+    prompt: "State the plan period, key milestones, and the base date used for evidence so numbers are not misread as current."
+    source_ids: ["PM-02", "LP-02"]
+
+  - card_id: GP-PL-003
+    title: Role of the document within the plan hierarchy
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["spd", "supplementary", "local plan", "design code", "evidence base"]
+    prompt: "Clarify whether this document is policy, guidance, or evidence, and how it should be used alongside other adopted or emerging documents."
+    source_ids: ["PM-03", "LP-08"]
+
+  - card_id: GP-PL-004
+    title: What this document is not
+    type: completeness_prompt
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["consultation draft", "illustrative", "concept", "vision", "brochure"]
+    prompt: "Where content is illustrative, aspirational, or non-policy, say so plainly to prevent it being given inappropriate weight."
+    source_ids: ["PM-04"]
+
+  - card_id: GP-PL-005
+    title: Criteria-first policy writing
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["will be supported", "must", "should"]
+    prompt: "Draft policies as clear criteria or tests first; keep background and justification separate so decision makers can apply policies consistently."
+    source_ids: ["PM-05"]
+
+  - card_id: GP-PL-006
+    title: Consistent must-should-encourage language
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["must", "should", "encourage", "seek to"]
+    prompt: "Use consistent wording so readers can distinguish requirements from expectations and aspirations."
+    source_ids: ["PM-06", "LP-05"]
+
+  - card_id: GP-PL-007
+    title: Define ambiguous terms and decision tests
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["where appropriate", "where possible", "high quality", "significant"]
+    prompt: "If a policy uses flexible terms, explain how appropriateness will be assessed (factors, thresholds, or evidence expectations)."
+    source_ids: ["PM-07", "LP-06"]
+
+  - card_id: GP-PL-008
+    title: Separate policy requirements from justification text
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["policy", "reasoned justification", "background"]
+    prompt: "Make it obvious what is the decision test versus supporting explanation to avoid accidental policy creep."
+    source_ids: ["PM-08", "LP-04"]
+
+  - card_id: GP-PL-009
+    title: Exceptions and flexibilities should be explicit
+    type: completeness_prompt
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["will not be permitted", "unless", "exception"]
+    prompt: "Where flexibility is intended (viability, constraints, retrofit, heritage), state exceptions clearly to reduce dispute later."
+    source_ids: ["PM-09", "LP-07"]
+
+  - card_id: GP-PL-010
+    title: Avoid duplicate or conflicting policy tests
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["policy", "criteria", "duplicate"]
+    prompt: "Reduce duplication and resolve conflicts by cross-referencing rather than repeating criteria in slightly different forms."
+    source_ids: ["PM-10"]
+
+  - card_id: GP-PL-011
+    title: Place-based policies need clear spatial scope
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [spatial, visual]
+    trigger_cues: ["within", "adjacent", "area", "zone", "designation"]
+    prompt: "Where policy depends on location, ensure there is a mapped boundary or clear boundary description, and label diagrammatic boundaries."
+    source_ids: ["PM-11", "LP-12"]
+
+  - card_id: GP-PL-012
+    title: Maps must be usable as evidence
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [figure_map]
+    dimensions: [visual, spatial]
+    trigger_cues: ["proposals map", "designation map", "map"]
+    prompt: "Include legend, scale bar, north arrow, date or version, and clear symbology; flag where a map is illustrative only."
+    source_ids: ["PM-12", "LP-13"]
+
+  - card_id: GP-PL-013
+    title: Digital mapping availability
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [spatial, process]
+    trigger_cues: ["gis", "shapefile", "layer"]
+    prompt: "Provide or signpost GIS layers for allocations and designations where feasible to support accurate application and monitoring."
+    source_ids: ["PM-13", "LP-19"]
+
+  - card_id: GP-PL-014
+    title: Site allocations should be unambiguous
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [spatial, text]
+    trigger_cues: ["site allocation", "site code", "allocation"]
+    prompt: "Allocation boundaries, access points, key constraints, and policy hooks should be clear enough to apply without guesswork."
+    source_ids: ["PM-14", "LP-15"]
+
+  - card_id: GP-PL-015
+    title: Explain how evidence informs policy choices
+    type: interpretive_reminder
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process, text]
+    trigger_cues: ["evidence", "options", "reasons"]
+    prompt: "Show the chain: evidence to options to reasons to policy wording, so readers can follow why the policy is framed as it is."
+    source_ids: ["PM-15"]
+
+  - card_id: GP-PL-016
+    title: Monitoring and implementation should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process, numeric]
+    trigger_cues: ["monitoring framework", "indicator", "targets"]
+    prompt: "Include a monitoring framework: indicator, target or trajectory, data source, frequency, and action if off track."
+    source_ids: ["PM-16", "LP-40"]
+
+  - card_id: GP-PL-017
+    title: Review triggers should be defined
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["review", "update", "monitor"]
+    prompt: "Specify review triggers (delivery shortfall, infrastructure delay, policy change) and who is responsible for initiating review."
+    source_ids: ["PM-17", "LP-41"]
+
+  - card_id: GP-PL-018
+    title: Housing evidence should separate need, supply, and delivery risk
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [numeric, text]
+    trigger_cues: ["housing", "trajectory", "supply"]
+    prompt: "Present housing evidence as three parts: need, land supply, and delivery risk, with assumptions and sensitivities."
+    source_ids: ["PM-18", "LP-20"]
+
+  - card_id: GP-PL-019
+    title: Housing trajectory should be readable and auditable
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [numeric]
+    trigger_cues: ["trajectory", "phasing", "delivery"]
+    prompt: "Ensure trajectories show sources of supply, phasing, and what counts as deliverable versus developable, with clear assumptions."
+    source_ids: ["PM-19", "LP-21"]
+
+  - card_id: GP-PL-020
+    title: Deliverable versus developable definitions
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["deliverable", "developable"]
+    prompt: "Define how the plan is using delivery categories to avoid misinterpretation."
+    source_ids: ["LP-22"]
+
+  - card_id: GP-PL-021
+    title: Site deliverability assumptions should be explicit
+    type: completeness_prompt
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [process, numeric]
+    trigger_cues: ["site assessment", "hellaa", "delivery"]
+    prompt: "For each allocation, record key assumptions (ownership, infrastructure dependencies, viability signals, constraints) so delivery claims can be tested."
+    source_ids: ["PM-20", "LP-23"]
+
+  - card_id: GP-PL-022
+    title: Employment land strategy should link to evidence
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [numeric, text]
+    trigger_cues: ["employment land", "elr", "industrial"]
+    prompt: "Show how employment land quantities and locations follow from demand evidence and market geography."
+    source_ids: ["PM-21", "LP-25"]
+
+  - card_id: GP-PL-023
+    title: Town centres and retail hierarchy clarity
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text, spatial]
+    trigger_cues: ["town centre", "primary shopping area", "frontage"]
+    prompt: "Ensure centre hierarchy and frontages are mapped, and policy outcomes are clear for different uses and locations."
+    source_ids: ["PM-22", "LP-26"]
+
+  - card_id: GP-PL-024
+    title: Movement strategy should be legible
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [visual, spatial]
+    trigger_cues: ["transport", "movement", "walking", "cycling"]
+    prompt: "Summarise how growth locations connect to walking, cycling, and public transport networks, and how constraints are managed."
+    source_ids: ["PM-23", "LP-36"]
+
+  - card_id: GP-PL-025
+    title: Infrastructure delivery plan responsibilities
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process, numeric]
+    trigger_cues: ["idp", "infrastructure", "delivery plan"]
+    prompt: "For each item include what, when, cost range, funding sources, and lead responsibility."
+    source_ids: ["PM-24", "LP-38"]
+
+  - card_id: GP-PL-026
+    title: Viability evidence assumptions and flex
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [numeric, process]
+    trigger_cues: ["viability", "appraisal", "benchmark"]
+    prompt: "Make viability assumptions transparent and record where viability may justify flexibility, so policy expectations remain credible."
+    source_ids: ["PM-25", "LP-39"]
+
+  - card_id: GP-PL-027
+    title: Climate policy should separate mitigation and adaptation
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["climate", "net zero", "resilience", "adaptation"]
+    prompt: "Separate policies for emissions reduction from adaptation (overheating, flood, water, shade)."
+    source_ids: ["PM-26", "LP-32"]
+
+  - card_id: GP-PL-028
+    title: Biodiversity outcomes should be measurable
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [numeric, text]
+    trigger_cues: ["biodiversity", "net gain", "habitat"]
+    prompt: "Where outcomes are required, express them as measurable requirements and specify evidence expectations."
+    source_ids: ["PM-27", "LP-33"]
+
+  - card_id: GP-PL-029
+    title: Flood risk policy should align with evidence
+    type: interpretive_reminder
+    basis: national_policy_guidance
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [spatial, text]
+    trigger_cues: ["sfra", "flood zone", "flood risk"]
+    prompt: "Ensure flood policies clearly state when FRAs are expected, what they must cover, and how allocations reflect risk evidence."
+    source_ids: ["PM-28", "LP-34"]
+
+  - card_id: GP-PL-030
+    title: Water and drainage maintenance should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["suds", "drainage", "maintenance"]
+    prompt: "Include expectations for long-term maintenance and management arrangements for drainage and green infrastructure."
+    source_ids: ["PM-29"]
+
+  - card_id: GP-PL-031
+    title: Heritage policy should explain assessment approach
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text, spatial]
+    trigger_cues: ["heritage", "conservation area", "listed building"]
+    prompt: "Ensure heritage policy explains how significance and setting will be assessed and references local evidence."
+    source_ids: ["PM-30", "LP-30"]
+
+  - card_id: GP-PL-032
+    title: Landscape character areas and sensitivity
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [spatial, visual]
+    trigger_cues: ["landscape character", "views", "setting"]
+    prompt: "Provide mapped character areas, key views, and an explanation of sensitivity or capacity concepts used."
+    source_ids: ["PM-31", "LP-31"]
+
+  - card_id: GP-PL-033
+    title: Design criteria should be place specific
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["design", "high quality"]
+    prompt: "Translate general design aspirations into local criteria (street character, block structure, typologies, materials)."
+    source_ids: ["PM-32", "LP-28"]
+
+  - card_id: GP-PL-034
+    title: Design code rules should separate mandatory and illustrative
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [plan_making, local_plan, spd, design_code]
+    applies_at: [document]
+    dimensions: [text, numeric]
+    trigger_cues: ["design code", "pattern book", "code compliance"]
+    prompt: "Clearly label what is mandatory, what is preferred, and what is illustrative, so users can apply the code consistently."
+    source_ids: ["PM-33", "LP-33", "SPD-07", "DC-02"]
+
+  - card_id: GP-PL-035
+    title: Design code parameter tables should be complete
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan, design_code]
+    applies_at: [chapter]
+    dimensions: [numeric]
+    trigger_cues: ["parameter table", "height table", "density table"]
+    prompt: "Provide parameter tables for key topics (height, setbacks, frontage, parking, landscape ratios) and state measurement conventions."
+    source_ids: ["PM-34", "LP-34"]
+
+  - card_id: GP-PL-036
+    title: Design codes should show street sections
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan, design_code]
+    applies_at: [chapter]
+    dimensions: [visual]
+    trigger_cues: ["street typology", "cross section"]
+    prompt: "Include cross sections showing carriageway, footway, trees, parking, and drainage so the public realm is understandable and buildable."
+    source_ids: ["PM-35", "LP-35", "DC-07"]
+
+  - card_id: GP-PL-037
+    title: Tall buildings treatment should be clear
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text, spatial]
+    trigger_cues: ["tall buildings", "height map", "skyline"]
+    prompt: "If tall buildings are a live issue, set out where they may be appropriate, the evidence expected, and assessment criteria."
+    source_ids: ["PM-36"]
+
+  - card_id: GP-PL-038
+    title: Amenity standards should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [numeric, text]
+    trigger_cues: ["amenity standards", "daylight", "privacy", "noise"]
+    prompt: "If amenity standards are used, state them clearly and explain how they apply in dense contexts."
+    source_ids: ["PM-37"]
+
+  - card_id: GP-PL-039
+    title: Health and equality impacts should be visible
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process, text]
+    trigger_cues: ["health", "equality", "inclusive design", "accessibility"]
+    prompt: "Record how plan choices consider health outcomes and equalities impacts, and where mitigation is embedded."
+    source_ids: ["PM-38"]
+
+  - card_id: GP-PL-040
+    title: Green infrastructure should connect
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [spatial]
+    trigger_cues: ["green infrastructure", "open space"]
+    prompt: "Treat green infrastructure as a network (routes, habitats, access) and make connectivity legible in mapping and policy expectations."
+    source_ids: ["PM-39", "LP-35"]
+
+  - card_id: GP-PL-041
+    title: Parking policy flex points should be clear
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [numeric, text]
+    trigger_cues: ["parking standards", "ptal", "accessibility"]
+    prompt: "If parking standards vary by accessibility or context, provide the logic and thresholds so negotiation is consistent and transparent."
+    source_ids: ["PM-40", "LP-37"]
+
+  - card_id: GP-PL-042
+    title: Renewable and energy evidence expectations
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["energy", "renewable", "heat network", "retrofit"]
+    prompt: "State what submissions are typically expected (energy statements, overheating, embodied carbon for large schemes) so applicants know the bar."
+    source_ids: ["PM-41"]
+
+  - card_id: GP-PL-043
+    title: How to use this plan page
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["how to use", "navigation", "guide"]
+    prompt: "Provide a plain-English guide for navigating policies, maps, definitions, and evidence."
+    source_ids: ["PM-42", "LP-03"]
+
+  - card_id: GP-PL-044
+    title: Consultation you-said-we-did summary
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["consultation", "representations"]
+    prompt: "Summarise key issues raised and how they changed the plan (or why not) to strengthen legitimacy."
+    source_ids: ["PM-43", "LP-42"]
+
+  - card_id: GP-PL-045
+    title: Strategic and cross-boundary matters should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["strategic", "cross-boundary", "housing market"]
+    prompt: "Identify cross-boundary issues and state how they are managed through collaboration and evidence."
+    source_ids: ["PM-44", "LP-43"]
+
+  - card_id: GP-PL-046
+    title: Sustainability appraisal summaries should be decision useful
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["sustainability appraisal", "sea", "options appraisal"]
+    prompt: "Summarise appraisal findings as clear trade-offs that explain why options and policy choices were selected."
+    source_ids: ["PM-45"]
+
+  - card_id: GP-PL-047
+    title: Appendices should not hide key decision tests
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["appendix", "annex", "technical"]
+    prompt: "Keep policy tests and key thresholds in the main document; place technical detail in appendices but signpost it clearly."
+    source_ids: ["PM-46"]
+
+  - card_id: GP-PL-048
+    title: Glossary and definitions prevent drift
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan, spd, design_code]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["glossary", "definitions", "defined term"]
+    prompt: "Provide a glossary or definitions list for key terms so application is consistent across officers, members, and applicants."
+    source_ids: ["PM-47", "LP-09", "SPD-31", "DC-40"]
+
+  - card_id: GP-PL-049
+    title: Accessibility and readability of documents and figures
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan, spd, design_code]
+    applies_at: [document]
+    dimensions: [visual, process]
+    trigger_cues: ["scanned", "non-searchable", "dense figures"]
+    prompt: "Use searchable text and clear figure captions; flag where scan quality reduces usability or confidence."
+    source_ids: ["PM-48", "LP-44", "SPD-21", "DC-35"]
+
+  - card_id: GP-PL-050
+    title: Change logs reduce confusion
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan, spd, design_code]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["change log", "revised", "updated"]
+    prompt: "Provide a change log explaining what changed between versions and why, so stakeholders can track evolution and weight."
+    source_ids: ["PM-49", "LP-10", "SPD-20", "DC-34"]
+
+  - card_id: GP-PL-051
+    title: Policy drafting defensibility template
+    type: reasoning_template
+    basis: inspectorate_appeal_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [process]
+    trigger_cues: ["draft policy", "policy rewrite"]
+    prompt: "Evidence -> objective -> policy test -> mapping or thresholds -> flexibility or exceptions -> monitoring indicator -> implementation mechanism."
+    source_ids: ["PM-50", "LP-45"]
+
+  - card_id: GP-PL-052
+    title: Spatial strategy should be legible as a map story
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [spatial, visual]
+    trigger_cues: ["spatial strategy", "growth", "protection"]
+    prompt: "Explain the why-here of growth or protection with maps that align to the narrative."
+    source_ids: ["LP-11"]
+
+  - card_id: GP-PL-053
+    title: Allocation requirements should distinguish must vs guidance
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["allocation requirements", "criteria"]
+    prompt: "Label mandatory requirements versus guidance to reduce dispute at application stage."
+    source_ids: ["LP-16"]
+
+  - card_id: GP-PL-054
+    title: Allocation dependencies should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [process, numeric]
+    trigger_cues: ["infrastructure", "prerequisite", "phasing"]
+    prompt: "Record what infrastructure is prerequisite, who delivers it, and what triggers it."
+    source_ids: ["LP-17"]
+
+  - card_id: GP-PL-055
+    title: Diagrammatic boundaries should be flagged
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [figure_map]
+    dimensions: [spatial, visual]
+    trigger_cues: ["diagrammatic", "indicative", "shaded area"]
+    prompt: "Mark boundaries as indicative where intended to avoid false precision."
+    source_ids: ["LP-18"]
+
+  - card_id: GP-PL-056
+    title: Affordable housing policy negotiation logic
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [numeric, text]
+    trigger_cues: ["affordable housing", "tenure mix", "viability"]
+    prompt: "Set out expectations, thresholds, and how viability or constraints affect delivery."
+    source_ids: ["LP-24"]
+
+  - card_id: GP-PL-057
+    title: Student or specialist housing expectations
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [policy]
+    dimensions: [text]
+    trigger_cues: ["student housing", "specialist housing"]
+    prompt: "Clarify evidence expectations and how impacts (amenity, management, clustering) are assessed."
+    source_ids: ["LP-27"]
+
+  - card_id: GP-PL-058
+    title: Design code role and status should be clear
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [plan_making, local_plan]
+    applies_at: [chapter]
+    dimensions: [process, text]
+    trigger_cues: ["design code", "pattern book"]
+    prompt: "State whether codes are mandatory, how they are applied, and what happens when they conflict with constraints."
+    source_ids: ["LP-29"]
+
+  - card_id: GP-DM-001
+    title: Submission pack should be navigable
+    type: completeness_prompt
+    basis: common_validation_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["application pack", "multiple pdfs"]
+    prompt: "Provide a clear document list and consistent naming so officers and consultees can find authoritative plans and statements quickly."
+    source_ids: ["DM-01"]
+
+  - card_id: GP-DM-002
+    title: Drawing basics: scale north arrow revision date
+    type: completeness_prompt
+    basis: common_validation_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [drawing]
+    dimensions: [visual, numeric]
+    trigger_cues: ["plan", "section", "elevation"]
+    prompt: "Good practice is that drawings include scale, north arrow where relevant, revision, and date to avoid reliance on superseded or unscaled plans."
+    source_ids: ["DM-02"]
+
+  - card_id: GP-DM-003
+    title: Location plan must clearly show the site boundary
+    type: completeness_prompt
+    basis: common_validation_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure_map]
+    dimensions: [spatial, visual]
+    trigger_cues: ["location plan", "site location plan"]
+    prompt: "Ensure the boundary is unambiguous and the plan includes enough surrounding context to locate the site in the wider area."
+    source_ids: ["DM-03"]
+
+  - card_id: GP-DM-004
+    title: Existing versus proposed should be shown
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [drawing]
+    dimensions: [visual]
+    trigger_cues: ["proposed", "existing"]
+    prompt: "Where change is proposed, provide existing and proposed plans, elevations, or sections so impacts can be assessed without inference."
+    source_ids: ["DM-04"]
+
+  - card_id: GP-DM-005
+    title: Parameter schedule prevents number drift
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["schedule", "units", "floorspace"]
+    prompt: "Include a single schedule summarising key figures (floorspace, units, heights, parking, cycle, trees) and keep it consistent across documents."
+    source_ids: ["DM-05"]
+
+  - card_id: GP-DM-006
+    title: Clearly mark what is illustrative versus fixed
+    type: completeness_prompt
+    basis: inspectorate_appeal_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text, visual]
+    trigger_cues: ["indicative", "illustrative", "masterplan"]
+    prompt: "Explicitly label which drawings are parameter-setting and which are illustrative so the decision is based on what is being approved."
+    source_ids: ["DM-06"]
+
+  - card_id: GP-DM-007
+    title: Planning statement should cite policy hooks
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["planning statement", "das"]
+    prompt: "Good practice is to identify the main policy hooks and material considerations rather than relying on generic meets policy assertions."
+    source_ids: ["DM-07"]
+
+  - card_id: GP-DM-008
+    title: Design rationale should reference context
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text, visual]
+    trigger_cues: ["design statement", "design chapter"]
+    prompt: "A design rationale should show how the proposal responds to local character, movement, block structure, and key views, not just internal layout."
+    source_ids: ["DM-08"]
+
+  - card_id: GP-DM-009
+    title: Accessibility and inclusive design should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text, numeric]
+    trigger_cues: ["accessibility", "inclusive design", "step-free"]
+    prompt: "Provide clear access information (step-free routes, lifts, gradients, accessible parking, inclusive entrances) so accessibility is not assumed."
+    source_ids: ["DM-09"]
+
+  - card_id: GP-DM-010
+    title: Amenity impacts should be evidenced where plausible
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric, visual]
+    trigger_cues: ["daylight", "sunlight", "privacy", "noise"]
+    prompt: "Where amenity impacts are plausible, provide proportionate analysis with clear assumptions."
+    source_ids: ["DM-10"]
+
+  - card_id: GP-DM-011
+    title: Heritage assessment should separate significance and impact
+    type: interpretive_reminder
+    basis: national_policy_guidance
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["heritage", "listed building", "conservation area"]
+    prompt: "Heritage assessment typically separates asset significance from proposal impacts, then explains harm and mitigation with evidence."
+    source_ids: ["DM-11"]
+
+  - card_id: GP-DM-012
+    title: Verified views for townscape or heritage claims
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure]
+    dimensions: [visual]
+    trigger_cues: ["photomontage", "verified view", "townscape"]
+    prompt: "Where visual impact is central, include verified views or photomontages with stated viewpoints and methodology."
+    source_ids: ["DM-12"]
+
+  - card_id: GP-DM-013
+    title: Flood risk context should be explicit
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [spatial, text]
+    trigger_cues: ["flood risk", "fra", "flood zone"]
+    prompt: "Where flood risk is relevant, submissions should explain risk context and proposed mitigation so residual risk is understood."
+    source_ids: ["DM-13"]
+
+  - card_id: GP-DM-014
+    title: Drainage should state management and maintenance
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process, spatial]
+    trigger_cues: ["suds", "drainage", "attenuation"]
+    prompt: "Drainage strategies should state how systems are maintained and who is responsible, not just the technical layout."
+    source_ids: ["DM-14"]
+
+  - card_id: GP-DM-015
+    title: Ecology surveys should be current and relevant
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["ecology", "protected species", "survey"]
+    prompt: "Ecological evidence is strongest when surveys are timely, seasonally appropriate, and linked to mitigation and enhancement measures."
+    source_ids: ["DM-15"]
+
+  - card_id: GP-DM-016
+    title: Biodiversity outcomes should be measurable
+    type: completeness_prompt
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["bng", "biodiversity", "habitat"]
+    prompt: "Where biodiversity enhancements are claimed, provide measurable outcomes and long-term management arrangements."
+    source_ids: ["DM-16"]
+
+  - card_id: GP-DM-017
+    title: Trees: root protection and construction impacts
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [spatial, visual]
+    trigger_cues: ["tree survey", "rpa", "arboricultural"]
+    prompt: "Show root protection areas, proposed incursions, and construction methods so tree impacts are assessable and enforceable."
+    source_ids: ["DM-17"]
+
+  - card_id: GP-DM-018
+    title: Transport evidence should be legible
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric, process]
+    trigger_cues: ["transport assessment", "trip generation", "mitigation"]
+    prompt: "Provide clear trip assumptions, peak impacts, and a summary of proposed mitigation so transport conclusions are not a black box."
+    source_ids: ["DM-18"]
+
+  - card_id: GP-DM-019
+    title: Active travel and permeability as design issues
+    type: interpretive_reminder
+    basis: national_policy_guidance
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure]
+    dimensions: [spatial]
+    trigger_cues: ["movement", "permeability", "cycle route"]
+    prompt: "Good practice treats walking and cycling routes and permeability as core placemaking, with direct routes and safe crossings."
+    source_ids: ["DM-19"]
+
+  - card_id: GP-DM-020
+    title: Parking should show management, not just numbers
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process, numeric]
+    trigger_cues: ["parking", "car free", "car lite"]
+    prompt: "If reduced parking is proposed, explain how demand will be managed (permits, car clubs, servicing strategy)."
+    source_ids: ["DM-20"]
+
+  - card_id: GP-DM-021
+    title: Servicing and refuse must work in reality
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure]
+    dimensions: [visual, spatial]
+    trigger_cues: ["servicing", "refuse", "bin store"]
+    prompt: "Provide a servicing and refuse strategy that shows vehicle access and practical collection arrangements, not just indicative bin locations."
+    source_ids: ["DM-21"]
+
+  - card_id: GP-DM-022
+    title: Noise mitigation should be specific and secured
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["noise", "acoustic", "glazing"]
+    prompt: "Noise mitigation is strongest when specific and clearly linked to what will be secured through conditions or obligations."
+    source_ids: ["DM-22"]
+
+  - card_id: GP-DM-023
+    title: Air quality baseline and mitigation clarity
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["air quality", "aqma", "mitigation"]
+    prompt: "Provide baseline context and explain mitigation measures and how they will be implemented and monitored."
+    source_ids: ["DM-23"]
+
+  - card_id: GP-DM-024
+    title: Contamination staged approach
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["contamination", "ground conditions", "remediation"]
+    prompt: "A staged approach (desk study to investigation to remediation to verification) is commonly used to manage uncertainty and secure safe development."
+    source_ids: ["DM-24"]
+
+  - card_id: GP-DM-025
+    title: Energy strategy should clarify commitments
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["energy statement", "carbon", "heat pump", "pv"]
+    prompt: "Provide a summary of energy measures, expected performance, and what is being committed to (design intent vs outcomes)."
+    source_ids: ["DM-25"]
+
+  - card_id: GP-DM-026
+    title: Overheating and resilience should be addressed
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric, process]
+    trigger_cues: ["overheating", "glazing", "dense site"]
+    prompt: "Consider proportionate overheating or resilience assessment and show how design choices manage future climate risk."
+    source_ids: ["DM-26"]
+
+  - card_id: GP-DM-027
+    title: Embodied carbon claims should be evidenced
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["embodied carbon", "low carbon materials"]
+    prompt: "Where embodied carbon is part of the case, provide a baseline and justify design or material choices with evidence."
+    source_ids: ["DM-27"]
+
+  - card_id: GP-DM-028
+    title: Public realm and landscape should show function and maintenance
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure]
+    dimensions: [visual, process]
+    trigger_cues: ["public realm", "landscape", "lighting"]
+    prompt: "Show how public realm works (routes, lighting, planting, play, drainage) and who maintains it to avoid pretty plan risk."
+    source_ids: ["DM-28"]
+
+  - card_id: GP-DM-029
+    title: Play space and family needs where relevant
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric, spatial]
+    trigger_cues: ["play space", "family housing"]
+    prompt: "Where family housing is proposed, address play and amenity provision in a deliverable and safe way."
+    source_ids: ["DM-29"]
+
+  - card_id: GP-DM-030
+    title: Affordable housing delivery mechanisms
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [numeric, process]
+    trigger_cues: ["affordable housing", "tenure mix"]
+    prompt: "Show tenure mix, unit distribution, standards, and the mechanism for delivery including triggers or phasing."
+    source_ids: ["DM-30"]
+
+  - card_id: GP-DM-031
+    title: Viability departures should be explicit
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process, numeric]
+    trigger_cues: ["viability appraisal", "policy departure"]
+    prompt: "Where viability is relied on, specify which policy expectations are said to be unachievable and what alternative offer is proposed."
+    source_ids: ["DM-31"]
+
+  - card_id: GP-DM-032
+    title: Conditions should secure outcomes, not aspirations
+    type: interpretive_reminder
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["conditions", "draft conditions"]
+    prompt: "Conditions work best when precise and enforceable; avoid using conditions to wish a better scheme into existence."
+    source_ids: ["DM-32"]
+
+  - card_id: GP-DM-033
+    title: Obligations should be necessary and proportional
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["s106", "obligations", "mitigation"]
+    prompt: "Keep obligations tightly linked to proposal impacts; overreach increases delay and appeal risk."
+    source_ids: ["DM-33"]
+
+  - card_id: GP-DM-034
+    title: Officer and committee reporting should lead with main issues
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["officer report", "committee report"]
+    prompt: "Identify the principal issues early and structure the report around them rather than treating every topic as equal."
+    source_ids: ["DM-34"]
+
+  - card_id: GP-DM-035
+    title: Separate facts, evidence, and judgement
+    type: interpretive_reminder
+    basis: inspectorate_appeal_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["assessment", "conclusions"]
+    prompt: "Make it easy to see what is fact, what is evidence, and what is judgement in write-ups."
+    source_ids: ["DM-35"]
+
+  - card_id: GP-DM-036
+    title: Representations response pattern
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text, process]
+    trigger_cues: ["representations", "objection"]
+    prompt: "Issue raised -> evidence or policy hook -> officer response -> mitigation or condition -> residual impact."
+    source_ids: ["DM-36"]
+
+  - card_id: GP-DM-037
+    title: Emerging policy weight should be explained
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["emerging policy", "draft plan"]
+    prompt: "Where emerging policy is used, state its stage and why it is being given weight without overstating certainty."
+    source_ids: ["DM-37"]
+
+  - card_id: GP-DM-038
+    title: Illustrative masterplan risk
+    type: interpretive_reminder
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [visual, process]
+    trigger_cues: ["outline", "masterplan", "parameter"]
+    prompt: "If approving at outline, ensure parameters are clear enough that reserved matters cannot fundamentally change what was assessed."
+    source_ids: ["DM-38"]
+
+  - card_id: GP-DM-039
+    title: Construction impacts should be anticipated
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["construction", "demolition", "logistics"]
+    prompt: "Address construction routing, hours, noise or dust, site logistics, and neighbour impacts early."
+    source_ids: ["DM-39"]
+
+  - card_id: GP-DM-040
+    title: Fire and servicing access demonstration
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [figure]
+    dimensions: [spatial, visual]
+    trigger_cues: ["fire access", "servicing access", "basement"]
+    prompt: "Where access is tight, provide clear drawings showing emergency and servicing access principles."
+    source_ids: ["DM-40"]
+
+  - card_id: GP-DM-041
+    title: Design assessment scaffold
+    type: reasoning_template
+    basis: national_policy_guidance
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["design assessment"]
+    prompt: "Context -> response -> massing or scale -> streets or public realm -> architecture or materials -> amenity -> adaptability or management."
+    source_ids: ["DM-41"]
+
+  - card_id: GP-DM-042
+    title: Heritage assessment scaffold
+    type: reasoning_template
+    basis: national_policy_guidance
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["heritage assessment", "setting"]
+    prompt: "Significance -> contribution of setting -> magnitude of change -> harm -> mitigation -> public benefits -> conclusion or conditions."
+    source_ids: ["DM-42"]
+
+  - card_id: GP-DM-043
+    title: Transport assessment scaffold
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["transport assessment", "highway"]
+    prompt: "Baseline -> trip generation -> network impacts -> safety -> mitigation -> active travel -> residual impacts."
+    source_ids: ["DM-43"]
+
+  - card_id: GP-DM-044
+    title: Flood and drainage scaffold
+    type: reasoning_template
+    basis: national_policy_guidance
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["flood risk assessment", "drainage strategy"]
+    prompt: "Risk context -> vulnerability -> mitigation -> exceedance or maintenance -> residual risk -> conditions or management."
+    source_ids: ["DM-44"]
+
+  - card_id: GP-DM-045
+    title: Planning balance scaffold
+    type: reasoning_template
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["planning balance", "recommendation"]
+    prompt: "Benefits -> harms -> policy compliance or conflict -> mitigation -> weight -> overall balance -> recommendation rationale."
+    source_ids: ["DM-45"]
+
+  - card_id: GP-DM-046
+    title: Avoid policy recital conclusions
+    type: interpretive_reminder
+    basis: inspectorate_appeal_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["conclusions", "policy"]
+    prompt: "Explain why the proposal meets or fails criteria with evidence, rather than repeating policy text as if it is reasoning."
+    source_ids: ["DM-46"]
+
+  - card_id: GP-DM-047
+    title: Conditions should track to issues
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["conditions"]
+    prompt: "Each condition should link to a specific issue and be written so compliance is observable; avoid kitchen sink conditions."
+    source_ids: ["DM-47"]
+
+  - card_id: GP-DM-048
+    title: Evidence conflicts should be flagged
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["conflict", "mismatch", "superseded"]
+    prompt: "Where documents conflict (heights, unit numbers, boundary lines), flag it explicitly and identify which document is treated as authoritative."
+    source_ids: ["DM-48"]
+
+  - card_id: GP-DM-049
+    title: Track revisions across the pack
+    type: completeness_prompt
+    basis: common_validation_practice
+    priority: important
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["revision", "resubmission", "updated plan"]
+    prompt: "Record what changed between revisions so assessment focuses on what is new and avoids reliance on superseded plans."
+    source_ids: ["DM-49"]
+
+  - card_id: GP-DM-050
+    title: Communicate uncertainty honestly
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [dm]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["to be confirmed", "indicative", "missing"]
+    prompt: "Where evidence is incomplete, be explicit about uncertainty and what is secured by conditions or obligations versus what needs further information."
+    source_ids: ["DM-50"]
+
+  - card_id: GP-SPD-001
+    title: SPD must state what it supplements
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["supplementary planning document", "spd"]
+    prompt: "Name the adopted plan policies it supports and what it is trying to clarify."
+    source_ids: ["SPD-01"]
+
+  - card_id: GP-SPD-002
+    title: Avoid introducing new policy tests by accident
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["must", "required"]
+    prompt: "If the SPD sets expectations, explain how they relate to adopted policy rather than reading as new policy."
+    source_ids: ["SPD-02"]
+
+  - card_id: GP-SPD-003
+    title: SPD scope in and out
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["scope", "applies to"]
+    prompt: "State what decisions the SPD is meant to influence and what it does not attempt to cover."
+    source_ids: ["SPD-03"]
+
+  - card_id: GP-SPD-004
+    title: Provide a user pathway by audience
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["applicants", "officers", "members", "communities"]
+    prompt: "Give routes for applicants, officers, members, and communities so each audience can find what matters."
+    source_ids: ["SPD-04"]
+
+  - card_id: GP-SPD-005
+    title: Evidence expectations checklist
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["checklist", "submissions"]
+    prompt: "Provide a proportionate checklist of submissions typically expected for common development types."
+    source_ids: ["SPD-05"]
+
+  - card_id: GP-SPD-006
+    title: Keep guidance checkable
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["aspirational", "high quality"]
+    prompt: "Guidance works best when it describes observable outcomes rather than only values."
+    source_ids: ["SPD-06"]
+
+  - card_id: GP-SPD-007
+    title: Define measurement conventions
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd, design_code]
+    applies_at: [chapter]
+    dimensions: [numeric]
+    trigger_cues: ["height", "setback", "density", "space standards"]
+    prompt: "Explain how measures are taken (metres vs storeys, to parapet or ridge, from which datum)."
+    source_ids: ["SPD-08", "DC-05"]
+
+  - card_id: GP-SPD-008
+    title: Provide worked examples or case studies
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [visual]
+    trigger_cues: ["example", "case study"]
+    prompt: "Include examples that show what good looks like locally and why."
+    source_ids: ["SPD-09"]
+
+  - card_id: GP-SPD-009
+    title: Make deviations discussable
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["flexibility", "where appropriate"]
+    prompt: "State when flexibility may be appropriate and how to justify it."
+    source_ids: ["SPD-10"]
+
+  - card_id: GP-SPD-010
+    title: Place based SPD should map clearly
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [figure_map]
+    dimensions: [spatial, visual]
+    trigger_cues: ["area specific", "corridor", "neighbourhood"]
+    prompt: "Provide clear boundaries and a map set that aligns with the text."
+    source_ids: ["SPD-11"]
+
+  - card_id: GP-SPD-011
+    title: Use consistent place names across maps and text
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [spatial, text]
+    trigger_cues: ["character area", "area a", "quarter"]
+    prompt: "Avoid aliasing unless explicitly reconciled so users can map names consistently."
+    source_ids: ["SPD-12"]
+
+  - card_id: GP-SPD-012
+    title: Character areas should have meaning bullets
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["character area", "typology"]
+    prompt: "For each area, note key characteristics, what to protect, and what change is encouraged."
+    source_ids: ["SPD-13"]
+
+  - card_id: GP-SPD-013
+    title: Design SPD scaffold
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["design spd", "design guidance"]
+    prompt: "Site or context analysis -> urban structure -> massing or height -> public realm -> architecture or materials -> amenity -> management."
+    source_ids: ["SPD-14"]
+
+  - card_id: GP-SPD-014
+    title: Parking SPD should link standards to accessibility
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [numeric, text]
+    trigger_cues: ["parking standards", "accessibility"]
+    prompt: "Explain how standards vary by accessibility or context and how to evidence this."
+    source_ids: ["SPD-15"]
+
+  - card_id: GP-SPD-015
+    title: Climate SPD should separate domains
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["climate spd", "energy", "resilience"]
+    prompt: "Structure guidance so operational, embodied, and resilience expectations are clearly separated."
+    source_ids: ["SPD-16"]
+
+  - card_id: GP-SPD-016
+    title: Housing SPD expectations
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text, numeric]
+    trigger_cues: ["housing spd", "tenure mix"]
+    prompt: "State expectations for tenure mix, unit types, accessibility, and delivery mechanisms."
+    source_ids: ["SPD-17"]
+
+  - card_id: GP-SPD-017
+    title: Heritage SPD should be significance led
+    type: interpretive_reminder
+    basis: national_policy_guidance
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["heritage spd", "significance"]
+    prompt: "Emphasise starting with significance and contribution, then design to avoid or minimise harm."
+    source_ids: ["SPD-18"]
+
+  - card_id: GP-SPD-018
+    title: Consultation trail should be legible
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["consultation", "statement"]
+    prompt: "Provide a succinct issues raised and changes made summary."
+    source_ids: ["SPD-19"]
+
+  - card_id: GP-SPD-019
+    title: Review or update trigger for SPD
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["review", "update", "trigger"]
+    prompt: "State when and how the SPD will be reviewed, such as policy change or evidence update."
+    source_ids: ["SPD-22"]
+
+  - card_id: GP-SPD-020
+    title: Avoid over precision where constraints vary
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["fixed numbers", "all sites"]
+    prompt: "Where context varies widely, provide ranges or criteria rather than brittle absolutes."
+    source_ids: ["SPD-23"]
+
+  - card_id: GP-SPD-021
+    title: Explain rationale for standards
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["standards", "table"]
+    prompt: "Briefly explain why a standard exists and what evidence supports it."
+    source_ids: ["SPD-24"]
+
+  - card_id: GP-SPD-022
+    title: Submission expectations by scale
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["minor", "major", "submission requirements"]
+    prompt: "Outline proportionate expectations for minor and major development so requirements do not feel arbitrary."
+    source_ids: ["SPD-25"]
+
+  - card_id: GP-SPD-023
+    title: Enforcement and verification realism
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["performance", "verification"]
+    prompt: "If an outcome is important, explain how it is evidenced and verified in practice."
+    source_ids: ["SPD-26"]
+
+  - card_id: GP-SPD-024
+    title: SPD use in decision writing
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["officer report", "decision writing"]
+    prompt: "Provide example phrasing or structure for how guidance is referenced in officer reports."
+    source_ids: ["SPD-27"]
+
+  - card_id: GP-SPD-025
+    title: Common pitfalls box
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["pitfalls", "common mistakes"]
+    prompt: "Flag typical mistakes that lead to delay or poor outcomes, such as missing baseline or unclear parameters."
+    source_ids: ["SPD-28"]
+
+  - card_id: GP-SPD-026
+    title: Diagrams should state their status
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [spd, design_code]
+    applies_at: [figure]
+    dimensions: [visual]
+    trigger_cues: ["diagram", "illustrative", "example"]
+    prompt: "Mark diagrams as illustrative, mandatory, or example to prevent misuse."
+    source_ids: ["SPD-29", "DC-28"]
+
+  - card_id: GP-SPD-027
+    title: Compliance checklist for code like topics
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd, design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["checklist", "code"]
+    prompt: "Add a checklist to reduce inconsistent application where guidance is code-like."
+    source_ids: ["SPD-30", "DC-29"]
+
+  - card_id: GP-SPD-028
+    title: Align references to external standards
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["external standard", "guide", "edition"]
+    prompt: "State which edition or version is referenced and how conflicts are resolved."
+    source_ids: ["SPD-32"]
+
+  - card_id: GP-SPD-029
+    title: Signpost evidence sources
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["evidence base", "source"]
+    prompt: "Link claims to the evidence base so they do not read as unsupported opinion."
+    source_ids: ["SPD-33"]
+
+  - card_id: GP-SPD-030
+    title: Distinguish area wide from site specific guidance
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["area-wide", "site-specific"]
+    prompt: "Separate general principles from place specific rules to avoid confusion."
+    source_ids: ["SPD-34"]
+
+  - card_id: GP-SPD-031
+    title: Street and public realm typologies in design SPD
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [visual, spatial]
+    trigger_cues: ["street typology", "public realm"]
+    prompt: "Provide typologies with diagrams showing how streets and spaces are expected to work."
+    source_ids: ["SPD-35"]
+
+  - card_id: GP-SPD-032
+    title: Climate SPD maintenance expectations
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["maintenance", "green roofs", "suds"]
+    prompt: "State who maintains systems and how long-term performance is ensured."
+    source_ids: ["SPD-36"]
+
+  - card_id: GP-SPD-033
+    title: Parking SPD should include servicing and refuse principles
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [visual, process]
+    trigger_cues: ["servicing", "refuse"]
+    prompt: "Include servicing or refuse design principles so schemes are not numerically compliant but practically broken."
+    source_ids: ["SPD-37"]
+
+  - card_id: GP-SPD-034
+    title: Equality and inclusion lens
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["equality", "inclusion", "accessibility"]
+    prompt: "Show how guidance supports inclusive places and accessibility needs."
+    source_ids: ["SPD-38"]
+
+  - card_id: GP-SPD-035
+    title: What good looks like summary per topic
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["summary", "key outcomes"]
+    prompt: "Offer a short summary with the key outcomes sought for each topic."
+    source_ids: ["SPD-39"]
+
+  - card_id: GP-SPD-036
+    title: SPD defensibility template
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [spd]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["spd", "defensibility"]
+    prompt: "Purpose -> policy link -> guidance outcomes -> evidence rationale -> flexibility or exceptions -> how it is used in decisions -> review triggers."
+    source_ids: ["SPD-40"]
+
+  - card_id: GP-DC-001
+    title: Code status and control scope
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["design code", "code area"]
+    prompt: "Clarify whether the code is mandatory guidance, where it applies, and what types of proposals it governs."
+    source_ids: ["DC-01"]
+
+  - card_id: GP-DC-002
+    title: Provide a clear code hierarchy
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["area wide", "street rules", "plot rules", "building rules"]
+    prompt: "Explain how area-wide rules, street rules, plot rules, and building rules interact."
+    source_ids: ["DC-03"]
+
+  - card_id: GP-DC-003
+    title: Define code areas and map them
+    type: completeness_prompt
+    basis: professional_practice
+    priority: critical
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [figure_map]
+    dimensions: [spatial, visual]
+    trigger_cues: ["code area", "character area"]
+    prompt: "Provide an unambiguous code area map and explain the implications of each area."
+    source_ids: ["DC-04"]
+
+  - card_id: GP-DC-004
+    title: Movement framework early in the code
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [spatial, visual]
+    trigger_cues: ["movement framework", "street network"]
+    prompt: "Make walking, cycling, and public transport structure legible and show how streets connect."
+    source_ids: ["DC-06"]
+
+  - card_id: GP-DC-005
+    title: Public realm comfort and safety rules
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["public realm", "safety", "comfort"]
+    prompt: "Address lighting, overlooking, seating, play, shade, and accessibility outcomes."
+    source_ids: ["DC-08"]
+
+  - card_id: GP-DC-006
+    title: Servicing and refuse as design constraints
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process, visual]
+    trigger_cues: ["servicing", "refuse", "bins"]
+    prompt: "Provide principles to ensure bins and deliveries do not break the public realm."
+    source_ids: ["DC-09"]
+
+  - card_id: GP-DC-007
+    title: Code block structure and permeability
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [spatial, text]
+    trigger_cues: ["block", "permeability"]
+    prompt: "Define block sizes, route permeability, and how corners or edges should work."
+    source_ids: ["DC-10"]
+
+  - card_id: GP-DC-008
+    title: Height principles and maps
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [spatial, visual]
+    trigger_cues: ["height", "height map"]
+    prompt: "If using heights, show where and why, and how transitions are handled."
+    source_ids: ["DC-11"]
+
+  - card_id: GP-DC-009
+    title: Frontage rules for active streets
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["frontage", "active edge"]
+    prompt: "Define how entrances, windows, blank walls, and ground floor uses should support street life."
+    source_ids: ["DC-12"]
+
+  - card_id: GP-DC-010
+    title: Corner conditions should be coded
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [visual, text]
+    trigger_cues: ["corner", "junction"]
+    prompt: "Provide rules for corner massing, entrances, fenestration, and landmarks."
+    source_ids: ["DC-13"]
+
+  - card_id: GP-DC-011
+    title: Setback and building line conventions
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [numeric]
+    trigger_cues: ["setback", "building line"]
+    prompt: "Specify how setbacks relate to street type and how irregular sites are handled."
+    source_ids: ["DC-14"]
+
+  - card_id: GP-DC-012
+    title: Typology library with parameter ranges
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [numeric, visual]
+    trigger_cues: ["typology", "mansion block", "courtyard"]
+    prompt: "Show typical parameters (depths, frontage widths, heights) and what good looks like."
+    source_ids: ["DC-15"]
+
+  - card_id: GP-DC-013
+    title: Materials guidance should be place specific
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text, visual]
+    trigger_cues: ["materials", "palette"]
+    prompt: "Tie palettes to local character and climate resilience, including durability and maintenance."
+    source_ids: ["DC-16"]
+
+  - card_id: GP-DC-014
+    title: Focus on outcomes not style policing
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["style", "architectural"]
+    prompt: "Good codes describe performance and character outcomes rather than dictating a single style."
+    source_ids: ["DC-17"]
+
+  - card_id: GP-DC-015
+    title: Privacy and overlooking outcomes in codes
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["overlooking", "privacy"]
+    prompt: "Provide privacy and overlooking principles to avoid repeated negotiation."
+    source_ids: ["DC-18"]
+
+  - card_id: GP-DC-016
+    title: Ground floor thresholds and accessibility
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["ground floor", "threshold", "step free"]
+    prompt: "Address step-free access, defensible space, and interface with the public realm."
+    source_ids: ["DC-19"]
+
+  - card_id: GP-DC-017
+    title: Tree strategy and soil volume principles
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process, spatial]
+    trigger_cues: ["trees", "soil volume", "planting"]
+    prompt: "Include principles that make planting deliverable such as space, rooting, protection, and maintenance."
+    source_ids: ["DC-20"]
+
+  - card_id: GP-DC-018
+    title: SuDS integrated into public realm
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [spatial, process]
+    trigger_cues: ["suds", "drainage"]
+    prompt: "Show how drainage features fit streets and spaces and who maintains them."
+    source_ids: ["DC-21"]
+
+  - card_id: GP-DC-019
+    title: Overheating and comfort principles
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["overheating", "shade"]
+    prompt: "Code shading, ventilation, and greenery outcomes rather than after the fact fixes."
+    source_ids: ["DC-22"]
+
+  - card_id: GP-DC-020
+    title: Biodiversity outcomes should be measurable or honest
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text, numeric]
+    trigger_cues: ["biodiversity", "net gain"]
+    prompt: "If outcomes are intended, define measurable expectations; otherwise label content as aspirational."
+    source_ids: ["DC-23"]
+
+  - card_id: GP-DC-021
+    title: Cycle parking as a design issue
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text, numeric]
+    trigger_cues: ["cycle parking"]
+    prompt: "Address access, security, weather protection, and practicality, not just counts."
+    source_ids: ["DC-24"]
+
+  - card_id: GP-DC-022
+    title: Parking form and placement
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [spatial, text]
+    trigger_cues: ["parking layout", "parking court"]
+    prompt: "Provide rules for parking location, visibility, and impact on streets or public realm."
+    source_ids: ["DC-25"]
+
+  - card_id: GP-DC-023
+    title: EV and future flexibility principles
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["ev", "charging", "future proof"]
+    prompt: "Build in future adaptability such as charging provision and ducting."
+    source_ids: ["DC-26"]
+
+  - card_id: GP-DC-024
+    title: Management and stewardship should be acknowledged
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["management", "stewardship", "maintenance"]
+    prompt: "State expectations for long-term management of communal or public realm elements."
+    source_ids: ["DC-27"]
+
+  - card_id: GP-DC-025
+    title: Alternative solutions pathway
+    type: interpretive_reminder
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["alternative solution", "performance based"]
+    prompt: "State how applicants can propose compliant alternatives without undermining the code."
+    source_ids: ["DC-30"]
+
+  - card_id: GP-DC-026
+    title: Constraints override code intent
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text, process]
+    trigger_cues: ["heritage", "flood", "viability"]
+    prompt: "Explain how conflicts are managed so officers do not treat the code as absolute when it cannot be."
+    source_ids: ["DC-31"]
+
+  - card_id: GP-DC-027
+    title: Code use at different stages
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["outline", "reserved matters"]
+    prompt: "Clarify how coding applies at outline versus detailed stages."
+    source_ids: ["DC-32"]
+
+  - card_id: GP-DC-028
+    title: Link design code to local plan policies
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["policy link", "local plan"]
+    prompt: "List the key policies the code helps implement so it is not treated as free-floating rules."
+    source_ids: ["DC-33"]
+
+  - card_id: GP-DC-029
+    title: Avoid internal contradictions
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [text]
+    trigger_cues: ["contradiction", "conflict"]
+    prompt: "Ensure the same rule is not stated differently in two places."
+    source_ids: ["DC-39"]
+
+  - card_id: GP-DC-030
+    title: Ensure units and ranges are consistent
+    type: completeness_prompt
+    basis: professional_practice
+    priority: important
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [numeric]
+    trigger_cues: ["units", "ranges", "metres", "storeys"]
+    prompt: "Keep units consistent and explain any conversions."
+    source_ids: ["DC-41"]
+
+  - card_id: GP-DC-031
+    title: Do and do-not examples where controversy is predictable
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [figure]
+    dimensions: [visual]
+    trigger_cues: ["example", "do not"]
+    prompt: "Visual examples reduce misinterpretation and repeated negotiation."
+    source_ids: ["DC-42"]
+
+  - card_id: GP-DC-032
+    title: Make code outputs easy to cite
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process, text]
+    trigger_cues: ["numbering", "section reference"]
+    prompt: "Use clear numbering and stable section references so officers can cite code clauses cleanly."
+    source_ids: ["DC-43"]
+
+  - card_id: GP-DC-033
+    title: Refurbishment and retrofit guidance
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [text]
+    trigger_cues: ["retrofit", "refurbishment"]
+    prompt: "Provide tailored guidance where strict new-build parameters do not fit retrofit."
+    source_ids: ["DC-44"]
+
+  - card_id: GP-DC-034
+    title: Digital availability and searchability
+    type: completeness_prompt
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [document]
+    dimensions: [process]
+    trigger_cues: ["pdf only", "searchable"]
+    prompt: "Use searchable text and, where feasible, digital-friendly formats so the code is usable."
+    source_ids: ["DC-45"]
+
+  - card_id: GP-DC-035
+    title: Street-based place assessment template
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["movement", "public realm"]
+    prompt: "Movement -> street type -> frontage or edges -> safety or comfort -> greenery or drainage -> servicing -> management."
+    source_ids: ["DC-36"]
+
+  - card_id: GP-DC-036
+    title: Built form assessment template
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["massing", "height", "built form"]
+    prompt: "Context -> height strategy -> transitions -> block or plot rules -> frontage -> amenity -> materials or durability."
+    source_ids: ["DC-37"]
+
+  - card_id: GP-DC-037
+    title: Flexibility and constraints template
+    type: reasoning_template
+    basis: professional_practice
+    priority: helpful
+    status: advisory_only
+    applies_to: [design_code]
+    applies_at: [chapter]
+    dimensions: [process]
+    trigger_cues: ["constraint", "flexibility", "alternative"]
+    prompt: "Constraint -> why it matters -> code intent -> acceptable flexibility -> evidence to justify alternative."
+    source_ids: ["DC-38"]

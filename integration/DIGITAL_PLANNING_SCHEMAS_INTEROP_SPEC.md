@@ -1,5 +1,6 @@
 # Digital Planning Data Schemas (OSL) — Interoperability Specification
 
+
 This spec defines how The Planner’s Assistant interfaces with the **Open Systems Lab (OSL) Digital Planning Data Schemas** used by:
 * **Plan✕** (PlanX)
 * **Back Office Planning System** (BOPS)

@@ -1,5 +1,6 @@
 # Council Document Discovery (Web) Specification
 
+
 This spec defines a governed web discovery workflow used when an authority does not provide a clean API/bulk export for:
 * plan PDFs (local plan, SPDs, evidence base topic papers),
 * policies maps (PDFs, images, web maps),
@@ -25,6 +26,8 @@ Related specs:
   - `max_bytes_total`
   - `max_depth`
   - `per_domain_rate_limit`
+
+Request budgets apply only to external web discovery calls; ingestion itself has no caps/timeouts.
 
 ## 2) Outputs (what discovery produces)
 Discovery produces a **candidate manifest patch** for ingestion, not immediate ingestion:
@@ -92,4 +95,3 @@ This ensures downstream ingestion can remain deterministic and replayable.
 * blocked by robots/terms → stop and record limitation.
 * rate limited (429) → respect `Retry-After`; return partial if exceeded budget.
 * authentication required → stop; require manual upload or authorised connector.
-

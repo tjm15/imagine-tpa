@@ -1,5 +1,6 @@
 
   # Improve Project UI (Copy)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
   This is a code bundle for Improve Project UI (Copy). The original project is available at https://www.figma.com/design/dxc9kmT4KnlDrshwYMW3YE/Improve-Project-UI--Copy-.
 

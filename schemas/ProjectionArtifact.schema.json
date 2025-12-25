@@ -18,4 +18,3 @@
   },
   "required": ["projection_artifact_id", "transform_id", "artifact_type", "artifact_path", "created_at"]
 }
-

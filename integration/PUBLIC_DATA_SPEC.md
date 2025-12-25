@@ -1,5 +1,6 @@
 # Public Data & Web Acquisition Specification
 
+
 Spatial Strategy scenarios require inputs that are not always provided by councils as clean datasets. The system therefore supports **dynamic acquisition** of public data via:
 1. **Open APIs** (preferred)
 2. **Bulk downloads** (preferred)
@@ -17,6 +18,7 @@ All acquisition is treated as an evidence instrument:
 * **Reproducibility**: store raw HTML/JSON/ZIP responses (or hashes if storage is constrained) so the acquisition can be inspected.
 * **Human override**: allow manual correction/attachment where automated discovery fails (recorded as an audit event).
 * **No hybrid runtime**: acquisition may use external websites/APIs in both profiles, but AI/model calls must still obey the selected profile.
+* **External-only budgets**: any request budgets apply only to external APIs/web fetches; ingestion itself has no caps/timeouts.
 
 ## 2) Acquisition pipeline stages
 ### 2.1 Source registry

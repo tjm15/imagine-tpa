@@ -13,4 +13,3 @@
   },
   "required": ["frame_id", "frame_type", "created_at"]
 }
-

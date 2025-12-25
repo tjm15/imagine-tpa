@@ -42,4 +42,3 @@
   },
   "required": ["governance_report_id", "run_id", "hard_errors", "warnings", "created_at"]
 }
-

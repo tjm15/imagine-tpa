@@ -1,5 +1,6 @@
 # Prompt Library & Versioning Specification
 
+
 The published reasoning architecture describes a **Prompt Library & Versioning** capability in the Agentic / LLM Conductor.
 
 This repo treats prompt management as a **governance surface**, not an implementation detail.

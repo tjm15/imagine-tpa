@@ -27,4 +27,3 @@
   },
   "required": ["suggestion_id", "block_type", "content", "evidence_refs", "requires_judgement_run"]
 }
-

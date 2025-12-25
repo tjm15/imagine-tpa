@@ -1,4 +1,5 @@
-# UI System Specification (Planner Workbench / Digital Case Officer)
+# UI System Specification (Planner’s Assistant)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 This document makes the UI implementable without weakening the “grammar-first, provenance-first” architecture.
 
@@ -28,6 +29,7 @@ Both workspaces reuse the same Workbench Shell; they differ in the left rail and
 Naming note:
 * The **mode names** shown in the UI are product copy and can be refined without changing the architecture.
 * The requirement is the existence of two distinct workspaces: plan-making (CULP) and DM casework.
+* The canonical product name is **The Planner’s Assistant**.
 
 View naming note (B1):
 * The workbench keeps four stable views (Document / Map+Plan / Judgement / Reality).
@@ -42,6 +44,7 @@ View naming note (B1):
    - discretionary judgement must include context bundle trace + tool runs + prompt versioning (`db/PROVENANCE_STANDARD.md`).
 5. **User is the selector**: tab selection, accept/reject, and sign-off are explicit `AuditEvent`s (`schemas/AuditEvent.schema.json`).
 6. **Explainability modes**: `summary` / `inspect` / `forensic` are UI projections over the same run data.
+   Output verbosity is a UI-only concern and is not persisted for reasonableness checks.
 7. **Visuospatial reasoning is first-class**: maps, plans, photos, and photomontages are core evidence surfaces (`ux/VISUOSPATIAL_WORKBENCH_SPEC.md`).
 8. **Snapshots support legal questions**: published/sign-off states link to “what was known when” (`schemas/Snapshot.schema.json`).
 
@@ -119,6 +122,9 @@ Users can drag an `EvidenceCard` into the document to:
 This is the planner-native bridge between evidence and writing.
 
 ## 3) Home screens (v1)
+
+Default landing:
+* The workbench opens on the relevant **Home** view (Strategic Home or Casework Home), not a blank canvas.
 
 ### 3.1 Strategic Home (CULP programme board)
 Purpose: keep the system aligned to the GOV.UK 30‑month process (`culp/PROCESS_MODEL.yaml`).

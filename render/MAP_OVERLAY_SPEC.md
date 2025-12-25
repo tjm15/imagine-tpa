@@ -1,4 +1,6 @@
 # Map Overlay Specification
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
+
 
 ## Requirement
 The system must generate a Leaflet/Mapbox compatible tile layer or image overlay for:

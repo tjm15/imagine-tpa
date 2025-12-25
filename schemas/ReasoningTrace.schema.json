@@ -13,7 +13,7 @@
     "scope_id": { "type": ["string", "null"] },
     "capture_level": {
       "type": ["string", "null"],
-      "enum": ["summary", "inspector", "forensic", null]
+      "enum": ["summary", "inspect", "forensic", null]
     },
     "capture_mode": {
       "type": ["string", "null"],

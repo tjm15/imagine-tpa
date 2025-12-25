@@ -1,5 +1,6 @@
 # CULP Artefacts (Stage Gating) Specification
 
+
 CULP stages in `culp/PROCESS_MODEL.yaml` declare **required artefacts**. These are hard requirements: the dashboard must treat them as first-class deliverables, not as optional outputs.
 
 This spec makes that implementable by defining:
@@ -14,6 +15,12 @@ Registry file:
 Rules:
 * Every string listed in `culp/PROCESS_MODEL.yaml:stages[].required_artefacts[]` MUST appear in the registry as `artefact_key`.
 * Registry entries define how artefacts are stored and surfaced (authored document vs map overlay vs dataset/bundle).
+
+## 1.1 Alignment outputs (primary deliverables)
+Alignment outputs in `culp/ALIGNMENT_OUTPUTS_2025_11.yaml` are a primary deliverable set
+and must be surfaced alongside stage gating. These outputs map GOV.UK and Planning Data
+hooks to artefacts and validators, and should be treated as “what the plan must publish”
+in addition to “what each stage requires.”
 
 ## 2) Artefact ledger (per plan project)
 Each `PlanProject` maintains a ledger of artefacts per stage.
@@ -53,4 +60,3 @@ Agents can propose drafts, figures, maps, and schedules, but:
 * and every evidence-generating action must be logged (`ToolRun`).
 
 This keeps CULP requirements satisfied without collapsing into a rigid workflow engine.
-

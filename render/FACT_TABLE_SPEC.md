@@ -1,4 +1,6 @@
 # Fact Table Specification
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
+
 
 ## Principle
 Rendering is deterministic. It reads from "Fact Tables", not raw text.

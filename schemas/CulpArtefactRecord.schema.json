@@ -42,4 +42,3 @@
   },
   "required": ["culp_artefact_id", "plan_project_id", "culp_stage_id", "artefact_key", "status", "created_at"]
 }
-

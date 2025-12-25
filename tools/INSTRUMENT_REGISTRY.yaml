@@ -12,6 +12,13 @@ instruments:
     description: "Returns flood zone designation."
     required_inputs: ["site_id", "polygon_wkt", "polygon_geojson"]
     notes: "Provide one of site_id OR polygon_wkt OR polygon_geojson."
+
+  - id: auto_georef_plan_map
+    name: "Auto Georeference Plan Map"
+    type: "internal_workflow"
+    description: "Closed-loop georeferencing for map-like visual assets using GDAL/QGIS macros."
+    required_inputs: ["visual_asset_id", "segmentation_mask_id", "target_crs"]
+    notes: "Uses SAM2-derived masks (e.g., redline). Logs Transform + ProjectionArtifact with limitations; supports configurable success thresholds."
     
   - id: casa_quant
     name: "CASA QUANT"

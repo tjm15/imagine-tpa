@@ -28,4 +28,3 @@
   },
   "required": ["plan_project_id", "authority_id", "process_model_id", "title", "status", "created_at"]
 }
-

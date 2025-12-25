@@ -42,4 +42,3 @@
   },
   "required": ["transform_id", "from_frame_id", "to_frame_id", "method", "matrix", "matrix_shape", "uncertainty_score", "created_at"]
 }
-

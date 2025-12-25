@@ -16,4 +16,3 @@
   },
   "required": ["scenario_delta_id", "from_scenario_id", "to_scenario_id", "changes"]
 }
-

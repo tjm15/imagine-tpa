@@ -16,4 +16,3 @@
   },
   "required": ["adoption_baseline_id", "authority_id", "adoption_date"]
 }
-

@@ -309,16 +309,18 @@ def get_workflow_status(plan_project_id: str) -> JSONResponse:
         results = []
         ok = True
         for check in checks:
+            severity = str(check.get("severity") or "hard").lower()
             passed, detail = _evaluate_check(plan_project_id, current_state, check)
             results.append(
                 {
                     "check_key": check.get("check_key"),
                     "type": check.get("type"),
+                    "severity": severity,
                     "passed": passed,
                     "detail": detail,
                 }
             )
-            if not passed:
+            if not passed and severity != "warn":
                 ok = False
         entry = {
             "to_state_id": transition.get("to"),
@@ -358,8 +360,9 @@ def advance_workflow(plan_project_id: str, to_state_id: str, actor_type: str = "
     checks = candidate.get("checks", [])
     failures = []
     for check in checks:
+        severity = str(check.get("severity") or "hard").lower()
         passed, detail = _evaluate_check(plan_project_id, current_state, check)
-        if not passed:
+        if not passed and severity != "warn":
             failures.append({"check_key": check.get("check_key"), "detail": detail})
     if failures:
         raise HTTPException(status_code=409, detail={"message": "Transition blocked", "failures": failures})

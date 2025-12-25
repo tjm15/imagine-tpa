@@ -1,5 +1,6 @@
 # PlanX Connector Specification (OSL Schema Interop)
 
+
 This spec defines the PlanX connector responsibilities in this system.
 
 PlanX interoperability is defined through the Open Systems Lab (OSL) digital planning data schemas:

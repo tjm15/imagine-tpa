@@ -39,4 +39,3 @@
   },
   "required": ["normative_force", "strength_hint", "ambiguity_flags", "key_terms", "officer_interpretation_space", "method", "limitations_text"]
 }
-

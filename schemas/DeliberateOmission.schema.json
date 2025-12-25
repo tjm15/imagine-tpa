@@ -14,4 +14,3 @@
   },
   "required": ["omission_id", "description", "reason"]
 }
-

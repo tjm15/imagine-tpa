@@ -27,4 +27,3 @@
   },
   "required": ["tool_request_id", "purpose", "inputs"]
 }
-

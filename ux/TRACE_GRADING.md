@@ -1,4 +1,5 @@
 # Progressive Traceability Grading
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 To satisfy the requirement of "beautiful for juniors, forensic for inspectors", we define three tiers of traceability UI.
 

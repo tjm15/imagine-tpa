@@ -1,5 +1,6 @@
 # Integration Layer (Connectors) Specification
 
+
 The Integration Layer keeps the Assistant’s internal canonical store + KG synchronised with external planning systems and live evidence feeds.
 
 This layer is required to support capabilities such as:

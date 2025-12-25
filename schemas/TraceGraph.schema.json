@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "title": "TraceGraph",
   "type": "object",
-  "description": "A deterministic, UI-ready flowchart projection of MoveEvents/ToolRuns/AuditEvents for a run or tab (graphical traceability).",
+  "description": "A UI-ready flowchart projection of MoveEvents/ToolRuns/AuditEvents for a run or tab (graphical traceability).",
   "properties": {
     "trace_graph_id": { "type": "string", "format": "uuid" },
     "run_id": { "type": "string", "format": "uuid" },
@@ -77,4 +77,3 @@
   },
   "required": ["trace_graph_id", "run_id", "mode", "nodes", "edges", "created_at"]
 }
-

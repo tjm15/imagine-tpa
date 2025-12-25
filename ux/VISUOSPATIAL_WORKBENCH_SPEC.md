@@ -1,4 +1,5 @@
 # Visuospatial Workbench Specification (Map / Plan / Photomontage)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 The Planner’s Assistant must preserve the nuance of planning judgement that happens through **seeing**:
 maps, plans, policy maps, photos, and photomontages — not just text retrieval.

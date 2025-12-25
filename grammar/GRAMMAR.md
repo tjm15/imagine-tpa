@@ -1,5 +1,6 @@
 # Grammar of Planning Judgement
 
+
 This document defines the 8-move grammar that guides the system's logic.
 The grammar is a **procedural scaffold**, not a deterministic algorithm; agents should not overfit to it.
 

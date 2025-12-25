@@ -1,5 +1,6 @@
 # Model Runtime Specification (OSS single-user GPU routing)
 
+
 This spec pins down how the **OSS profile** runs LLM/VLM/embedding services on a **single machine** with a **single GPU**, without trying to keep all models resident in VRAM simultaneously.
 
 It implements design choice **D3 — a model supervisor**: TPA starts/stops model services on demand, so the GPU is used by the model that is needed *now*.
@@ -14,6 +15,7 @@ It implements design choice **D3 — a model supervisor**: TPA starts/stops mode
 **Constraints**
 * VRAM is the scarce resource; do not assume LLM + VLM can co-reside.
 * “Standby in RAM then copy to GPU” is approximated via shared model cache volumes and OS page cache.
+* Embeddings may run as a **multi-model service** (text + multimodal) and should stay resident if VRAM allows.
 
 Non-goal: perfect “hot swap” of weights between GPU and RAM (not currently realistic with typical LLM servers).
 
@@ -30,7 +32,7 @@ Given a workbench action, TPA must be able to:
 TPA treats models as roles (not “one mega model”):
 * `llm` — OpenAI-compatible text completion/chat (vLLM)
 * `vlm` — OpenAI-compatible multimodal chat (vLLM)
-* `embeddings` — text embedding HTTP service (e.g. TEI)
+* `embeddings` — embedding HTTP service (multi-model: text + multimodal, routed by `model_id`)
 * `reranker` — cross-encoder reranker HTTP service (e.g. TEI)
 
 ## 3) The Model Supervisor (D3)
@@ -61,7 +63,17 @@ The minimum internal HTTP contract:
 * `tpa-embeddings` may run continuously (CPU) because it does not contend for VRAM by default.
 * Exactly one of `tpa-llm` or `tpa-vlm` should be running at any time.
 
-If `embeddings`/`reranker` are configured to use the GPU, treat them as GPU-exclusive too (so only one of `llm|vlm|embeddings|reranker` is running).
+If `embeddings`/`reranker` are configured to use the GPU, treat them as GPU roles.
+The supervisor may allow `embeddings` + `reranker` to co-reside if VRAM permits, but `llm` and `vlm`
+remain mutually exclusive by default.
+
+### 4.3 Multi-model embeddings (dual-lane retrieval)
+The embeddings service may host:
+* a **text** model (e.g., Qwen3-Embedding-8B) for clause/chunk retrieval, and
+* a **multimodal** model (e.g., ColNomic) for page-level visual retrieval.
+
+Requests must provide `model_id` and the service must return which model was used.
+Indexes remain separate (text vs visual pages) and are routed at query time.
 
 ### 4.2 Shared cache (RAM-friendly behavior)
 All model services share a volume:

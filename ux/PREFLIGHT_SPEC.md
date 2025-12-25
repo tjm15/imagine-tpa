@@ -1,4 +1,5 @@
 # Preflight Specification (A3: preflight + action-first)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 This spec pins down design choice **A3 — Preflight + action-first assistance**:
 TPA behaves like a planning workbench that is already “getting things ready” as the planner navigates, while keeping every suggestion contestable and auditable.

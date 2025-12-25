@@ -1,5 +1,6 @@
 # Grammar Orchestration Specification
 
+
 This spec describes the **Agentic / LLM Conductor** for the frozen 8‑move grammar (`grammar/GRAMMAR.md`).
 It is the orchestration substrate that:
 * coordinates specialist agents,

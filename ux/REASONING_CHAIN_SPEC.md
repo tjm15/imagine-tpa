@@ -1,4 +1,5 @@
 # Reasoning Chain (UI) Specification
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 The dashboard uses a 7-step **Reasoning Chain** to organise and navigate capability modules:
 `Evidence → Context → Patterns → Options → Tests → Judgement → Explanation`.

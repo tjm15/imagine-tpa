@@ -25,4 +25,3 @@
   },
   "required": ["policy_id", "authority_id", "title", "text"]
 }
-

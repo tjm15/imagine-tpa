@@ -39,7 +39,17 @@
           "render_tier": {"type": ["string", "null"]},
           "render_reason": {"type": ["string", "null"]},
           "text_source": {"type": ["string", "null"]},
-          "text_source_reason": {"type": ["string", "null"]}
+          "text_source_reason": {"type": ["string", "null"]},
+          "text_confidence": {"type": ["number", "null"]},
+          "text_alternates": {
+            "type": ["object", "null"],
+            "properties": {
+              "native_text": {"type": ["string", "null"]},
+              "ocr_text": {"type": ["string", "null"]},
+              "native_confidence": {"type": ["number", "null"]},
+              "ocr_confidence": {"type": ["number", "null"]}
+            }
+          }
         },
         "required": ["page_number", "text"]
       }
@@ -83,7 +93,11 @@
         "properties": {
           "asset_id": {"type": "string"},
           "page_number": {"type": "integer"},
-          "asset_type": {"type": "string"},
+          "asset_type": {
+            "type": "string",
+            "description": "DocParse structural class hint (e.g., image/figure/table_image/unknown), not planning semantics."
+          },
+          "asset_type_source": {"type": ["string", "null"]},
           "role": {"type": "string"},
           "blob_path": {"type": "string"},
           "bbox": {"type": ["array", "null"], "items": {"type": "number"}, "minItems": 4, "maxItems": 4},

@@ -1,4 +1,5 @@
 # GDS Alignment & Assisted Spatial Workflow Proposal
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 This document refines the Information Architecture (IA) to align strictly with the **GOV.UK Design System (GDS)** for process navigation, while leveraging the **Visuospatial Workbench** and **AI Assistance** for complex tasks.
 

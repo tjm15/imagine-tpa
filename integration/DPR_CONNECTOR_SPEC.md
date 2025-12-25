@@ -1,5 +1,6 @@
 # DPR Connector Specification (OSL Schema Interop)
 
+
 This spec defines publishing to a Digital Planning Register (DPR).
 
 DPR interoperability is defined through the Open Systems Lab (OSL) digital planning data schemas:

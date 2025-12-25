@@ -1,5 +1,6 @@
 # Draft Launcher (Get-a-Draft-for-Anything) Specification
 
+
 Planners often need a usable first draft in minutes (or seconds): after a meeting, before a committee deadline, or to start an evidence schedule.
 
 This spec defines a **Draft Launcher** workflow that produces a fast, editable draft while preserving the system’s procedural explainability.

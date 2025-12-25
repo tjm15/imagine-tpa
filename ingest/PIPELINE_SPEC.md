@@ -1,34 +1,58 @@
 # Ingestion Pipeline Specification
 
+
 ## Phases
-1. **Raw Ingestion**: Upload blob to `raw/`.
-2. **Canonical Extraction**: Parse via DocParseProvider. Extract text, tables, images.
-3. **Canonical Loading**: Write to `documents`, `chunks`, `visual_assets`.
-4. **Graph Construction**: Create `Chunk` nodes in KG.
-5. **Enrichment**:
-    * Embed Chunks.
-    * Extract "Mentions" (Site/Policy).
-    * Create `CITES` and `MENTIONS` edges.
+1. **Raw Ingestion**: Upload blob to `raw/` (worker does this before DocParse).
+2. **DocParse (CPU-only)**: Structural scaffolding via Docling/OCR (no LLM/VLM), with
+   conditional OCR + stored text alternates.
+3. **Canonical Loading**: Persist `documents`, `pages`, `layout_blocks`, `tables`, `visual_assets`, `chunks`.
+4. **Policy Structure (LLM)**: Use DocParse headings to split into `policy_sections` and `policy_clauses`;
+   extract conditions/definitions/targets/monitoring hooks.
+5. **Visual Semantics (VLM)**: Two-phase semantics (asset → regions → assertions) + text‑in‑image capture.
+6. **Visual Segmentation (SAM2)**: Masks + regions for map/diagram/table/figure assets.
+7. **Embeddings**:
+   * Qwen3 for text/OCR/captions/linked refs (dense index).
+   * ColNomic for visual pages (multi-vector index).
+8. **Linking**:
+   * visual → policy linking after structural extraction,
+   * qualifier/mention materialization (derived KG),
+   * `CITES`/`MENTIONS`/scope/matrix edges.
+9. **Geospatial**:
+   * closed‑loop auto‑georef when worthwhile,
+   * map feature extraction post‑georef,
+   * overlay/transform artefacts + spatial facts.
 
 ### Run-step trace (engineer/inspector audit)
 Each ingestion run records pass-level status in `ingest_run_steps` with inputs/outputs:
 * `anchor_raw`
 * `docling_parse`
 * `canonical_load`
+* `policy_structure`
+* `policy_matrices_scopes`
 * `visual_semantics_asset`
 * `visual_segmentation`
+* `visual_text_capture`
 * `visual_semantics_regions`
 * `visual_linking`
 * `visual_embeddings`
 * `visual_assertion_embeddings`
-* `structural_llm`
-* `edges_llm`
-* `embeddings`
+* `embeddings_text`
+* `embeddings_visual_pages`
+* `georef_attempt`
+* `map_feature_extract`
+* `spatial_overlays`
+* `conflict_detection`
+* `trace_graph_projection`
 
 ## Invariant
 The pipeline must be **Multi-Pass**.
-* Pass 1: Structural extraction (fast).
-* Pass 2: Vision/Refinement (expensive, async).
+* Pass 1: Structural extraction (fast, CPU-heavy).
+* Pass 2: Vision/Refinement (GPU-heavy, async).
+
+## Operational constraints (non-negotiable)
+* **No timeouts** for LLM/VLM/SAM2/georef calls (manual cancellation only).
+* **No hard caps** on bytes, pages, or visuals.
+* **No auto-retries**: all retries are explicit operator actions.
 
 ## Authority Packs (Policy + GIS bundles)
 Authority packs (see `authority_packs/*`) are treated as **ingestion manifests**, not runtime data structures.
@@ -47,7 +71,9 @@ Authority policy documents (Local Plans, SPDs, AAPs, design guides) must be chun
 * Prefer **clause- and heading-aware chunks**, not generic fixed token windows.
 * Persist `section_path` / heading hierarchy where available (e.g., `Chapter 4 > Policy H1 > Criterion (c)`).
 * For policy-like text, create canonical `PolicyClause` units (or clause-marked chunks) suitable for `CITES` edges.
-* Policy sectioning must not rely on brittle regex alone: use an **LLM parsing instrument** to detect policy headings from candidate heading-like chunks, and log its inputs/outputs as a `ToolRun` (see `schemas/PolicyHeadingDetectionResult.schema.json`).
+* **DocParse-first guided mode**: DocParse produces heading hierarchy and `section_path`; the worker
+  uses that structure to split clauses. LLMs operate **inside** those boundaries, not to rediscover
+  headings from scratch. Regex is not sufficient on its own.
 * Where useful, perform **semantic atomisation** into short “policy atoms” (embedding-dense fragments) with:
   * cross-reference signals (`CITES`, clause↔clause links),
   * inferred qualifiers/tests (stored as metadata, not treated as determinations),
@@ -65,18 +91,21 @@ These are retrieval aids and curation hints, not determinations.
 
 ### Embedding cascade (multi-scale retrieval)
 To support both precise citation and higher-level retrieval, ingestion should store embeddings at multiple scales:
-* atom/chunk-level
-* clause-level (where `PolicyClause` exists)
-* document-level (for coarse filtering)
+* atom/chunk-level (Qwen3 dense)
+* clause-level (Qwen3 dense)
+* document-level (Qwen3 dense, optional)
+* visual page-level (ColNomic multi-vector)
 
 OSS single-GPU note:
-* Prefer **phased ingestion** (CPU chunking → LLM policy parse → embeddings) so model services can be started/stopped without ping-ponging GPU residency per-document.
+* Prefer **queue separation by model class** (VLM/SAM2/embeddings/LLM) and batch by stage so the
+  model supervisor can avoid frequent VRAM swaps.
 
 ### Cross-document graph fabric (policy is not a blob)
 In addition to canonical tables, ingestion should build a lightweight graph fabric:
 * citation links (chunk → clause, clause → clause)
 * semantic adjacency links (similarity clusters)
 * spatial relevance links (clause/chunk → zones or spatial features where applicable)
+* derived qualifier/mention nodes **only** when backed by canonical conditions or resolved references
 
 These become traversal primitives for agents (context assembly) and must be logged/provenanced as tool runs.
 
@@ -112,6 +141,15 @@ Monitoring and delivery capabilities depend on ingesting live events and time se
 * Ingest monitoring events into `monitoring_events` with provenance.
 * Derive monitoring time series (`monitoring_timeseries`) from events and authoritative sources.
 * Support adoption baseline snapshots (`adoption_baselines`) as explicit, versioned artefacts.
+
+## Advisory enrichment (good practice cards)
+Advice cards are a post-ingestion, non-blocking pass that attach planner-facing prompts to
+documents, sections, policies, or figures. They are advisory only and must never be treated
+as evidence or determinations.
+
+* Catalogue: `governance/GOOD_PRACTICE_CARDS.yaml`
+* Schema: `schemas/AdviceCard.schema.json`, `schemas/AdviceCardInstance.schema.json`
+* Spec: `governance/ADVICE_CARD_ENRICHMENT_SPEC.md`
 
 ## 6. Spatial Enrichment (Geospatial Linkages)
 An explicit post-processing step running on a GIS worker (e.g., PostGIS or Geopandas).

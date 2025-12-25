@@ -1,5 +1,6 @@
 # BOPS Connector Specification (OSL Schema Interop)
 
+
 This spec defines the BOPS connector responsibilities in this system.
 
 BOPS interoperability is defined through the Open Systems Lab (OSL) digital planning data schemas:

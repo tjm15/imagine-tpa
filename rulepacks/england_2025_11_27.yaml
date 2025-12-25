@@ -92,6 +92,10 @@ transitions:
         type: artefacts_published
         params:
           artefact_keys: [notice_html, boundary_map, geometry_download]
+      - check_key: project_initiation_document_published
+        type: artefacts_published
+        params:
+          artefact_keys: [project_initiation_document]
 
   - from: NOTICE_PUBLISHED
     to: SCOPING_CONSULTATION_OPEN
@@ -172,7 +176,11 @@ transitions:
 
   - from: CONTENT_EVIDENCE_SUMMARY_PUBLISHED
     to: GATEWAY_2_IN_PROGRESS
-    checks: []
+    checks:
+      - check_key: gateway2_submission_pack_published
+        type: artefacts_published
+        params:
+          artefact_keys: [gateway_2_submission_pack]
 
   - from: GATEWAY_2_IN_PROGRESS
     to: GATEWAY_2_PUBLISHED
@@ -190,6 +198,15 @@ transitions:
         params:
           consultation_type: PROPOSED_PLAN
           status: open
+      - check_key: proposed_plan_pack_published
+        type: artefacts_published
+        params:
+          artefact_keys:
+            - proposed_local_plan_draft
+            - policy_pages_html
+            - policies_map_draft
+            - policies_map_layers
+            - policies_map_metadata
 
   - from: PROPOSED_PLAN_CONSULTATION_OPEN
     to: PROPOSED_PLAN_CONSULTATION_CLOSED
@@ -215,7 +232,11 @@ transitions:
 
   - from: PROPOSED_PLAN_SUMMARY_PUBLISHED
     to: GATEWAY_3_IN_PROGRESS
-    checks: []
+    checks:
+      - check_key: gateway3_submission_pack_published
+        type: artefacts_published
+        params:
+          artefact_keys: [gateway_3_submission_pack]
 
   - from: GATEWAY_3_IN_PROGRESS
     to: GATEWAY_3_COMPLETED
@@ -264,5 +285,10 @@ transitions:
       - check_key: adoption_statement_published
         type: artefacts_published
         params:
-          artefact_keys: [adoption_statement, adopted_local_plan]
-
+          artefact_keys:
+            - adoption_statement
+            - adopted_local_plan
+            - policy_pages_html
+            - policies_map_final
+            - policies_map_layers
+            - policies_map_metadata

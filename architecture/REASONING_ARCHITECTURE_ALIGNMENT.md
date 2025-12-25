@@ -1,5 +1,6 @@
 # Reasoning Architecture Alignment
 
+
 This repo’s specification is intended to align with the published “Reasoning Architecture” for The Planner’s Assistant:
 `https://theplannersassistant.uk/#/reasoning-architecture`
 

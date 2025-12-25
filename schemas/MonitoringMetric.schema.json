@@ -16,4 +16,3 @@
   },
   "required": ["metric_id", "authority_id", "period", "value"]
 }
-

@@ -15,4 +15,3 @@
   },
   "required": ["diff_id", "from_snapshot_id", "to_snapshot_id", "created_at", "diff"]
 }
-

@@ -29,6 +29,19 @@ modules:
       - EvidenceCard[]
       - ToolRun
 
+  - id: plan_reality_registration
+    name: Plan Reality Registration
+    pipeline: spatial_strategy
+    phase: evidence
+    summary: "Auto-georeference plan maps and register plan-to-reality overlays with provenance."
+    required_inputs:
+      - visual_asset_ids
+      - target_crs
+    outputs:
+      - Transform
+      - ProjectionArtifact
+      - EvidenceCard[]
+
   - id: feedback_analysis_vision_tool
     name: Feedback Analysis & Vision Tool
     pipeline: spatial_strategy

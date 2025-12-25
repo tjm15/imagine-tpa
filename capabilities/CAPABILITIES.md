@@ -1,5 +1,6 @@
 # Capabilities Specification (Planner’s Assistant)
 
+
 This repo targets a single civic reasoning engine expressed in **three pipelines**:
 1. **Spatial Strategy** (plan-making / scenarios)
 2. **Development Management** (casework)

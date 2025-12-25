@@ -1,5 +1,6 @@
 # Provider Interfaces (Contract)
 
+
 This document specifies the **provider contract** used to enforce the “two complete profiles / no hybrid runtime” rule.
 
 Providers are *infrastructure + model* adapters. They never contain planning logic. Planning logic lives in the core services (ingestion, KG, grammar orchestrator, renderer, governance).
@@ -91,6 +92,13 @@ The provider must support:
 
 The exact strategy is configured per profile; the core logic treats it as an evidence instrument, not a decision engine.
 
+**Multi-lane retrieval**
+Retrieval must support separate indexes for:
+* dense text (e.g., OCR/clauses/chunks)
+* visual pages (layout-aware page retrieval)
+Index selection is controlled by `index_name` (e.g., `text_dense`, `visual_pages`).
+Reranking is performed via `RerankerProvider` when configured.
+
 ### 3.4 `DocParseProvider`
 **Purpose**: parse documents into a normalized structure used by ingestion.
 
@@ -107,7 +115,25 @@ Must conform to `ingest/DOC_PARSE_SPEC.md` (pages, chunks, tables) and produce s
 * `embed_text(texts[], options?) -> vectors[]`
 * `embed_image(images[], options?) -> vectors[]` (optional; must advertise capability)
 
-### 3.6 `LLMProvider`
+**Required options**
+Callers must be able to select a model/lane via `options.model_id` (e.g., `qwen3-embedding-8b`,
+`colnomic-embed-multimodal-7b`). Providers should echo the effective `model_id` in `ToolRun.outputs_logged`.
+
+If a provider supports multi-model embedding in one service, it must accept `model_id` for routing.
+
+### 3.6 `RerankerProvider` (optional but recommended)
+**Purpose**: rerank text candidates for higher precision over dense retrieval lanes.
+
+**Required methods**
+* `rerank(query, candidates[], options?) -> ranked[]`
+
+**Result shape (minimum)**
+Each ranked result must include:
+* `record_id`
+* `score`
+* `metadata` (carry through evidence refs when available)
+
+### 3.7 `LLMProvider`
 **Purpose**: grammar-bound reasoning and synthesis (text only).
 
 **Required methods**
@@ -116,14 +142,17 @@ Must conform to `ingest/DOC_PARSE_SPEC.md` (pages, chunks, tables) and produce s
 **Required options + logging**
 Callers MUST provide (and providers MUST echo into `ToolRun.outputs_logged`):
 * `prompt_id` and `prompt_version` (prompt library/versioning for audit)
-* sampling params (e.g. `temperature`, `top_p`, `max_output_tokens`) where supported
+
+Sampling params are optional. When provided, providers MUST log them. When omitted,
+providers SHOULD log the effective parameters used (defaults or model-side settings),
+when that information is available.
 
 **Non-determinism is allowed**
 The LLM is not required to be deterministic. Instead:
 * all prompts, schemas, and outputs must be captured in `ToolRun.outputs_logged`
-* replayability is achieved by re-rendering from stored move outputs (see `tests/REPLAYABILITY_SPEC.md`)
+* traceability is provided via ReasoningTrace bundles + provenance (`trace/REASONING_TRACE_SPEC.md`)
 
-### 3.7 `VLMProvider`
+### 3.8 `VLMProvider`
 **Purpose**: multimodal understanding of plans/images/figures.
 
 **Required methods**
@@ -132,15 +161,18 @@ The LLM is not required to be deterministic. Instead:
 **Required options + logging**
 Callers MUST provide (and providers MUST echo into `ToolRun.outputs_logged`):
 * `prompt_id` and `prompt_version`
-* sampling params (where supported)
 
-### 3.8 Predictable degradation (all providers)
+Sampling params are optional. When provided, providers MUST log them. When omitted,
+providers SHOULD log the effective parameters used (defaults or model-side settings),
+when that information is available.
+
+### 3.9 Predictable degradation (all providers)
 If a required provider/tool is unavailable (quota, model down, missing dependency), the system may fall back to safe heuristics, but must:
 * mark the run as `ToolRun.status = partial` (or `error` where no safe fallback exists)
 * include `outputs_logged.fallback_mode = true` and a short `outputs_logged.fallback_explanation`
 * surface limitations in downstream `Interpretation.limitations_text` / evidence cards and governance warnings
 
-### 3.9 `SegmentationProvider` (raster/image segmentation)
+### 3.10 `SegmentationProvider` (raster/image segmentation)
 **Purpose**: promptable segmentation for **raster** inputs (plans, photos), producing masks and confidence.
 
 This interface is NOT for vector geoprocessing (buffers/intersections). Those are handled by spatial tools (PostGIS/GeoPandas/GDAL) and logged as `ToolRun`s.
@@ -155,14 +187,14 @@ If you need **digitised vector geometry** from a raster plan/map (e.g., extract 
 **Required methods**
 * `segment(image, prompts, options?) -> {masks[], confidence?}`
 
-### 3.10 `WorkflowProvider`
+### 3.11 `WorkflowProvider`
 **Purpose**: run orchestration substrate (agent graph execution, background jobs).
 
 **Required methods**
 * `run_workflow(workflow_name, inputs, options?) -> {run_handle}`
 * `get_status(run_handle) -> status`
 
-### 3.11 `ObservabilityProvider`
+### 3.12 `ObservabilityProvider`
 **Purpose**: traces, metrics, structured logs.
 
 **Required methods**

@@ -1,5 +1,6 @@
 # Context Assembly Specification (SOTA Dec 2025)
 
+
 This spec defines the **Context Assembly** layer: the missing “center” between the evidence substrate (DB + KG + indices) and the grammar agents (LLM/VLM).
 
 It exists to make **multimodal, very‑large‑context reasoning** work **without** letting an LLM “rummage”.

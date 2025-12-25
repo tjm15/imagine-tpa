@@ -1,5 +1,6 @@
 # PlanIt Connector Specification (Real DM Cases)
 
+
 This spec defines how the system fetches **real planning applications** from the UK PlanIt API:
 `https://www.planit.org.uk/api/`
 

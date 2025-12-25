@@ -39,4 +39,3 @@
   },
   "required": ["visual_feature_id", "visual_asset_id", "feature_type"]
 }
-

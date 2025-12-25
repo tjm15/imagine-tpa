@@ -9,6 +9,7 @@ This template outlines a few examples of things you can add. You can add your ow
 TIP: More context isn't always better. It can confuse the LLM. Try and add the most important rules you need
 
 # General guidelines
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 Any general rules you want the AI to follow.
 For example:

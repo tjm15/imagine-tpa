@@ -1,5 +1,6 @@
 # DDL Contract
 
+
 All state must exist in these tables.
 
 ## 1. Canonical Tables
@@ -10,6 +11,7 @@ All state must exist in these tables.
 * `ingest_jobs` (id, ingest_batch_id [nullable], authority_id, plan_cycle_id [nullable], job_type, status, inputs_jsonb, outputs_jsonb, created_at, started_at [nullable], completed_at [nullable], error_text [nullable])
 * `ingest_run_steps` (id, ingest_batch_id [nullable], run_id [nullable], step_name, status, started_at [nullable], ended_at [nullable], inputs_jsonb, outputs_jsonb, error_text [nullable])
 * `documents` (id, authority_id, ingest_batch_id [nullable], plan_cycle_id [nullable], run_id [nullable], document_status [nullable], weight_hint [nullable], effective_from [nullable], effective_to [nullable], is_active, superseded_by_document_id [nullable], confidence_hint [nullable], uncertainty_note [nullable], metadata, blob_path, raw_blob_path [nullable], raw_sha256 [nullable], raw_bytes [nullable], raw_content_type [nullable], raw_source_uri [nullable], raw_artifact_id [nullable])
+* `document_identity_status` (id, document_id, run_id [nullable], identity_jsonb, status_jsonb, weight_jsonb, document_family [nullable], status_claim [nullable], status_confidence [nullable], weight_class [nullable], legal_assertion_level [nullable], phrasing_guidance [nullable], evidence_refs_jsonb [nullable], checked_at [nullable], tool_run_id [nullable], created_at)
 * `parse_bundles` (id, ingest_job_id [nullable], ingest_batch_id [nullable], run_id [nullable], document_id [nullable], schema_version, blob_path, status, metadata_jsonb, created_at)
 * `pages` (id, document_id, page_number, ingest_batch_id [nullable], run_id [nullable], source_artifact_id [nullable], render_blob_path [nullable], render_format [nullable], render_dpi [nullable], render_width [nullable], render_height [nullable], render_tier [nullable], render_reason [nullable], metadata)
 * `chunks` (id, document_id, page_number, ingest_batch_id [nullable], run_id [nullable], source_artifact_id [nullable], text, bbox, bbox_quality [nullable], type, section_path, span_start [nullable], span_end [nullable], span_quality [nullable], evidence_ref_id [nullable], metadata)
@@ -108,6 +110,7 @@ All state must exist in these tables.
 * `reasoning_evidence_links` (id, run_id [nullable], move_event_id, evidence_ref_id, role, note [nullable], created_at)
 * `material_considerations` (id, run_id, move_event_id [nullable], consideration_type, statement, evidence_refs_jsonb, confidence_hint [nullable], uncertainty_note [nullable], created_at)
 * `audit_events` (id, timestamp, event_type, actor_type, actor_id, run_id, plan_project_id, culp_stage_id, scenario_id, tool_run_id, payload_jsonb)
+* `reasoning_traces` (id, run_id [nullable], scope_type [nullable], scope_id [nullable], capture_level [nullable], capture_mode [nullable], capture_reason [nullable], capture_decision_tool_run_id [nullable], trace_jsonb, created_at, created_by [nullable])
 
 ## 5. Knowledge Graph Tables (The "Join Fabric")
 * `kg_node` (node_id [PK], node_type, props_jsonb, canonical_fk [nullable])
@@ -116,7 +119,7 @@ All state must exist in these tables.
 ## 6. Provenance Tables
 * `artifacts` (id, type, path)
 * `tool_runs` (id, ingest_batch_id [nullable], run_id [nullable], tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint [nullable], uncertainty_note [nullable])
-* `evidence_refs` (id, run_id [nullable], source_type, source_id, fragment_id)
+* `evidence_refs` (id, run_id [nullable], source_type, source_id, fragment_id, document_id [nullable], locator_type [nullable], locator_value [nullable], excerpt [nullable])
 
 ## 7. Prompt Library Tables (Governance)
 Prompts are versioned, auditable governance artefacts (see `agents/PROMPT_LIBRARY_SPEC.md`).

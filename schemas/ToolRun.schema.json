@@ -20,4 +20,3 @@
   },
   "required": ["tool_run_id", "tool_name", "status", "started_at"]
 }
-

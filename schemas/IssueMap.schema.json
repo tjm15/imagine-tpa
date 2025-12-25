@@ -39,4 +39,3 @@
   },
   "required": ["issue_map_id", "edges"]
 }
-

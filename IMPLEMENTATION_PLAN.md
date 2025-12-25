@@ -7,7 +7,7 @@ TPA is not “run a workflow and get an answer”; it is a **planning IDE** wher
 * fast drafts that planners can actually work with (Living Document),
 * Scenario × Political Framing comparisons (Judgement Mode),
 * graphical traceability (Trace Canvas),
-* and a replayable procedure log (8‑move grammar) with provenance.
+* and a traceable procedure log (8‑move grammar) with provenance.
 
 This repo keeps three non‑negotiables:
 * **Grammar-first judgement** (`grammar/GRAMMAR.md`, `schemas/MoveEvent.schema.json`)
@@ -116,7 +116,7 @@ If agents are “a careful colleague”, the runtime must behave like a colleagu
 
 ### 3.2 Governance is how we “bound” non-deterministic agents
 * provenance hard checks + prompt versioning (`governance/REASONABLENESS_LINTER_SPEC.md`)
-* replayability means “re-render from stored artefacts”, not deterministic prose (`tests/REPLAYABILITY_SPEC.md`)
+* traceability means ReasoningTrace bundles + provenance, not deterministic replay (`trace/REASONING_TRACE_SPEC.md`)
 
 Runtime acceptance:
 * Loop A produces a draft + trace with no uncited claims (or explicit assumptions).
@@ -148,6 +148,13 @@ We precompute **imaginative, planner-shaped affordances** so the workbench feels
 * candidate bundles for evidence cards (what to cite together)
 
 These outputs are **non-deterministic, non-binding** and always traceable to their inputs.
+
+### 4.5 Advisory good-practice prompts (post-ingest)
+Good-practice cards are attached as **advisory only** prompts after ingestion, without becoming
+evidence or determinations:
+* catalogue: `governance/GOOD_PRACTICE_CARDS.yaml`
+* instances: `schemas/AdviceCardInstance.schema.json`
+* pass spec: `governance/ADVICE_CARD_ENRICHMENT_SPEC.md`
 
 Evidence acceptance:
 * Loop B can retrieve and cite relevant policies/constraints reliably for the selected authorities.
@@ -187,6 +194,13 @@ The kernel must support producing and tracking required CULP artefacts as first-
 * registry: `culp/ARTEFACT_REGISTRY.yaml` and `culp/ARTEFACTS_SPEC.md`
 * per-project ledger: `schemas/CulpArtefactRecord.schema.json`
 * UI must block/flag stages with missing required artefacts (Strategic Home stage gate panel).
+
+## 6.2 Alignment outputs are primary deliverables
+The app must explicitly target the 35 alignment outputs captured in:
+* `culp/ALIGNMENT_OUTPUTS_2025_11.yaml`
+
+Each milestone must map to at least one alignment output, and the UI must surface these outputs
+as primary deliverables (not optional add-ons).
 
 ---
 
@@ -244,6 +258,83 @@ Goal: “I can find the right policy in seconds.”
 * Implement Live Policy Surface in the sidebar (ranked policy gradient + explainable relevance badges).
 * Acceptance: Slice A (Document → Chunk → Cite) + retrieval frame logging.
 
+#### Ingestion enrichment passes (post-ingest, canonical-first)
+Each pass is logged as a `ToolRun` and emits evidence-anchored outputs. Classification is allowed;
+judgement is not. Queue placement assumes separate GPU queues for VLM/SAM2/embeddings to avoid model
+thrash.
+
+1) Policy structure pass
+* Inputs: DocParse headings + layout_blocks + chunks
+* Outputs: policy_sections, policy_clauses, conditions/definitions/targets/monitoring hooks
+* Gate: document_family in policy/guidance/evidence; non-trivial text density
+* Queue: gpu_llm (LLM-only), cpu_slice for pre-batching
+
+2) Qualifiers + mentions materialization (derived KG)
+* Inputs: policy_clauses.conditions_jsonb, policy_clause_mentions (resolved only)
+* Outputs: ClauseQualifier + GroundedReference nodes/edges with backpointers
+* Gate: conditions present or resolved_entity_id present
+* Queue: cpu_ingest
+
+3) Policy matrices + scope candidates
+* Inputs: policy sections + tables + nearby text
+* Outputs: policy_matrices, policy_scopes + KG edges (CONTAINS_MATRIX/DEFINES_SCOPE)
+* Gate: tables present or matrix/scoping cues detected
+* Queue: gpu_llm (LLM), cpu_extract for table prep
+
+4) Visual semantics pass (global)
+* Inputs: visual_assets + full page render (if needed) + captions
+* Outputs: visual_semantic_outputs (asset_type, canonical facts, assertions, agent findings)
+* Gate: visual asset is figure/diagram/plan/photo/table-as-image
+* Queue: gpu_vlm
+
+5) Visual text-in-image capture
+* Inputs: visual_assets + crops + SAM2 regions (if available)
+* Outputs: OCR/VLM text units + evidence refs; links to captions/policy refs when resolved
+* Gate: visual assets with text density or legend cues
+* Queue: gpu_vlm or cpu_ocr (fallback), then cpu_link
+
+6) SAM2 segmentation + region inventory
+* Inputs: visual_assets (figures/images/tables-as-images only)
+* Outputs: segmentation_masks + visual_asset_regions (with bbox/mask refs)
+* Gate: asset_type in map/diagram/table/plan/render/photo
+* Queue: gpu_sam2
+
+7) Visual → policy linking
+* Inputs: visual_semantic_outputs + policy_sections/clauses + resolved references
+* Outputs: visual_asset_links tied to PolicySection/PolicyClause
+* Gate: structural extraction completed + references resolved
+* Queue: cpu_link or gpu_llm (if link inference required)
+
+8) Auto-georef closed loop (worthwhile-only)
+* Inputs: visual_assets (maps/plans) + SAM2 masks + base layers
+* Outputs: transforms/control_points/projection_artifacts + success metrics
+* Gate: map-like asset + boundary/scale cues or explicit request
+* Queue: georef_agent (CPU/GPU as configured), with ToolRun metrics
+
+9) Map feature extraction (post-georef)
+* Inputs: georef artifacts + legend/labels
+* Outputs: DesignationInstance/PolicyMapZone/SpatialFeature nodes + evidence refs
+* Gate: georef success above threshold
+* Queue: cpu_geo + optional gpu_vlm for legend parsing
+
+10) Site overlay facts (derived spatial facts)
+* Inputs: site geometry + designation features
+* Outputs: INTERSECTS/WITHIN_DISTANCE edges with uncertainty flags
+* Gate: site geometry registered or authoritative
+* Queue: cpu_geo
+
+11) Conflict detection pass (text vs drawing)
+* Inputs: policy_clauses + drawing metadata + extracted parameters
+* Outputs: Issue nodes + evidence refs (no resolution)
+* Gate: conflicting values detected
+* Queue: cpu_rules + optional gpu_llm for explanation text
+
+12) Trace graph projection
+* Inputs: ToolRuns + EvidenceRefs + MoveEvents
+* Outputs: TraceGraph bundles for /debug and Trace Canvas
+* Gate: run has tool activity
+* Queue: cpu_trace
+
 ### Milestone 3 — Map is a verb (Map Canvas v0 + spatial fingerprint)
 Goal: “draw-to-ask” + instant citeable map evidence.
 * Implement Map Canvas v0 (draw geometry, layer toggles, snapshot to EvidenceCard).
@@ -262,7 +353,7 @@ Goal: the first end-to-end “reasonable position under framing X” experience.
 * Implement the grammar orchestrator per tab (`agents/GRAMMAR_ORCHESTRATION_SPEC.md`).
 * Implement deterministic sheet rendering from stored outputs (`render/HTML_COMPOSER_SPEC.md`).
 * Implement Trace Canvas projection (`schemas/TraceGraph.schema.json`) and “why chain” highlighting.
-* Acceptance: Slice E (8 moves) + Slice F (sheet + trace flowchart) + Replayability render test (`tests/REPLAYABILITY_SPEC.md`).
+* Acceptance: Slice E (8 moves) + Slice F (sheet + trace flowchart) + trace bundle render test (`trace/REASONING_TRACE_SPEC.md`).
 
 ### Milestone 6 — Draft-anything feels like Word (Draft launcher + suggestions + governance)
 Goal: “draft-first then defend”.
@@ -300,3 +391,20 @@ Goal: close the “plan ↔ reality” loop as institutional memory.
 Build order is:
 1. Make **OSS** pass the milestone acceptance checks (fast local iteration).
 2. Add **Azure** parity providers and re-run the same acceptance checks with `profiles/azure.yaml`.
+
+---
+
+## Backlog (spec-driven TODOs not yet implemented)
+These are required by current specs or prior decisions, but not yet wired end-to-end:
+* Advice card instance pass (post-ingest) + instance storage/trace hooks.
+* Planning.data export gating (stage mapping still TBC).
+* DocParse-first structural guidance: headings from DocParse, clause splitting in worker.
+* Policy matrices + scope candidates as first-class tables + KG nodes.
+* Visual text-in-image capture (OCR/VLM) in visual pipeline.
+* Visual → policy linking after structural extraction.
+* Closed-loop georef with tweakable success thresholds, plus plan ↔ reality mapping outputs.
+* Queue separation for GPU stages (VLM/SAM2/embeddings) to avoid model thrash.
+* Debug UI manual controls + legible logs, no auto-retries.
+* ReasoningTrace persistence (store trace bundles + optional graph projection).
+* KG derived-node materialization from canonical conditions/mentions with backpointers.
+* Documentation cleanup: remove replayability language, align traceability expectations, and review legacy specs for drift.

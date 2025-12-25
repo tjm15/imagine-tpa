@@ -12,4 +12,3 @@
   },
   "required": ["decision_id", "application_id", "outcome"]
 }
-

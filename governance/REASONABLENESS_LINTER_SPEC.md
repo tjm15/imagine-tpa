@@ -1,5 +1,6 @@
 # Reasonableness Linter Specification
 
+
 ## Output
 The linter produces a `GovernanceReport` for every Run (`schemas/GovernanceReport.schema.json`).
 

@@ -13,4 +13,3 @@
   },
   "required": ["political_framing_id", "title", "description"]
 }
-

@@ -1,5 +1,6 @@
 # Provenance Standard
 
+
 ## 1. Evidence References
 **Policy/law/factual claims** must be backed by an `EvidenceRef`.
 Format: `{source_type}::{source_id}::{fragment_selector}`
@@ -26,7 +27,12 @@ Minimum fields to record alongside any judgement output:
 
 Verbosity is a prompting principle encoded in prompt design and versioning; it is not a runtime field.
 
-Judgement outputs may include `EvidenceRef`s, but they are not required if the above trace is present.
+Judgement outputs may omit `EvidenceRef`s **only** when they do not state policy, legal, or factual
+claims. If a judgement output cites policy/law or asserts a factual premise, it must include
+`EvidenceRef`s regardless of trace coverage.
+
+Trace records support procedural transparency; they do not replace citations for reasonableness or
+legal weight.
 
 ## 4. Assumptions
 If no evidence exists, an `Assumption` must be created.

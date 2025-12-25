@@ -1,4 +1,5 @@
 # Planner-First Workflows (UI Spec)
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 This document defines the UI around **how planners actually work**, not around internal architecture.
 It complements:

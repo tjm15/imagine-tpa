@@ -23,4 +23,3 @@
   },
   "required": ["pre_application_id", "authority_id", "reference", "status", "received_at"]
 }
-

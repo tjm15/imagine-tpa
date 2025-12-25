@@ -1,4 +1,5 @@
 # Trace Canvas (Graphical Traceability) Specification
+> WARNING: This spec is provisional/outdated/incomplete. TODO: review and update.
 
 Planners do not want to read JSON logs. They want a **flowchart** they can interrogate:
 * “How did we get here?”
@@ -14,7 +15,7 @@ The system stores:
 * `ToolRun[]` (all tool/model calls) (`schemas/ToolRun.schema.json`)
 * `AuditEvent[]` (human selections/accept/reject/sign-off) (`schemas/AuditEvent.schema.json`)
 
-The UI presents a **deterministic projection** of those records as a `TraceGraph`:
+The UI presents a **stable projection** of those records as a `TraceGraph` (no model calls):
 * `schemas/TraceGraph.schema.json`
 
 ## 2) The flowchart model (TraceGraph)
@@ -50,6 +51,9 @@ The same run must be viewable at three levels (published architecture “Summary
 * `forensic`: prompts/model IDs, full tool inputs/outputs links, snapshot/diff nodes
 
 Mode controls how many nodes/edges are shown, not what is stored.
+
+UI rule:
+* Trace Canvas is hidden by default and appears only when a user requests “why is this here?”
 
 ## 3) Trace Canvas UI (what planners see)
 
