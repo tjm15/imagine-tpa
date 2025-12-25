@@ -1,7 +1,7 @@
 # Track Plan: Ingestion Pipeline (Slice A)
 
 ## Phase 1: Environment & Database Scaffolding
-- [ ] Task: Verify Database Migrations for Ingestion Tables (`documents`, `pages`, `chunks`, `policy_sections`, `policy_clauses`)
+- [x] Task: Verify Database Migrations for Ingestion Tables (`documents`, `pages`, `chunks`, `policy_sections`, `policy_clauses`) [commit: ceccdd9]
 - [ ] Task: Implement/Verify `BlobStoreProvider` (MinIO) integration for raw PDF storage
 - [ ] Task: Conductor - User Manual Verification 'Phase 1: Environment & Database Scaffolding' (Protocol in workflow.md)
 
