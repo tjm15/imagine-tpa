@@ -40,6 +40,8 @@ Source of truth: `grammar/GRAMMAR.md` + `grammar/MOVE_IO_CATALOGUE.yaml` + `sche
 - **Ingestion specs:** `ingest/PIPELINE_SPEC.md`, `ingest/DOC_PARSE_SPEC.md`, `ingest/RETRIEVAL_INDEX_SPEC.md`, `ingest/VISUAL_SPEC.md`
 - **Plan↔reality overlays:** `ingest/PLAN_REALITY_SLICE_B_SPEC.md`, `render/MAP_OVERLAY_SPEC.md`
 - **Agent orchestration:** `agents/GRAMMAR_ORCHESTRATION_SPEC.md`
+- **Pre-Application Studio (PESE):** `architecture/PESE_IMPLEMENTATION_PLAN.md`
+- **NSIP module:** `architecture/TPA_NSIP_MODULE_SPEC.md`
 - **Render pipeline:** `render/FACT_TABLE_SPEC.md`, `render/FIGURE_SPEC.schema.json`, `render/HTML_COMPOSER_SPEC.md`
 - **Governance/linting:** `governance/REASONABLENESS_LINTER_SPEC.md`
 - **Test contracts:** `tests/INVARIANT_TESTS_SPEC.md`, `tests/FIXTURES_SPEC.md`

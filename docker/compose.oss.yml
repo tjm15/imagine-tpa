@@ -158,7 +158,6 @@ services:
       # Optional (OSS dev): model supervisor auto-starts/stops model services so you don't run LLM+VLM simultaneously on one GPU.
       TPA_MODEL_SUPERVISOR_URL: ${TPA_MODEL_SUPERVISOR_URL:-}
       TPA_MODEL_SUPERVISOR_TOKEN: ${TPA_MODEL_SUPERVISOR_TOKEN:-}
-      TPA_INGEST_QUEUE_MODE: ${TPA_INGEST_QUEUE_MODE:-separated}
       PHOENIX_HOST: tpa-phoenix
       PHOENIX_PORT: "6006"
     volumes:

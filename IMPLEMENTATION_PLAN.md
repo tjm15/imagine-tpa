@@ -221,6 +221,36 @@ DM acceptance:
 
 ---
 
+## 7.3) PESE mode as a third pillar (Pre-Application Studio)
+PESE is a standalone Pre-Application Studio that reuses the workbench kernel, scenario primitives,
+and agent runtime to structure pre-app negotiations with traceable, contestable outputs.
+
+Source of truth for the staged implementation plan:
+* `architecture/PESE_IMPLEMENTATION_PLAN.md`
+
+PESE acceptance (high level):
+* Stage 1 MVP produces a cited pre-app advice summary from a single-user session.
+* Stage 2 supports multi-party collaboration with negotiation moves and versioned scenarios.
+* Stage 3 links PESE sessions into DM and Plan-Making with full traceability.
+
+---
+
+## 7.4) NSIP module (Procedural Foresight and Assistance)
+NSIP adds a dedicated NSIP mode to the workbench that treats projects as a
+procedural pressure field and exposes assistance loops (action slate, issue
+register, evidence pack builder, watchlist).
+
+Source of truth for the NSIP specification:
+* `architecture/TPA_NSIP_MODULE_SPEC.md`
+
+NSIP acceptance (high level):
+* Phase 1 delivers a centralized NSIP casefile with action slate and evidence packs.
+* Phase 2 adds signal extraction and missing artifact detection with constraint graph v1.
+* Phase 3 adds abductive hypotheses, backtesting harness, and risk-based action slate.
+* Phase 4 adds scenario workbench and intervention levers.
+
+---
+
 ## 8) Deployment reality (two complete profiles)
 Build is driven by parity, not “we’ll swap later”:
 1. Make OSS profile pass Loops A/B/C with slice tests A/C/E/F.
