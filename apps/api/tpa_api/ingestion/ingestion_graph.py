@@ -18,6 +18,23 @@ from tpa_api.blob_store import (
     read_blob_bytes,
 )
 
+from tpa_api.ingestion.segmentation import segment_visual_assets
+from tpa_api.ingestion.vectorization import vectorize_segmentation_masks
+from tpa_api.ingestion.policy_extraction import (
+    extract_policy_structure,
+    extract_policy_logic_assets,
+    extract_edges
+)
+from tpa_api.ingestion.visual_extraction import (
+    vlm_enrich_visual_asset,
+    extract_visual_asset_facts,
+    extract_visual_text_snippets,
+    extract_visual_region_assertions,
+    extract_visual_agent_findings
+)
+from tpa_api.ingestion.synthesis import imagination_synthesis
+from tpa_api.ingestion.georef import auto_georef_visual_assets
+
 from tpa_api.ingestion.ops import (
     _call_docparse_bundle,
     _load_parse_bundle,
@@ -33,21 +50,11 @@ from tpa_api.ingestion.ops import (
     _persist_visual_features,
     _persist_visual_semantic_features,
     _persist_visual_rich_enrichment,
-    _extract_visual_asset_facts,
-    _extract_visual_text_snippets,
-    _segment_visual_assets,
-    _vectorize_segmentation_masks,
-    _extract_visual_region_assertions,
-    _auto_georef_visual_assets,
-    _extract_visual_agent_findings,
     _extract_document_identity_status,
-    _llm_extract_policy_structure,
     _merge_policy_headings,
     _persist_policy_structure,
-    _llm_extract_policy_logic_assets,
     _merge_policy_logic_assets,
     _persist_policy_logic_assets,
-    _llm_extract_edges,
     _persist_policy_edges,
     _propose_visual_policy_links,
     _persist_visual_policy_links_from_proposals,
@@ -61,7 +68,6 @@ from tpa_api.ingestion.ops import (
     _update_run_step_progress,
 )
 
-from tpa_api.ingestion.prompts_rich import _llm_imagination_synthesis, _vlm_enrich_visual_asset
 from tpa_api.observability.phoenix import trace_span
 
 logger = logging.getLogger(__name__)
@@ -140,6 +146,8 @@ class IngestionState(TypedDict, total=False):
     error: Optional[str]
 
 
+from tpa_api.providers.factory import get_blob_store_provider
+
 def node_anchor_raw(state: IngestionState) -> IngestionState:
     if state.get("error"):
         return state
@@ -154,24 +162,39 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
         ) as span:
             init_db_pool()
             log("--- Node: Anchor Raw ---")
-            client = minio_client_or_none()
-            bucket = os.environ.get("TPA_S3_BUCKET")
+            
+            # 1. Setup context
             filename = state["filename"]
             data = state["file_bytes"]
             authority_id = state["authority_id"]
-
-            raw_blob_path, raw_sha256 = _store_raw_blob(
-                client=client,
-                bucket=bucket,
-                authority_id=authority_id,
-                filename=filename,
+            
+            # 2. Calculate stable identity (SHA256)
+            import hashlib
+            from pathlib import Path
+            sha256_hash = hashlib.sha256(data).hexdigest()
+            ext = Path(filename).suffix or ".pdf"
+            raw_blob_path = f"raw/{authority_id}/{sha256_hash}{ext}"
+            
+            # 3. Persist via Provider (provenance logged automatically)
+            provider = get_blob_store_provider()
+            provider.put_blob(
+                path=raw_blob_path,
                 data=data,
+                content_type="application/pdf",
+                metadata={
+                    "original_filename": filename,
+                    "authority_id": authority_id,
+                    "run_id": state.get("run_id")
+                }
             )
+
+            # 4. Update Database State
             raw_artifact_id = _ensure_artifact(artifact_type="raw_pdf", path=raw_blob_path)
             doc_metadata = state.get("doc_metadata") or {}
-            content_type = state.get("content_type")
+            content_type = state.get("content_type") or "application/pdf"
             source_url = state.get("source_url")
             raw_source_uri = source_url or filename
+            
             document_id = _ensure_document_row(
                 authority_id=authority_id,
                 plan_cycle_id=state.get("plan_cycle_id"),
@@ -180,7 +203,7 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
                 blob_path=raw_blob_path,
                 metadata=doc_metadata,
                 raw_blob_path=raw_blob_path,
-                raw_sha256=raw_sha256,
+                raw_sha256=sha256_hash,
                 raw_bytes=len(data),
                 raw_content_type=content_type,
                 raw_source_uri=raw_source_uri,
@@ -198,6 +221,7 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
                     "documents": state["counts"].get("documents_seen", 0),
                     "last_document_id": document_id,
                     "last_filename": filename,
+                    "raw_blob_path": raw_blob_path
                 },
             )
 
@@ -205,7 +229,7 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
                 **state,
                 "document_id": document_id,
                 "raw_blob_path": raw_blob_path,
-                "raw_sha256": raw_sha256,
+                "raw_sha256": sha256_hash,
                 "raw_artifact_id": raw_artifact_id,
             }
     except Exception as exc:  # noqa: BLE001
@@ -213,6 +237,8 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
         _progress(state, "anchor_raw", {"error": str(exc)}, status="error")
         return {**state, "error": str(exc)}
 
+
+from tpa_api.providers.factory import get_blob_store_provider, get_docparse_provider
 
 def node_docparse(state: IngestionState) -> IngestionState:
     if state.get("error"):
@@ -240,19 +266,24 @@ def node_docparse(state: IngestionState) -> IngestionState:
                     )
                     return {**state, "bundle_path": bundle_path}
 
-            result = _call_docparse_bundle(
+            provider = get_docparse_provider()
+            result = provider.parse_document(
+                blob_path=state.get("raw_blob_path") or "",
                 file_bytes=state["file_bytes"],
                 filename=state["filename"],
-                metadata={
-                    "authority_id": state["authority_id"],
-                    "plan_cycle_id": state.get("plan_cycle_id"),
-                    "document_id": document_id,
-                    "job_id": state.get("ingest_job_id"),
-                    "source_url": state.get("source_url"),
-                },
-                ingest_batch_id=state.get("ingest_batch_id"),
-                run_id=state.get("run_id"),
+                options={
+                    "run_id": state.get("run_id"),
+                    "ingest_batch_id": state.get("ingest_batch_id"),
+                    "metadata": {
+                        "authority_id": state["authority_id"],
+                        "plan_cycle_id": state.get("plan_cycle_id"),
+                        "document_id": document_id,
+                        "job_id": state.get("ingest_job_id"),
+                        "source_url": state.get("source_url"),
+                    }
+                }
             )
+            
             bundle_path = result.get("parse_bundle_path")
             if not isinstance(bundle_path, str):
                 raise RuntimeError("parse_bundle_missing")
@@ -422,7 +453,12 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             image_bytes, _, err = read_blob_bytes(blob_path)
             if err or not image_bytes:
                 continue
-            rich_meta, tool_run_id, _ = _vlm_enrich_visual_asset(asset, image_bytes, run_id=state.get("run_id"))
+            rich_meta, tool_run_id, _ = vlm_enrich_visual_asset(
+                asset,
+                image_bytes,
+                run_id=state.get("run_id"),
+                ingest_batch_id=state.get("ingest_batch_id")
+            )
             _persist_visual_rich_enrichment(
                 visual_asset_id=visual_asset_id,
                 run_id=state.get("run_id"),
@@ -434,7 +470,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
                 (json.dumps({"rich_enrichment": rich_meta}, ensure_ascii=False), visual_asset_id),
             )
 
-        visual_facts_count = _extract_visual_asset_facts(
+        visual_facts_count = extract_visual_asset_facts(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             visual_assets=visual_rows,
@@ -442,7 +478,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
         _bump(state, "visual_semantic_assets", visual_facts_count)
         _mark_step(state, "visual_semantics_asset")
 
-        text_snippet_count = _extract_visual_text_snippets(
+        text_snippet_count = extract_visual_text_snippets(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             visual_assets=visual_rows,
@@ -458,7 +494,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             },
         )
 
-        mask_count, region_count = _segment_visual_assets(
+        mask_count, region_count = segment_visual_assets(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             authority_id=state["authority_id"],
@@ -478,7 +514,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             },
         )
 
-        vector_count = _vectorize_segmentation_masks(
+        vector_count = vectorize_segmentation_masks(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             document_id=state["document_id"],
@@ -492,7 +528,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             {"vector_paths": state["counts"].get("vector_paths", 0)},
         )
 
-        assertion_count = _extract_visual_region_assertions(
+        assertion_count = extract_visual_region_assertions(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             visual_assets=visual_rows,
@@ -506,7 +542,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
         )
 
         target_epsg = int(os.environ.get("TPA_GEOREF_TARGET_EPSG", "27700"))
-        georef_attempts, georef_success, transform_count, projection_count = _auto_georef_visual_assets(
+        georef_attempts, georef_success, transform_count, projection_count = auto_georef_visual_assets(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             visual_assets=visual_rows,
@@ -575,7 +611,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
         policy_headings = semantic.get("policy_headings") if isinstance(semantic.get("policy_headings"), list) else []
         block_rows = state.get("block_rows") or []
 
-        sections, _, struct_errors = _llm_extract_policy_structure(
+        sections, _, struct_errors = extract_policy_structure(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             document_id=state["document_id"],
@@ -584,7 +620,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
             policy_headings=policy_headings,
         )
         if policy_headings and not sections:
-            fallback_sections, _, fallback_errors = _llm_extract_policy_structure(
+            fallback_sections, _, fallback_errors = extract_policy_structure(
                 ingest_batch_id=state["ingest_batch_id"],
                 run_id=state.get("run_id"),
                 document_id=state["document_id"],
@@ -613,7 +649,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
         _bump(state, "targets", len(targets))
         _bump(state, "monitoring", len(monitoring))
 
-        llm_matrices, llm_scopes, logic_errors = _llm_extract_policy_logic_assets(
+        llm_matrices, llm_scopes, logic_errors = extract_policy_logic_assets(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             document_id=state["document_id"],
@@ -649,7 +685,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
         _bump(state, "policy_scopes", scope_count)
 
         policy_codes = [s.get("policy_code") for s in policy_sections if s.get("policy_code")]
-        citations, mentions, conditions, edge_tool_run_ids, edge_errors = _llm_extract_edges(
+        citations, mentions, conditions, edge_tool_run_ids, edge_errors = extract_edges(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             policy_clauses=policy_clauses,
@@ -683,7 +719,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
             monitoring=monitoring,
         )
 
-        agent_count = _extract_visual_agent_findings(
+        agent_count = extract_visual_agent_findings(
             ingest_batch_id=state["ingest_batch_id"],
             run_id=state.get("run_id"),
             visual_assets=state.get("visual_rows") or [],
@@ -847,7 +883,7 @@ def node_imagination(state: IngestionState) -> IngestionState:
 
         visual_briefs = list(visual_briefs_by_id.values())
 
-        synthesis = _llm_imagination_synthesis(state["document_id"], policy_briefs, visual_briefs, state.get("run_id"))
+        synthesis = imagination_synthesis(state["document_id"], policy_briefs, visual_briefs, state.get("run_id"))
         _db_execute(
             "UPDATE documents SET metadata = metadata || %s::jsonb WHERE id = %s::uuid",
             (json.dumps({"imagination_synthesis": synthesis}, ensure_ascii=False), state["document_id"]),

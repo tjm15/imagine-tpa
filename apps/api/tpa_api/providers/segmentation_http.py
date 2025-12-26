@@ -1,0 +1,143 @@
+from __future__ import annotations
+
+import base64
+import json
+import os
+from datetime import datetime
+from typing import Any
+from uuid import uuid4
+
+import httpx
+
+from tpa_api.db import _db_execute
+from tpa_api.providers.segmentation import SegmentationProvider
+from tpa_api.time_utils import _utc_now
+
+
+class HttpSegmentationProvider(SegmentationProvider):
+    """
+    HTTP-based implementation of SegmentationProvider (e.g. SAM2 service).
+    """
+
+    @property
+    def profile_family(self) -> str:
+        return "oss"
+
+    def _log_tool_run(
+        self,
+        tool_name: str,
+        inputs: dict[str, Any],
+        outputs: dict[str, Any],
+        status: str,
+        started_at: datetime,
+        error_text: str | None = None,
+        confidence_hint: str = "medium",
+        uncertainty_note: str | None = None,
+        run_id: str | None = None,
+        ingest_batch_id: str | None = None,
+    ) -> str:
+        tool_run_id = str(uuid4())
+        _db_execute(
+            """
+            INSERT INTO tool_runs (
+              id, tool_name, inputs_logged, outputs_logged, status,
+              started_at, ended_at, confidence_hint, uncertainty_note, run_id, ingest_batch_id
+            )
+            VALUES (%s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s, %s::uuid, %s::uuid)
+            """,
+            (
+                tool_run_id,
+                tool_name,
+                inputs,
+                outputs,
+                status,
+                started_at,
+                _utc_now(),
+                confidence_hint,
+                uncertainty_note,
+                run_id,
+                ingest_batch_id,
+            ),
+        )
+        return tool_run_id
+
+    def segment(
+        self,
+        image: bytes,
+        prompts: list[dict[str, Any]] | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        started_at = _utc_now()
+        options = options or {}
+        run_id = options.get("run_id")
+        ingest_batch_id = options.get("ingest_batch_id")
+
+        base_url = (
+            os.environ.get("TPA_SAM2_BASE_URL")
+            or os.environ.get("TPA_SEGMENTATION_BASE_URL")
+        )
+        if not base_url:
+            err = "TPA_SEGMENTATION_BASE_URL not configured"
+            self._log_tool_run(
+                "segmentation.segment",
+                {"prompts": prompts},
+                {"error": err},
+                "error",
+                started_at,
+                error_text=err,
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id
+            )
+            raise RuntimeError(err)
+
+        url = base_url.rstrip("/") + "/segment"
+        
+        inputs_logged = {
+            "prompt_count": len(prompts) if prompts else 0,
+            "image_bytes": len(image),
+            "base_url": base_url
+        }
+
+        try:
+            payload = {
+                "image_base64": base64.b64encode(image).decode("ascii"),
+                "prompts": prompts
+            }
+            
+            with httpx.Client(timeout=180.0) as client:
+                resp = client.post(url, json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+
+            outputs_logged = {
+                "mask_count": len(data.get("masks") or []),
+                "limitations_text": data.get("limitations_text")
+            }
+
+            self._log_tool_run(
+                "segmentation.segment",
+                inputs_logged,
+                outputs_logged,
+                "success",
+                started_at,
+                confidence_hint="medium",
+                uncertainty_note=data.get("limitations_text") or "Segmentation successful.",
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id
+            )
+            return data
+
+        except Exception as exc:
+            err = str(exc)
+            self._log_tool_run(
+                "segmentation.segment",
+                inputs_logged,
+                {"error": err},
+                "error",
+                started_at,
+                error_text=f"Segmentation failed: {err}",
+                confidence_hint="low",
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id
+            )
+            raise RuntimeError(f"Segmentation failed: {err}") from exc

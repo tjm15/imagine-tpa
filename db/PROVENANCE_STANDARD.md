@@ -12,6 +12,10 @@ Additional common source types (examples):
 * Overlays / tiles: `projection::proj-123::overlay:full`
 * Map snapshots: `map::snapshot-123::viewport:hash`
 
+Document identity/status/weight phrasing must follow the legal-assertion rules in
+`db/DOCUMENT_IDENTITY_STATUS_SPEC.md`. If a status is asserted as legal fact, it must be backed
+by explicit evidence or external verification.
+
 ## 2. Tool Runs
 Every automated process must produce a `ToolRun` record.
 * Inputs must be captured.
