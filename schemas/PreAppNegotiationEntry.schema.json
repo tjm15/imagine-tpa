@@ -1,0 +1,28 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PreAppNegotiationEntry",
+  "type": "object",
+  "description": "TODO: Placeholder schema for a logged negotiation entry in Pre-App Studio.",
+  "properties": {
+    "pre_app_negotiation_entry_id": { "type": "string", "format": "uuid" },
+    "pre_app_case_id": { "type": "string", "format": "uuid" },
+    "actor_role": {
+      "type": "string",
+      "enum": ["planner", "developer", "specialist", "system"]
+    },
+    "message": { "type": "string" },
+    "scenario_id": { "type": ["string", "null"], "format": "uuid" },
+    "evidence_ref_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "pre_app_negotiation_entry_id",
+    "pre_app_case_id",
+    "actor_role",
+    "message",
+    "created_at"
+  ]
+}

@@ -1,0 +1,16 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NSIPLatentTemplate",
+  "type": "object",
+  "description": "TODO: Placeholder schema for a NSIP latent template.",
+  "properties": {
+    "nsip_latent_template_id": { "type": "string", "format": "uuid" },
+    "name": { "type": "string" },
+    "description": { "type": "string" },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  },
+  "required": ["nsip_latent_template_id", "name"]
+}

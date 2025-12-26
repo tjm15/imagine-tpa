@@ -137,7 +137,37 @@ variables such as:
 
 ---
 
-## 7) Alignment with TPA invariants
+## 7) Prerequisites and gating
+NSIP phases are gated on core workbench milestones in `IMPLEMENTATION_PLAN.md`.
+
+Phase 1 prerequisites:
+* Milestone 0 (contract pack) for schema and provenance stability.
+* Milestone 2 (authority evidence substrate) for cited evidence packs.
+* Milestone 6 (draft-anything) for Evidence Pack Builder outputs.
+* Milestone 8 (dynamic acquisition) for scheduled harvesting.
+
+Phase 2 prerequisites:
+* Phase 1 complete.
+* Milestone 2 ingestion enrichment passes for signal extraction.
+* KG schema availability for constraint graph v1 (`kg/KG_SCHEMA.md`).
+
+Phase 3 prerequisites:
+* Phase 2 complete.
+* Milestone 5 (judgement mode) for hypothesis-to-position outputs.
+* Backtesting harness persistence (see schema stubs below).
+
+Phase 4 prerequisites:
+* Phase 3 complete.
+* Milestone 4 (scenario workspace v0) for scenario workbench.
+* Milestone 7 (visuospatial) if spatial interventions are used.
+
+Related interface stubs (TODO):
+* `architecture/NSIP_INTERFACES.md`
+* `kg/NSIP_CONSTRAINT_GEOMETRY_EXTENSIONS.md`
+
+---
+
+## 8) Alignment with TPA invariants
 * All outputs are logged as AuditEvents with evidence and provenance.
 * External model calls are ToolRuns with inputs, outputs, and limitations.
 * Uses frozen 8-move grammar for judgement where positions are stated.
@@ -145,9 +175,17 @@ variables such as:
 
 ---
 
-## 8) Required schema and service additions (planned)
+## 9) Required schema and service additions (planned)
 * NSIP case record and timeline entries.
 * Hypothesis, Manifestation, Signal, Template, and ActionCard objects.
 * Constraint geometry graph extensions in the KG schema.
 * Backtesting harness persistence for temporal calibration.
-
+* Schema stubs:
+  - `schemas/NSIPCase.schema.json`
+  - `schemas/NSIPTimelineEntry.schema.json`
+  - `schemas/NSIPSignal.schema.json`
+  - `schemas/NSIPHypothesis.schema.json`
+  - `schemas/NSIPManifestation.schema.json`
+  - `schemas/NSIPActionCard.schema.json`
+  - `schemas/NSIPLatentTemplate.schema.json`
+  - `schemas/NSIPBacktestRun.schema.json`

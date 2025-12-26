@@ -1,0 +1,29 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NSIPActionCard",
+  "type": "object",
+  "description": "TODO: Placeholder schema for an NSIP action card.",
+  "properties": {
+    "nsip_action_card_id": { "type": "string", "format": "uuid" },
+    "nsip_case_id": { "type": "string", "format": "uuid" },
+    "title": { "type": "string" },
+    "time_horizon": {
+      "type": "string",
+      "enum": ["this_week", "next_month", "sleeping_risk"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "in_progress", "done", "dismissed"]
+    },
+    "rationale_hypothesis_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "evidence_ref_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "created_at": { "type": "string", "format": "date-time" }
+  },
+  "required": ["nsip_action_card_id", "nsip_case_id", "title", "time_horizon", "status", "created_at"]
+}

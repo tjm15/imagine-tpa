@@ -63,6 +63,7 @@ traceable pre-app advice output.
 * DB: new tables for pre-app case and negotiation log, linked to scenarios.
 * Agents: minimal pre-app orchestration run (issue list + delta tracking).
 * Output: a cited Pre-App Advice Summary.
+* Schema stubs: `schemas/PreAppCase.schema.json`, `schemas/PreAppNegotiationEntry.schema.json`.
 
 ---
 
@@ -125,7 +126,32 @@ Goal: robust multi-party workflows, institutional integration, and full traceabi
 
 ---
 
-## 5) Cross-cutting requirements
+## 5) Prerequisites and gating
+PESE stages are gated on core workbench milestones in `IMPLEMENTATION_PLAN.md`.
+
+Stage 1 prerequisites:
+* Milestone 0 (contract pack) for schema and provenance stability.
+* Milestone 2 (authority evidence substrate) for cited constraints.
+* Milestone 4 (scenario workspace v0) for proposal state and deltas.
+* Milestone 5 (judgement mode) for grammar-backed reasoning outputs.
+* Milestone 6 (draft launcher) for pre-app advice summaries.
+
+Stage 2 prerequisites:
+* Stage 1 complete.
+* Milestone 3 (Map Canvas v0) and Milestone 7 (visuospatial) for design surfaces.
+* Milestone 8 (dynamic acquisition) for live evidence refresh.
+
+Stage 3 prerequisites:
+* Stage 2 complete.
+* Milestone 9 (DM mode) for case linkage and handover.
+* Milestone 10 (monitoring and delivery loop) for feedback into plan-making.
+
+Related interface stubs (TODO):
+* `architecture/PESE_INTERFACES.md`
+
+---
+
+## 6) Cross-cutting requirements
 * All PESE outputs must use the frozen 8-move grammar and be logged as MoveEvents.
 * External model calls are logged as ToolRuns with prompt and limitation metadata.
 * PESE must run in both provider profiles without hybrid runtime behavior.

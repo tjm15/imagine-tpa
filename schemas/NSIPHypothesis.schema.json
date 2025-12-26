@@ -1,0 +1,24 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NSIPHypothesis",
+  "type": "object",
+  "description": "TODO: Placeholder schema for a NSIP hypothesis.",
+  "properties": {
+    "nsip_hypothesis_id": { "type": "string", "format": "uuid" },
+    "nsip_case_id": { "type": "string", "format": "uuid" },
+    "latent_template_id": { "type": ["string", "null"], "format": "uuid" },
+    "title": { "type": "string" },
+    "description": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["candidate", "active", "rejected", "archived"]
+    },
+    "supporting_signal_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["nsip_hypothesis_id", "nsip_case_id", "title", "status", "created_at"]
+}

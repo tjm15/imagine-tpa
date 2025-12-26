@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NSIPBacktestRun",
+  "type": "object",
+  "description": "TODO: Placeholder schema for a NSIP backtest run.",
+  "properties": {
+    "nsip_backtest_run_id": { "type": "string", "format": "uuid" },
+    "nsip_case_id": { "type": "string", "format": "uuid" },
+    "snapshot_at": { "type": "string", "format": "date-time" },
+    "forecast_window_days": { "type": ["integer", "null"] },
+    "hypothesis_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "evaluated_at": { "type": ["string", "null"], "format": "date-time" },
+    "result_summary": { "type": ["string", "null"] }
+  },
+  "required": ["nsip_backtest_run_id", "nsip_case_id", "snapshot_at"]
+}

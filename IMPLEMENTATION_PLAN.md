@@ -251,6 +251,22 @@ NSIP acceptance (high level):
 
 ---
 
+## 7.5) Extension dependency matrix
+The extensions are gated on core milestones to prevent building ahead of the
+workbench kernel.
+
+| Extension | Stage or phase | Core dependencies (milestones) | Notes |
+| --- | --- | --- | --- |
+| PESE | Stage 1 | Milestone 0, 2, 4, 5, 6 | Map Canvas (Milestone 3) is optional in Stage 1. |
+| PESE | Stage 2 | Stage 1, Milestone 3, 7, 8 | Requires visuospatial surfaces and live acquisition. |
+| PESE | Stage 3 | Stage 2, Milestone 9, 10 | Requires DM linkage and monitoring feedback loop. |
+| NSIP | Phase 1 | Milestone 0, 2, 6, 8 | Evidence packs and harvesting depend on core ingestion. |
+| NSIP | Phase 2 | Phase 1, Milestone 2 | Requires enrichment passes and KG availability. |
+| NSIP | Phase 3 | Phase 2, Milestone 5 | Hypotheses that imply positions must use the grammar. |
+| NSIP | Phase 4 | Phase 3, Milestone 4, 7 | Scenario workbench and spatial surfaces. |
+
+---
+
 ## 8) Deployment reality (two complete profiles)
 Build is driven by parity, not “we’ll swap later”:
 1. Make OSS profile pass Loops A/B/C with slice tests A/C/E/F.

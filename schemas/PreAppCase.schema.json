@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PreAppCase",
+  "type": "object",
+  "description": "TODO: Placeholder schema for a Pre-Application Studio case record.",
+  "properties": {
+    "pre_app_case_id": { "type": "string", "format": "uuid" },
+    "pre_application_id": { "type": ["string", "null"], "format": "uuid" },
+    "scenario_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "negotiation_entry_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "active", "closed", "archived"]
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": ["string", "null"], "format": "date-time" }
+  },
+  "required": ["pre_app_case_id", "status", "created_at"]
+}

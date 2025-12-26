@@ -1,0 +1,18 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "NSIPSignal",
+  "type": "object",
+  "description": "TODO: Placeholder schema for an extracted NSIP signal.",
+  "properties": {
+    "nsip_signal_id": { "type": "string", "format": "uuid" },
+    "nsip_case_id": { "type": "string", "format": "uuid" },
+    "signal_type": { "type": "string" },
+    "value": { "type": ["string", "number", "null"] },
+    "extracted_at": { "type": "string", "format": "date-time" },
+    "evidence_ref_ids": {
+      "type": "array",
+      "items": { "type": "string", "format": "uuid" }
+    }
+  },
+  "required": ["nsip_signal_id", "nsip_case_id", "signal_type", "extracted_at"]
+}
