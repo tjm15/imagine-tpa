@@ -5,6 +5,7 @@ import { CaseworkHome } from './components/CaseworkHome';
 import { DebugDisabled, DebugView } from './components/DebugView';
 import { ProjectProvider, useProject } from './contexts/AuthorityContext';
 import { ExplainabilityProvider } from './contexts/ExplainabilityContext';
+import { RunProvider } from './contexts/RunContext';
 
 export type WorkspaceMode = 'plan' | 'casework';
 export type ViewMode = 'document' | 'map' | 'judgement' | 'reality';
@@ -63,7 +64,9 @@ export default function App() {
     return (
         <ProjectProvider>
             <ExplainabilityProvider>
-                <AppContent />
+                <RunProvider>
+                    <AppContent />
+                </RunProvider>
             </ExplainabilityProvider>
         </ProjectProvider>
     );

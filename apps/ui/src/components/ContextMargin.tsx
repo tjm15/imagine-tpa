@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
     BookOpen, FileText, MapPin, Shield, Database,
     TrendingUp, AlertTriangle, ExternalLink, Plus
@@ -14,8 +15,60 @@ interface ContextMarginProps {
     workspace: WorkspaceMode;
 }
 
+interface AdviceCard {
+    instance_id: string;
+    card_id: string;
+    card_title: string | null;
+    card_type: string | null;
+    basis: string | null;
+    priority: string | null;
+    status: string | null;
+    prompt: string | null;
+    document_title: string | null;
+    document_status: string | null;
+}
+
 export function ContextMargin({ workspace }: ContextMarginProps) {
-    const { authority } = useProject();
+    const { authority, planProject } = useProject();
+    const [adviceCards, setAdviceCards] = useState<AdviceCard[]>([]);
+    const [adviceLoading, setAdviceLoading] = useState(false);
+    const [adviceError, setAdviceError] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (workspace !== 'plan') return;
+        if (!planProject?.plan_project_id) return;
+        const controller = new AbortController();
+        const loadAdvice = async () => {
+            setAdviceLoading(true);
+            setAdviceError(null);
+            try {
+                const resp = await fetch(`/api/advice-cards?plan_project_id=${planProject.plan_project_id}&limit=12`, {
+                    signal: controller.signal,
+                });
+                if (!resp.ok) {
+                    throw new Error(`Advice cards unavailable (${resp.status})`);
+                }
+                const data = await resp.json();
+                const cards = Array.isArray(data.advice_cards) ? data.advice_cards : [];
+                setAdviceCards(cards);
+            } catch (err: any) {
+                if (err?.name !== 'AbortError') {
+                    setAdviceError(err?.message || 'Failed to load advice cards');
+                }
+            } finally {
+                setAdviceLoading(false);
+            }
+        };
+        loadAdvice();
+        return () => controller.abort();
+    }, [workspace, planProject?.plan_project_id]);
+
+    const priorityStyles: Record<string, string> = {
+        Critical: 'bg-rose-50 text-rose-700 border-rose-200',
+        Important: 'bg-amber-50 text-amber-800 border-amber-200',
+        Helpful: 'bg-slate-100 text-slate-600 border-slate-200',
+    };
+
     return (
         <div className="h-full flex flex-col bg-slate-50/50">
             <div className="p-4 border-b border-slate-200 bg-white flex items-center justify-between">
@@ -45,6 +98,73 @@ export function ContextMargin({ workspace }: ContextMarginProps) {
                             </div>
                         </CardContent>
                     </Card>
+
+                    {/* Advice Cards */}
+                    {workspace === 'plan' && (
+                        <>
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between px-1">
+                                    <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Advice Cards</h4>
+                                    <span className="text-[10px] text-slate-400">{adviceCards.length} active</span>
+                                </div>
+                                {adviceLoading && (
+                                    <p className="text-xs text-slate-500 px-1">Loading advisory prompts…</p>
+                                )}
+                                {adviceError && (
+                                    <p className="text-xs text-amber-700 px-1">{adviceError}</p>
+                                )}
+                                {!adviceLoading && !adviceError && adviceCards.length === 0 && (
+                                    <p className="text-xs text-slate-400 px-1">No advice cards matched yet.</p>
+                                )}
+                                <div className="space-y-2">
+                                    {adviceCards.slice(0, 4).map((card) => (
+                                        <Card key={card.instance_id} className="border-slate-200 shadow-sm">
+                                            <CardContent className="p-3 space-y-2">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-slate-800">
+                                                            {card.card_title || 'Advice prompt'}
+                                                        </p>
+                                                        {card.document_title && (
+                                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                                {card.document_title}
+                                                            </p>
+                                                        )}
+                                                    </div>
+                                                    {card.priority && (
+                                                        <Badge
+                                                            variant="outline"
+                                                            className={`text-[9px] h-4 px-1 ${priorityStyles[card.priority] || 'text-slate-500 border-slate-200'}`}
+                                                        >
+                                                            {card.priority}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                {card.prompt && (
+                                                    <p className="text-[11px] text-slate-600 leading-relaxed">{card.prompt}</p>
+                                                )}
+                                                <div className="flex items-center flex-wrap gap-1.5 text-[9px] text-slate-500">
+                                                    {card.card_type && (
+                                                        <Badge variant="secondary" className="h-4 px-1 bg-white border border-slate-200 text-slate-500">
+                                                            {card.card_type}
+                                                        </Badge>
+                                                    )}
+                                                    {card.basis && (
+                                                        <Badge variant="secondary" className="h-4 px-1 bg-white border border-slate-200 text-slate-500">
+                                                            {card.basis}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className="text-[10px] text-slate-400">{card.status || 'Advisory only — planner judgement required'}</p>
+                                            </CardContent>
+                                        </Card>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <Separator />
+                        </>
+                    )}
 
                     {/* Live Policy Surface */}
                     <div className="space-y-2">

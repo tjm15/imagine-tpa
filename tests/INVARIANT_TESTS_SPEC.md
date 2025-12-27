@@ -4,6 +4,15 @@
 * Test: Traverse `MOVE_IO_CATALOGUE.yaml`. Ensure every output schema exists in `schemas/`.
 * Test: Ensure every Agent implementation in `agents/` maps to a move.
 
+## Evidence Habit Anchors (Canonical)
+* Test: No normative claim without an EvidenceRef (good/bad/acceptable/unacceptable/weight/harm/benefit).
+* Test: No policy compliance/conflict claim without a specific policy hook.
+* Test: Adopted or emerging status must be explicit; do not assume weight.
+* Test: Fact, interpretation, judgement, and recommendation are not collapsed in outputs.
+* Test: Weight descriptors must be justified by cited reasoning or evidence.
+* Test: Material uncertainty is surfaced in `uncertainty_remaining`.
+* Test: Negotiation changes feed back into weighing outputs.
+
 ## Provenance Enforecement
 * Test: Scanning the DB, ensure 0 rows in `kg_edge` have null `evidence_ref` AND null `tool_run_id`.
 

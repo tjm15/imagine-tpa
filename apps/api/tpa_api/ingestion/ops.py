@@ -8,7 +8,7 @@ from tpa_api.db import _db_execute
 from tpa_api.time_utils import _utc_now
 from tpa_api.evidence import _ensure_evidence_ref_row, _parse_evidence_ref
 
-# Functions moved from ingest_worker.py
+# Functions consolidated into ingestion modules.
 def _persist_pages(
     *,
     document_id: str,
@@ -525,37 +525,34 @@ def _persist_visual_semantic_features(
         )
 
 
-# Temporary re-exports for remaining functions
-from tpa_api.ingest_worker import (
+from tpa_api.ingestion.docparse_ops import (
     _call_docparse_bundle,
     _load_parse_bundle,
     _insert_parse_bundle_record,
     _persist_tool_runs,
-    _extract_visual_asset_facts,
-    _persist_visual_rich_enrichment,
-    _extract_visual_text_snippets,
-    _segment_visual_assets,
-    _vectorize_segmentation_masks,
-    _extract_visual_region_assertions,
-    _auto_georef_visual_assets,
-    _extract_visual_agent_findings,
-    _extract_document_identity_status,
-    _llm_extract_policy_structure,
-    _merge_policy_headings,
-    _persist_policy_structure,
-    _llm_extract_policy_logic_assets,
-    _merge_policy_logic_assets,
-    _persist_policy_logic_assets,
-    _llm_extract_edges,
-    _persist_policy_edges,
-    _propose_visual_policy_links,
-    _persist_visual_policy_links_from_proposals,
-    _embed_units,
-    _embed_visual_assets,
-    _embed_visual_assertions,
-    _persist_kg_nodes,
+)
+from tpa_api.ingestion.document_ops import (
     _ensure_artifact,
     _ensure_document_row,
     _store_raw_blob,
-    _update_run_step_progress,
 )
+from tpa_api.ingestion.document_identity import _extract_document_identity_status
+from tpa_api.ingestion.policy_ops import (
+    _merge_policy_headings,
+    _merge_policy_logic_assets,
+    _persist_policy_logic_assets,
+    _persist_policy_structure,
+    _persist_policy_edges,
+)
+from tpa_api.ingestion.visual_policy_links import (
+    _persist_visual_rich_enrichment,
+    _propose_visual_policy_links,
+    _persist_visual_policy_links_from_proposals,
+)
+from tpa_api.ingestion.embeddings_ops import (
+    _embed_units,
+    _embed_visual_assets,
+    _embed_visual_assertions,
+)
+from tpa_api.ingestion.kg_ops import _persist_kg_nodes
+from tpa_api.ingestion.run_steps import _update_run_step_progress

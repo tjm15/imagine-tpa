@@ -1,0 +1,189 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextPack",
+  "type": "object",
+  "description": "Planner-legible, move-specific context bundle consumed by the grammar across modes.",
+  "properties": {
+    "context_pack_id": { "type": "string", "format": "uuid" },
+    "run_id": { "type": "string", "format": "uuid" },
+    "move_type": { "type": "string" },
+    "work_mode": { "type": "string" },
+    "authority_id": { "type": ["string", "null"] },
+    "plan_cycle_id": { "type": ["string", "null"], "format": "uuid" },
+    "plan_project_id": { "type": ["string", "null"], "format": "uuid" },
+    "scenario_id": { "type": ["string", "null"], "format": "uuid" },
+    "application_id": { "type": ["string", "null"], "format": "uuid" },
+    "selector_id": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "slices": {
+      "type": "object",
+      "properties": {
+        "policy_clauses": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/PolicyClauseSliceItem" }
+        },
+        "evidence_atoms": {
+          "type": "array",
+          "items": { "$ref": "EvidenceAtom.schema.json" }
+        },
+        "visual_assets": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/VisualAssetSliceItem" }
+        },
+        "spatial_features": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/SpatialFeatureSliceItem" }
+        },
+        "consultations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/ConsultationSliceItem" }
+        },
+        "decisions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/DecisionSliceItem" }
+        },
+        "advice_cards": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/AdviceCardSliceItem" }
+        },
+        "assumptions": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/AssumptionSliceItem" }
+        },
+        "limitations": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/LimitationSliceItem" }
+        }
+      }
+    }
+  },
+  "required": ["context_pack_id", "run_id", "move_type", "work_mode", "created_at", "slices"],
+  "definitions": {
+    "PolicyClauseSliceItem": {
+      "type": "object",
+      "properties": {
+        "policy_clause_id": { "type": "string", "format": "uuid" },
+        "policy_section_id": { "type": ["string", "null"], "format": "uuid" },
+        "policy_ref": { "type": ["string", "null"] },
+        "clause_ref": { "type": ["string", "null"] },
+        "section_path": { "type": ["string", "null"] },
+        "text": { "type": "string" },
+        "document_title": { "type": ["string", "null"] },
+        "document_status": { "type": ["string", "null"] },
+        "weight_hint": { "type": ["string", "null"] },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "confidence_hint": { "type": ["string", "null"] },
+        "limitations_text": { "type": ["string", "null"] },
+        "metadata": { "type": "object" }
+      },
+      "required": ["policy_clause_id", "text", "evidence_ref"]
+    },
+    "VisualAssetSliceItem": {
+      "type": "object",
+      "properties": {
+        "visual_asset_id": { "type": "string", "format": "uuid" },
+        "document_id": { "type": ["string", "null"], "format": "uuid" },
+        "document_title": { "type": ["string", "null"] },
+        "page_number": { "type": ["integer", "null"] },
+        "asset_type": { "type": ["string", "null"] },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "metadata": { "type": "object" }
+      },
+      "required": ["visual_asset_id", "evidence_ref"]
+    },
+    "SpatialFeatureSliceItem": {
+      "type": "object",
+      "properties": {
+        "spatial_feature_id": { "type": ["string", "null"], "format": "uuid" },
+        "spatial_layer_id": { "type": ["string", "null"], "format": "uuid" },
+        "feature_type": { "type": ["string", "null"] },
+        "spatial_scope": { "type": ["string", "null"] },
+        "summary": { "type": ["string", "null"] },
+        "properties": { "type": "object" },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "confidence_hint": { "type": ["string", "null"] },
+        "limitations_text": { "type": ["string", "null"] }
+      },
+      "required": ["evidence_ref"]
+    },
+    "ConsultationSliceItem": {
+      "type": "object",
+      "properties": {
+        "consultation_id": { "type": "string", "format": "uuid" },
+        "consultation_type": { "type": ["string", "null"] },
+        "title": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "open_at": { "type": ["string", "null"], "format": "date-time" },
+        "close_at": { "type": ["string", "null"], "format": "date-time" },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "required": ["consultation_id", "evidence_ref"]
+    },
+    "DecisionSliceItem": {
+      "type": "object",
+      "properties": {
+        "decision_id": { "type": "string", "format": "uuid" },
+        "application_id": { "type": ["string", "null"], "format": "uuid" },
+        "outcome": { "type": ["string", "null"] },
+        "decision_date": { "type": ["string", "null"], "format": "date" },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "required": ["decision_id", "evidence_ref"]
+    },
+    "AdviceCardSliceItem": {
+      "type": "object",
+      "properties": {
+        "instance_id": { "type": "string", "format": "uuid" },
+        "card_id": { "type": "string" },
+        "card_title": { "type": ["string", "null"] },
+        "card_type": { "type": ["string", "null"] },
+        "basis": { "type": ["string", "null"] },
+        "priority": { "type": ["string", "null"] },
+        "status": { "type": ["string", "null"] },
+        "scope_type": { "type": ["string", "null"] },
+        "scope_id": { "type": ["string", "null"] },
+        "prompt": { "type": ["string", "null"] },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "EvidenceRef.schema.json" }
+        },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" },
+        "notes": { "type": ["string", "null"] }
+      },
+      "required": ["instance_id", "card_id"]
+    },
+    "AssumptionSliceItem": {
+      "type": "object",
+      "properties": {
+        "assumption_id": { "type": "string", "format": "uuid" },
+        "statement": { "type": "string" },
+        "scope": { "type": "string" },
+        "justification": { "type": "string" },
+        "type": { "type": "string" },
+        "evidence_refs": {
+          "type": "array",
+          "items": { "$ref": "EvidenceRef.schema.json" }
+        },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "required": ["assumption_id", "statement", "scope", "justification", "type"]
+    },
+    "LimitationSliceItem": {
+      "type": "object",
+      "properties": {
+        "limitation_id": { "type": "string", "format": "uuid" },
+        "statement": { "type": "string" },
+        "source_type": { "type": ["string", "null"] },
+        "source_id": { "type": ["string", "null"] },
+        "evidence_ref": { "$ref": "EvidenceRef.schema.json" },
+        "tool_run_id": { "type": ["string", "null"], "format": "uuid" }
+      },
+      "required": ["limitation_id", "statement"]
+    }
+  }
+}

@@ -15,8 +15,10 @@ from pydantic import BaseModel, Field
 from ..audit import _audit_event
 from ..cache import cache_get_json, cache_key, cache_set_json
 from ..context_assembly import ContextAssemblyDeps, assemble_curated_evidence_set_sync
+from ..context_pack import ContextPackAssemblyDeps, build_context_pack_sync
 from ..db import _db_execute, _db_execute_returning, _db_fetch_all, _db_fetch_one
 from ..evidence import _ensure_evidence_ref_row
+from ..grammar.langgraph_orchestrator import run_grammar_graph
 from ..hash_utils import stable_hash
 from ..prompting import _llm_structured_sync
 from ..retrieval import _retrieve_chunks_hybrid_sync, _retrieve_policy_clauses_hybrid_sync
@@ -605,7 +607,6 @@ def select_scenario_tab(scenario_set_id: str, body: ScenarioTabSelection) -> JSO
 
 class ScenarioTabRunRequest(BaseModel):
     max_issues: int = Field(default=6, ge=2, le=12)
-    evidence_per_issue: int = Field(default=4, ge=1, le=10)
     context_token_budget: int = Field(
         default=128000,
         ge=4096,
@@ -686,6 +687,57 @@ def _link_evidence_to_move(
         )
 
 
+def _collect_context_pack_refs(context_pack: dict[str, Any] | None) -> list[str]:
+    if not isinstance(context_pack, dict):
+        return []
+    slices = context_pack.get("slices") if isinstance(context_pack.get("slices"), dict) else {}
+    refs: list[str] = []
+
+    def add(ref: Any) -> None:
+        if isinstance(ref, str) and "::" in ref:
+            refs.append(ref)
+
+    for item in slices.get("policy_clauses", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("evidence_atoms", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("visual_assets", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("spatial_features", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("consultations", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("decisions", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+    for item in slices.get("advice_cards", []) or []:
+        if isinstance(item, dict):
+            for ev in item.get("evidence_refs") if isinstance(item.get("evidence_refs"), list) else []:
+                add(ev)
+    for item in slices.get("assumptions", []) or []:
+        if isinstance(item, dict):
+            for ev in item.get("evidence_refs") if isinstance(item.get("evidence_refs"), list) else []:
+                add(ev)
+    for item in slices.get("limitations", []) or []:
+        if isinstance(item, dict):
+            add(item.get("evidence_ref"))
+
+    seen: set[str] = set()
+    return [r for r in refs if not (r in seen or seen.add(r))]
+
+
+def _context_pack_prompt_payload(context_pack: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(context_pack, dict):
+        return {}
+    slices = context_pack.get("slices")
+    return slices if isinstance(slices, dict) else {}
+
+
 def _build_evidence_cards_from_atoms(evidence_atoms: list[dict[str, Any]], limit: int = 6) -> list[dict[str, Any]]:
     cards: list[dict[str, Any]] = []
     for atom in evidence_atoms[: max(1, min(limit, 12))]:
@@ -707,6 +759,149 @@ def _build_evidence_cards_from_atoms(evidence_atoms: list[dict[str, Any]], limit
             card["artifact_ref"] = artifact_ref
         cards.append(card)
     return cards
+
+
+def _move_status_for_run(run_id: str) -> str:
+    row = _db_fetch_one(
+        """
+        SELECT COUNT(*) AS partial_count
+        FROM move_events
+        WHERE run_id = %s::uuid
+          AND status <> 'success'
+        """,
+        (run_id,),
+    )
+    count = row.get("partial_count") if isinstance(row, dict) else 0
+    try:
+        count_int = int(count)
+    except Exception:  # noqa: BLE001
+        count_int = 0
+    return "partial" if count_int > 0 else "complete"
+
+
+def _run_langgraph_tab(
+    *,
+    tab: dict[str, Any],
+    body: ScenarioTabRunRequest,
+    run_id: str,
+    framing_preset: dict[str, Any] | None,
+) -> JSONResponse:
+    framing_title = (framing_preset or {}).get("title") or tab["political_framing_id"]
+    state_vector = tab.get("state_vector_jsonb") if isinstance(tab.get("state_vector_jsonb"), dict) else {}
+    scenario_title = tab.get("scenario_title") or "Scenario"
+    scenario_summary = tab.get("scenario_summary") or ""
+
+    state = run_grammar_graph(
+        {
+            "run_id": run_id,
+            "work_mode": "plan_studio",
+            "authority_id": tab.get("authority_id"),
+            "plan_cycle_id": tab.get("plan_cycle_id"),
+            "plan_project_id": str(tab.get("plan_project_id")),
+            "scenario_id": str(tab.get("scenario_id")),
+            "culp_stage_id": tab.get("culp_stage_id"),
+            "political_framing_id": tab.get("political_framing_id"),
+            "framing_preset": framing_preset or {"title": framing_title},
+            "scenario_title": scenario_title,
+            "scenario_summary": scenario_summary,
+            "state_vector": state_vector,
+            "context_token_budget": body.context_token_budget,
+            "max_issues": body.max_issues,
+        }
+    )
+
+    trajectory_obj = state.get("trajectory") if isinstance(state.get("trajectory"), dict) else {}
+    sheet = trajectory_obj.get("judgement_sheet_data") if isinstance(trajectory_obj.get("judgement_sheet_data"), dict) else {}
+    framing_obj = state.get("framing") if isinstance(state.get("framing"), dict) else {}
+    trajectory_id = trajectory_obj.get("trajectory_id") or str(uuid4())
+    framing_id = trajectory_obj.get("framing_id") or framing_obj.get("frame_id") or str(uuid4())
+    position_statement = trajectory_obj.get("position_statement") or (
+        f"Under framing {framing_title}, a reasonable position is provisional pending evidence."
+    )
+    key_refs = trajectory_obj.get("key_evidence_refs") if isinstance(trajectory_obj.get("key_evidence_refs"), list) else []
+
+    dependency_snapshot = _scenario_dependency_snapshot(tab)
+    dependency_hash = stable_hash(dependency_snapshot)
+    cache_expires_at = _utc_now() + timedelta(seconds=_SCENARIO_CACHE_TTL_SECONDS)
+
+    _db_execute(
+        """
+        INSERT INTO trajectories (
+          id, scenario_id, framing_id, position_statement,
+          explicit_assumptions_jsonb, key_evidence_refs_jsonb, judgement_sheet_jsonb, created_at
+        )
+        VALUES (%s, %s::uuid, %s, %s, %s::jsonb, %s::jsonb, %s::jsonb, %s)
+        """,
+        (
+            trajectory_id,
+            str(tab["scenario_id"]),
+            framing_id,
+            position_statement,
+            json.dumps(trajectory_obj.get("explicit_assumptions") or [], ensure_ascii=False),
+            json.dumps(key_refs[:50], ensure_ascii=False),
+            json.dumps(sheet, ensure_ascii=False),
+            _utc_now(),
+        ),
+    )
+
+    cache_set_json(
+        cache_key("scenario_sheet", str(tab["tab_id"]), dependency_hash),
+        {
+            "tab_id": str(tab["tab_id"]),
+            "run_id": run_id,
+            "status": _move_status_for_run(run_id),
+            "trajectory": trajectory_obj,
+            "sheet": sheet,
+        },
+        ttl_seconds=_SCENARIO_CACHE_TTL_SECONDS,
+    )
+
+    _db_execute(
+        """
+        UPDATE scenario_framing_tabs
+        SET framing_id = %s, run_id = %s::uuid, status = %s, trajectory_id = %s::uuid,
+            judgement_sheet_ref = %s, updated_at = %s, dependency_hash = %s,
+            dependency_snapshot_jsonb = %s::jsonb, cache_expires_at = %s, last_run_completed_at = %s
+        WHERE id = %s::uuid
+        """,
+        (
+            framing_id,
+            run_id,
+            _move_status_for_run(run_id),
+            trajectory_id,
+            f"trajectory::{trajectory_id}",
+            _utc_now(),
+            dependency_hash,
+            json.dumps(dependency_snapshot, ensure_ascii=False),
+            cache_expires_at,
+            _utc_now(),
+            str(tab["tab_id"]),
+        ),
+    )
+
+    _audit_event(
+        event_type="scenario_tab_run_completed",
+        run_id=run_id,
+        plan_project_id=str(tab["plan_project_id"]),
+        culp_stage_id=tab.get("culp_stage_id"),
+        scenario_id=str(tab["scenario_id"]),
+        payload={"tab_id": str(tab["tab_id"]), "status": _move_status_for_run(run_id)},
+    )
+
+    move_event_ids = state.get("move_event_ids") if isinstance(state.get("move_event_ids"), list) else []
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "tab_id": str(tab["tab_id"]),
+                "run_id": run_id,
+                "status": _move_status_for_run(run_id),
+                "trajectory_id": trajectory_id,
+                "sheet": sheet,
+                "move_event_ids": move_event_ids,
+            }
+        )
+    )
 
 
 def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = None) -> JSONResponse:
@@ -800,6 +995,14 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         ("running", now, now, str(tab["tab_id"])),
     )
 
+    if os.environ.get("TPA_GRAMMAR_ENGINE", "langgraph") == "langgraph":
+        return _run_langgraph_tab(
+            tab=tab,
+            body=body,
+            run_id=run_id,
+            framing_preset=framing_preset,
+        )
+
     sequence = 1
     all_uncertainties: list[str] = []
     all_tool_runs: list[str] = []
@@ -820,6 +1023,8 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         "explicit_constraints": (framing_preset or {}).get("default_constraints") or [],
         "non_goals": (framing_preset or {}).get("non_goals") or [],
     }
+    framing_context_pack = _build_context_pack("framing", [], framing_obj)
+    framing_context_refs = _collect_context_pack_refs(framing_context_pack)
     assumptions: list[dict[str, Any]] = []
     framing_move_id = _insert_move_event(
         run_id=run_id,
@@ -831,30 +1036,21 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "scenario_title": scenario_title,
             "political_framing_id": tab["political_framing_id"],
             "culp_stage_id": tab.get("culp_stage_id"),
+            "context_pack_id": framing_context_pack.get("context_pack_id") if isinstance(framing_context_pack, dict) else None,
         },
         outputs={"framing": framing_obj, "assumptions": assumptions},
-        evidence_refs_considered=[],
+        evidence_refs_considered=framing_context_refs,
         assumptions_introduced=assumptions,
         uncertainty_remaining=[],
         tool_run_ids=[],
     )
     sequence += 1
 
-    # --- Move 2: Issue surfacing (LLM-assisted; seeded by quick retrieval)
-    issue_retrieval = _retrieve_chunks_hybrid_sync(
-        query=f"{scenario_title}. {scenario_summary}".strip(),
-        authority_id=authority_id,
-        plan_cycle_id=plan_cycle_id,
-        limit=10,
-        rerank=True,
-        rerank_top_n=15,
-    )
-    issue_tool_ids = [issue_retrieval.get("tool_run_id"), issue_retrieval.get("rerank_tool_run_id")]
-    issue_tool_ids = [t for t in issue_tool_ids if isinstance(t, str)]
-    all_tool_runs.extend(issue_tool_ids)
-    seed_evidence = issue_retrieval.get("results") if isinstance(issue_retrieval, dict) else []
-    seed_evidence_refs = [r.get("evidence_ref") for r in seed_evidence if isinstance(r, dict)]
-    seed_evidence_refs = [r for r in seed_evidence_refs if isinstance(r, str)]
+    # --- Move 2: Issue surfacing (LLM-assisted; ContextPack-backed)
+    issue_context_pack = _build_context_pack("issue_surfacing", [], framing_obj)
+    issue_context_refs = _collect_context_pack_refs(issue_context_pack)
+    issue_context_payload = _context_pack_prompt_payload(issue_context_pack)
+    issue_tool_ids: list[str] = []
 
     issue_prompt = (
         "You are the Scout agent for The Planner's Assistant.\n"
@@ -863,7 +1059,7 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         "Each issue: {\"title\": string, \"why_material\": string, \"initial_evidence_hooks\": [EvidenceRef...], "
         "\"uncertainty_flags\": [string...] }.\n"
         "IssueMap: {\"edges\": []} is acceptable.\n"
-        "Use EvidenceRef strings provided; do not invent citations.\n"
+        "Use EvidenceRef strings provided in the ContextPack slices; do not invent citations.\n"
         "Do not include markdown fences."
     )
     issue_json, issue_llm_tool_run_id, issue_errs = _llm_structured_sync(
@@ -879,16 +1075,8 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 "state_vector": tab.get("state_vector_jsonb") or {},
             },
             "framing": framing_obj,
-            "seed_evidence": [
-                {
-                    "evidence_ref": r.get("evidence_ref"),
-                    "document_title": r.get("document_title"),
-                    "page_number": r.get("page_number"),
-                    "snippet": r.get("snippet"),
-                }
-                for r in (seed_evidence or [])[:10]
-                if isinstance(r, dict)
-            ],
+            "context_pack_id": issue_context_pack.get("context_pack_id") if isinstance(issue_context_pack, dict) else None,
+            "context_pack": issue_context_payload,
             "max_issues": body.max_issues,
         },
         output_schema_ref="schemas/Issue.schema.json",
@@ -914,7 +1102,7 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 hooks = []
             clean_hooks = [h for h in hooks if isinstance(h, str) and "::" in h]
             if not clean_hooks:
-                clean_hooks = seed_evidence_refs[:2]
+                clean_hooks = issue_context_refs[:2]
             issues.append(
                 {
                     "issue_id": str(uuid4()),
@@ -934,7 +1122,7 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 "issue_id": str(uuid4()),
                 "title": "Deliverability and infrastructure capacity",
                 "why_material": "Whether the scenario can be delivered within the plan period with credible infrastructure pathways.",
-                "initial_evidence_hooks": seed_evidence_refs[:3],
+                "initial_evidence_hooks": issue_context_refs[:3],
                 "uncertainty_flags": ["Infrastructure evidence may be incomplete."],
                 "related_issues": [],
             },
@@ -942,7 +1130,7 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 "issue_id": str(uuid4()),
                 "title": "Environmental and flood constraints",
                 "why_material": "Whether growth locations trigger significant environmental constraints and what mitigation would be required.",
-                "initial_evidence_hooks": seed_evidence_refs[1:4],
+                "initial_evidence_hooks": issue_context_refs[1:4],
                 "uncertainty_flags": ["Constraint layers and plan maps not yet ingested."],
                 "related_issues": [],
             },
@@ -950,7 +1138,7 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 "issue_id": str(uuid4()),
                 "title": "Accessibility and transport impacts",
                 "why_material": "Whether the scenario aligns with sustainable transport and avoids severe residual impacts.",
-                "initial_evidence_hooks": seed_evidence_refs[:2],
+                "initial_evidence_hooks": issue_context_refs[:2],
                 "uncertainty_flags": ["Transport evidence/instruments not yet run."],
                 "related_issues": [],
             },
@@ -963,14 +1151,17 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="issue_surfacing",
         sequence=sequence,
         status="success" if not issue_errs else "partial",
-        inputs={"framing": framing_obj, "seed_retrieval_tool_run_id": issue_retrieval.get("tool_run_id")},
+        inputs={
+            "framing": framing_obj,
+            "context_pack_id": issue_context_pack.get("context_pack_id") if isinstance(issue_context_pack, dict) else None,
+        },
         outputs={"issues": issues, "issue_map": issue_map},
-        evidence_refs_considered=seed_evidence_refs,
+        evidence_refs_considered=issue_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=["Issue surfacing is provisional; may shift after targeted evidence curation."],
         tool_run_ids=issue_tool_ids,
     )
-    _link_evidence_to_move(run_id=run_id, move_event_id=issue_move_id, evidence_refs=seed_evidence_refs, role="contextual")
+    _link_evidence_to_move(run_id=run_id, move_event_id=issue_move_id, evidence_refs=issue_context_refs, role="contextual")
     sequence += 1
 
     # --- Move 3: Evidence curation (Context Assembly v1)
@@ -984,6 +1175,32 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         utc_now_iso=_utc_now_iso,
         utc_now=_utc_now,
     )
+    context_pack_deps = ContextPackAssemblyDeps(
+        db_fetch_one=_db_fetch_one,
+        db_fetch_all=_db_fetch_all,
+        db_execute=_db_execute,
+        llm_structured_sync=_llm_structured_sync,
+        utc_now_iso=_utc_now_iso,
+        utc_now=_utc_now,
+    )
+
+    def _build_context_pack(move: str, issues_for_pack: list[dict[str, Any]] | None, framing_for_pack: dict[str, Any] | None) -> dict[str, Any]:
+        return build_context_pack_sync(
+            deps=context_pack_deps,
+            run_id=run_id,
+            move_type=move,
+            work_mode="plan_studio",
+            authority_id=authority_id,
+            plan_cycle_id=plan_cycle_id,
+            plan_project_id=str(tab["plan_project_id"]),
+            scenario_id=str(tab["scenario_id"]),
+            application_id=None,
+            framing=framing_for_pack,
+            issues=issues_for_pack or [],
+            token_budget=body.context_token_budget,
+        )
+    curation_context_pack = _build_context_pack("evidence_curation", issues, framing_obj)
+    curation_context_refs = _collect_context_pack_refs(curation_context_pack)
     context_result = assemble_curated_evidence_set_sync(
         deps=context_deps,
         run_id=run_id,
@@ -1004,7 +1221,6 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "framing": framing_obj,
         },
         issues=issues,
-        evidence_per_issue=body.evidence_per_issue,
         token_budget=body.context_token_budget,
     )
 
@@ -1034,6 +1250,14 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     elif curation_errors:
         curation_status = "partial"
 
+    curation_refs_considered: list[str] = []
+    seen_refs: set[str] = set()
+    for ref in curated_evidence_refs + curation_context_refs:
+        if ref in seen_refs:
+            continue
+        seen_refs.add(ref)
+        curation_refs_considered.append(ref)
+
     curation_move_id = _insert_move_event(
         run_id=run_id,
         move_type="evidence_curation",
@@ -1045,13 +1269,16 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "retrieval_frame_id": (context_result.get("retrieval_frame") or {}).get("retrieval_frame_id")
             if isinstance(context_result, dict) and isinstance(context_result.get("retrieval_frame"), dict)
             else None,
+            "context_pack_id": curation_context_pack.get("context_pack_id")
+            if isinstance(curation_context_pack, dict)
+            else None,
         },
         outputs={
             "curated_evidence_set": curated_set,
             "retrieval_frame": context_result.get("retrieval_frame") if isinstance(context_result, dict) else None,
             "context_assembly_errors": curation_errors[:10],
         },
-        evidence_refs_considered=curated_evidence_refs,
+        evidence_refs_considered=curation_refs_considered,
         assumptions_introduced=[],
         uncertainty_remaining=[
             "Curated evidence is limited to authority pack PDFs and may omit datasets/appeals.",
@@ -1072,6 +1299,13 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
                 )
     else:
         _link_evidence_to_move(run_id=run_id, move_event_id=curation_move_id, evidence_refs=curated_evidence_refs, role="supporting")
+    if curation_context_refs:
+        _link_evidence_to_move(
+            run_id=run_id,
+            move_event_id=curation_move_id,
+            evidence_refs=curation_context_refs,
+            role="contextual",
+        )
     sequence += 1
 
     # Persist ToolRequests so they become executable evidence-gathering (not just JSON in MoveEvent outputs).
@@ -1083,12 +1317,29 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         pass
 
     # --- Move 4: Evidence interpretation (LLM-assisted)
+    interp_context_pack = _build_context_pack("evidence_interpretation", issues, framing_obj)
+    interp_context_refs = _collect_context_pack_refs(interp_context_pack)
+    interp_context_payload = _context_pack_prompt_payload(interp_context_pack)
+    interp_atoms = interp_context_payload.get("evidence_atoms") if isinstance(interp_context_payload, dict) else []
+    if not isinstance(interp_atoms, list) or not interp_atoms:
+        interp_atoms = [
+            {
+                "evidence_ref": a.get("evidence_ref"),
+                "evidence_type": a.get("evidence_type"),
+                "title": a.get("title"),
+                "summary": a.get("summary"),
+                "excerpt_text": (a.get("metadata") or {}).get("excerpt_text") if isinstance(a.get("metadata"), dict) else None,
+                "limitations_text": a.get("limitations_text"),
+            }
+            for a in evidence_atoms[:50]
+            if isinstance(a, dict)
+        ]
     interp_prompt = (
         "You are the Analyst agent for The Planner's Assistant.\n"
         "Interpret evidence atoms into caveated claims.\n"
         "Return ONLY valid JSON: {\"interpretations\": [...]}.\n"
         "Each interpretation: {\"claim\": string, \"evidence_refs\": [EvidenceRef...], \"limitations_text\": string}.\n"
-        "Only use evidence_refs provided; do not invent citations.\n"
+        "Only use evidence_refs provided in the ContextPack; do not invent citations.\n"
         "Do not include markdown fences."
     )
     interp_json, interp_tool_run_id, interp_errs = _llm_structured_sync(
@@ -1100,18 +1351,9 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         user_payload={
             "framing": framing_obj,
             "issues": [{"issue_id": i["issue_id"], "title": i["title"], "why_material": i["why_material"]} for i in issues],
-            "evidence_atoms": [
-                {
-                    "evidence_ref": a.get("evidence_ref"),
-                    "evidence_type": a.get("evidence_type"),
-                    "title": a.get("title"),
-                    "summary": a.get("summary"),
-                    "excerpt_text": (a.get("metadata") or {}).get("excerpt_text") if isinstance(a.get("metadata"), dict) else None,
-                    "limitations_text": a.get("limitations_text"),
-                    "metadata": a.get("metadata") if isinstance(a.get("metadata"), dict) else {},
-                }
-                for a in evidence_atoms[:50]
-            ],
+            "context_pack_id": interp_context_pack.get("context_pack_id") if isinstance(interp_context_pack, dict) else None,
+            "context_pack": interp_context_payload,
+            "evidence_atoms": interp_atoms,
         },
         output_schema_ref="schemas/Interpretation.schema.json",
     )
@@ -1163,9 +1405,12 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="evidence_interpretation",
         sequence=sequence,
         status="success" if not interp_errs else "partial",
-        inputs={"curated_evidence_set_id": curated_set["curated_evidence_set_id"]},
+        inputs={
+            "curated_evidence_set_id": curated_set["curated_evidence_set_id"],
+            "context_pack_id": interp_context_pack.get("context_pack_id") if isinstance(interp_context_pack, dict) else None,
+        },
         outputs={"interpretations": interpretations, "plan_reality_interpretations": [], "reasoning_traces": []},
-        evidence_refs_considered=interp_evidence_refs,
+        evidence_refs_considered=interp_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=["Interpretations are caveated and may omit spatial/visual evidence (Slice I pending)."],
         tool_run_ids=interp_tool_ids,
@@ -1179,13 +1424,16 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     sequence += 1
 
     # --- Move 5: Considerations formation (LLM-assisted ledger)
+    ledger_context_pack = _build_context_pack("considerations_formation", issues, framing_obj)
+    ledger_context_refs = _collect_context_pack_refs(ledger_context_pack)
+    ledger_context_payload = _context_pack_prompt_payload(ledger_context_pack)
     ledger_prompt = (
         "You are the Analyst agent for The Planner's Assistant.\n"
         "Form planner-recognisable considerations suitable for a ledger.\n"
         "Return ONLY valid JSON: {\"consideration_ledger_entries\": [...]}.\n"
         "Each entry: {\"statement\": string, \"premises\": [EvidenceRef...], \"mitigation_hooks\": [string...], "
         "\"uncertainty_list\": [string...] }.\n"
-        "Only use premises from provided evidence_refs.\n"
+        "Only use premises from provided evidence_refs in the ContextPack.\n"
         "Do not include markdown fences."
     )
     ledger_json, ledger_tool_run_id, ledger_errs = _llm_structured_sync(
@@ -1198,6 +1446,8 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "framing": framing_obj,
             "issues": [{"issue_id": i["issue_id"], "title": i["title"]} for i in issues],
             "interpretations": [{"claim": it["claim"], "evidence_refs": it["evidence_refs"]} for it in interpretations],
+            "context_pack_id": ledger_context_pack.get("context_pack_id") if isinstance(ledger_context_pack, dict) else None,
+            "context_pack": ledger_context_payload,
         },
         output_schema_ref="schemas/ConsiderationLedgerEntry.schema.json",
     )
@@ -1276,9 +1526,12 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="considerations_formation",
         sequence=sequence,
         status="success" if not ledger_errs else "partial",
-        inputs={"interpretation_count": len(interpretations)},
+        inputs={
+            "interpretation_count": len(interpretations),
+            "context_pack_id": ledger_context_pack.get("context_pack_id") if isinstance(ledger_context_pack, dict) else None,
+        },
         outputs={"consideration_ledger_entries": ledger_entries},
-        evidence_refs_considered=ledger_evidence_refs,
+        evidence_refs_considered=ledger_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=[
             "PolicyClause parsing is LLM-assisted and non-deterministic; verify clause boundaries and legal weight against the source plan cycle."
@@ -1289,6 +1542,9 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     sequence += 1
 
     # --- Move 6: Weighing & balance (LLM-assisted)
+    weighing_context_pack = _build_context_pack("weighing_and_balance", issues, framing_obj)
+    weighing_context_refs = _collect_context_pack_refs(weighing_context_pack)
+    weighing_context_payload = _context_pack_prompt_payload(weighing_context_pack)
     weighing_prompt = (
         "You are the Judge agent for The Planner's Assistant.\n"
         "Assign qualitative weights to considerations under the framing.\n"
@@ -1305,6 +1561,10 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         user_payload={
             "framing": framing_obj,
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
+            "context_pack_id": weighing_context_pack.get("context_pack_id")
+            if isinstance(weighing_context_pack, dict)
+            else None,
+            "context_pack": weighing_context_payload,
         },
         output_schema_ref="schemas/WeighingRecord.schema.json",
     )
@@ -1335,9 +1595,14 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="weighing_and_balance",
         sequence=sequence,
         status="success" if not weighing_errs else "partial",
-        inputs={"ledger_entry_count": len(ledger_entries)},
+        inputs={
+            "ledger_entry_count": len(ledger_entries),
+            "context_pack_id": weighing_context_pack.get("context_pack_id")
+            if isinstance(weighing_context_pack, dict)
+            else None,
+        },
         outputs={"weighing_record": weighing_record, "reasoning_traces": []},
-        evidence_refs_considered=ledger_evidence_refs,
+        evidence_refs_considered=weighing_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=["Balance is qualitative; planners may reasonably disagree on weight."],
         tool_run_ids=weighing_tool_ids,
@@ -1346,6 +1611,9 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     sequence += 1
 
     # --- Move 7: Negotiation & alteration (LLM-assisted)
+    negotiation_context_pack = _build_context_pack("negotiation_and_alteration", issues, framing_obj)
+    negotiation_context_refs = _collect_context_pack_refs(negotiation_context_pack)
+    negotiation_context_payload = _context_pack_prompt_payload(negotiation_context_pack)
     negotiation_prompt = (
         "You are the Negotiator agent for The Planner's Assistant.\n"
         "Propose alterations/mitigations that could improve the balance.\n"
@@ -1363,6 +1631,10 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "framing": framing_obj,
             "weighing_record": weighing_record,
             "ledger_entries": [{"entry_id": le["entry_id"], "statement": le["statement"]} for le in ledger_entries],
+            "context_pack_id": negotiation_context_pack.get("context_pack_id")
+            if isinstance(negotiation_context_pack, dict)
+            else None,
+            "context_pack": negotiation_context_payload,
         },
         output_schema_ref="schemas/NegotiationMove.schema.json",
     )
@@ -1409,9 +1681,14 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="negotiation_and_alteration",
         sequence=sequence,
         status="success" if not negotiation_errs else "partial",
-        inputs={"weighing_id": weighing_record.get("weighing_id")},
+        inputs={
+            "weighing_id": weighing_record.get("weighing_id"),
+            "context_pack_id": negotiation_context_pack.get("context_pack_id")
+            if isinstance(negotiation_context_pack, dict)
+            else None,
+        },
         outputs={"negotiation_moves": negotiation_moves},
-        evidence_refs_considered=ledger_evidence_refs,
+        evidence_refs_considered=negotiation_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=["Negotiation moves are proposals; viability requires evidence and political judgement."],
         tool_run_ids=negotiation_tool_ids,
@@ -1419,6 +1696,9 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
     sequence += 1
 
     # --- Move 8: Positioning & narration (LLM-assisted, but deterministic sheet composition)
+    positioning_context_pack = _build_context_pack("positioning_and_narration", issues, framing_obj)
+    positioning_context_refs = _collect_context_pack_refs(positioning_context_pack)
+    positioning_context_payload = _context_pack_prompt_payload(positioning_context_pack)
     position_prompt = (
         "You are the Scribe agent for The Planner's Assistant.\n"
         "Write (1) a conditional position statement and (2) a concise planning balance narrative, both in UK planner tone.\n"
@@ -1437,6 +1717,10 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
             "framing": framing_obj,
             "weighing_record": weighing_record,
             "negotiation_moves": negotiation_moves,
+            "context_pack_id": positioning_context_pack.get("context_pack_id")
+            if isinstance(positioning_context_pack, dict)
+            else None,
+            "context_pack": positioning_context_payload,
         },
         output_schema_ref="schemas/Trajectory.schema.json",
     )
@@ -1618,9 +1902,15 @@ def run_scenario_framing_tab(tab_id: str, body: ScenarioTabRunRequest | None = N
         move_type="positioning_and_narration",
         sequence=sequence,
         status="success" if not position_errs else "partial",
-        inputs={"scenario_id": str(tab["scenario_id"]), "political_framing_id": tab["political_framing_id"]},
+        inputs={
+            "scenario_id": str(tab["scenario_id"]),
+            "political_framing_id": tab["political_framing_id"],
+            "context_pack_id": positioning_context_pack.get("context_pack_id")
+            if isinstance(positioning_context_pack, dict)
+            else None,
+        },
         outputs={"trajectory": trajectory_obj, "scenario_judgement_sheet": sheet},
-        evidence_refs_considered=curated_evidence_refs,
+        evidence_refs_considered=positioning_context_refs,
         assumptions_introduced=[],
         uncertainty_remaining=uncertainty_summary or ["Uncertainty remains; see evidence limitations and missing instruments."],
         tool_run_ids=positioning_tool_ids,

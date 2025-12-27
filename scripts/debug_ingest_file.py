@@ -7,8 +7,7 @@ from uuid import uuid4
 # Add repo root to path
 sys.path.append(str(Path(__file__).parent.parent))
 
-from tpa_api.ingest_worker import process_ingest_job
-from tpa_api.services.ingest import _create_ingest_job, _enqueue_ingest_job
+from tpa_api.ingestion.tasks import process_ingest_job
 from tpa_api.db import init_db_pool, _db_execute
 
 def main():

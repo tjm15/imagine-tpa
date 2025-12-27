@@ -3,6 +3,7 @@ import { Scale, TrendingUp, AlertTriangle, FileText, RefreshCw, Sparkles } from 
 import { WorkspaceMode } from '../../App';
 import { ExplainabilityLevel } from '../../contexts/ExplainabilityContext';
 import { useProject } from '../../contexts/AuthorityContext';
+import { useRun } from '../../contexts/RunContext';
 import { Button } from '../ui/button';
 
 interface JudgementViewProps {
@@ -17,6 +18,7 @@ interface ScenarioTab {
   scenario_title?: string;
   scenario_summary?: string;
   status: string;
+  run_id?: string | null;
 }
 
 interface ScenarioSetResponse {
@@ -29,6 +31,7 @@ interface ScenarioSetResponse {
 
 export function JudgementView({ workspace, explainabilityLevel = 'summary' }: JudgementViewProps) {
   const { planProject } = useProject();
+  const { setCurrentRun } = useRun();
   const [scenarioSet, setScenarioSet] = useState<ScenarioSetResponse | null>(null);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
   const [sheet, setSheet] = useState<any | null>(null);
@@ -93,6 +96,14 @@ export function JudgementView({ workspace, explainabilityLevel = 'summary' }: Ju
   const activeTab = useMemo(() => {
     return scenarioSet?.tabs?.find((tab) => tab.tab_id === activeTabId) || null;
   }, [scenarioSet, activeTabId]);
+
+  useEffect(() => {
+    if (!activeTab) {
+      setCurrentRun(null, null);
+      return;
+    }
+    setCurrentRun(activeTab.run_id || null, activeTab.status || null);
+  }, [activeTab?.run_id, activeTab?.status, setCurrentRun]);
 
   const selectTab = async (tabId: string) => {
     if (!scenarioSet) return;

@@ -1161,9 +1161,9 @@ async def parse_bundle(
                 "tool_name": "vectorize_visual_asset",
                 "status": "skipped",
                 "inputs": {"image_count": len(classified_visuals)},
-                "outputs": {"reason": "deferred_to_ingest_worker"},
+                "outputs": {"reason": "deferred_to_ingestion_pipeline"},
                 "duration_seconds": None,
-                "limitations_text": "Vectorization deferred to ingest worker (post-segmentation).",
+                "limitations_text": "Vectorization deferred to ingestion pipeline (post-segmentation).",
             }
         )
 

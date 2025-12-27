@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextPackSelection",
+  "type": "object",
+  "description": "LLM-assisted selection of candidate context items for a single slice.",
+  "properties": {
+    "selected_candidate_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "deliberate_omissions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "candidate_id": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "required": ["candidate_id", "reason"]
+      }
+    },
+    "notes": { "type": ["string", "null"] }
+  },
+  "required": ["selected_candidate_ids"]
+}

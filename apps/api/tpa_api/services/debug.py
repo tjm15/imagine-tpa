@@ -782,11 +782,11 @@ def run_graph_ingest_job(ingest_job_id: str, note: str | None = None) -> JSONRes
     if not job:
         raise HTTPException(status_code=404, detail="Ingest job not found")
     try:
-        from ..ingest_worker import celery_app  # noqa: PLC0415
+        from ..ingestion.tasks import celery_app  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"celery_import_failed:{exc}") from exc
     try:
-        celery_app.send_task("tpa_api.ingest_worker.run_graph_job", args=[job_id])
+        celery_app.send_task("tpa_api.ingestion.tasks.run_graph_job", args=[job_id])
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"celery_enqueue_failed:{exc}") from exc
     if note:

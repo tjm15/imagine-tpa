@@ -1,0 +1,422 @@
+version: 1
+title: Context Selector Registry
+description: >
+  Registry of ContextPack selectors. Each selector declares slices and gating
+  checks for a work_mode + move_type pair. Selection is semantic and constrained
+  only by the context token budget (no per-slice hard limits). Selectors are
+  planner-shaped and can be extended without changing agent code.
+
+selection_policy:
+  context_budget_tokens: 128000
+  allocation: semantic
+  hard_limits: none
+  notes: >
+    Slice membership is determined by LLM/VLM scoring under the token budget.
+    Gating only prevents non-existent slice types from being queried.
+
+selectors:
+  - selector_id: plan_studio.framing.v1
+    work_mode: plan_studio
+    move_type: framing
+    slices:
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.issue_surfacing.v1
+    work_mode: plan_studio
+    move_type: issue_surfacing
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.evidence_curation.v1
+    work_mode: plan_studio
+    move_type: evidence_curation
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.evidence_interpretation.v1
+    work_mode: plan_studio
+    move_type: evidence_interpretation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.considerations_formation.v1
+    work_mode: plan_studio
+    move_type: considerations_formation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: policy_clauses
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.weighing_and_balance.v1
+    work_mode: plan_studio
+    move_type: weighing_and_balance
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.negotiation_and_alteration.v1
+    work_mode: plan_studio
+    move_type: negotiation_and_alteration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: plan_studio.positioning_and_narration.v1
+    work_mode: plan_studio
+    move_type: positioning_and_narration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.framing.v1
+    work_mode: casework
+    move_type: framing
+    slices:
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.issue_surfacing.v1
+    work_mode: casework
+    move_type: issue_surfacing
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.evidence_interpretation.v1
+    work_mode: casework
+    move_type: evidence_interpretation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.evidence_curation.v1
+    work_mode: casework
+    move_type: evidence_curation
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.considerations_formation.v1
+    work_mode: casework
+    move_type: considerations_formation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: policy_clauses
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.weighing_and_balance.v1
+    work_mode: casework
+    move_type: weighing_and_balance
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.negotiation_and_alteration.v1
+    work_mode: casework
+    move_type: negotiation_and_alteration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: casework.positioning_and_narration.v1
+    work_mode: casework
+    move_type: positioning_and_narration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.framing.v1
+    work_mode: pre_app
+    move_type: framing
+    slices:
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.issue_surfacing.v1
+    work_mode: pre_app
+    move_type: issue_surfacing
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.evidence_curation.v1
+    work_mode: pre_app
+    move_type: evidence_curation
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.evidence_interpretation.v1
+    work_mode: pre_app
+    move_type: evidence_interpretation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.considerations_formation.v1
+    work_mode: pre_app
+    move_type: considerations_formation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: policy_clauses
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.weighing_and_balance.v1
+    work_mode: pre_app
+    move_type: weighing_and_balance
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.negotiation_and_alteration.v1
+    work_mode: pre_app
+    move_type: negotiation_and_alteration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: pre_app.positioning_and_narration.v1
+    work_mode: pre_app
+    move_type: positioning_and_narration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.framing.v1
+    work_mode: nsip
+    move_type: framing
+    slices:
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.issue_surfacing.v1
+    work_mode: nsip
+    move_type: issue_surfacing
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.evidence_curation.v1
+    work_mode: nsip
+    move_type: evidence_curation
+    slices:
+      - slice_type: policy_clauses
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.evidence_interpretation.v1
+    work_mode: nsip
+    move_type: evidence_interpretation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: visual_assets
+        gating: [visual_assets_present]
+      - slice_type: spatial_features
+        gating: [spatial_layers_present]
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.considerations_formation.v1
+    work_mode: nsip
+    move_type: considerations_formation
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: policy_clauses
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.weighing_and_balance.v1
+    work_mode: nsip
+    move_type: weighing_and_balance
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.negotiation_and_alteration.v1
+    work_mode: nsip
+    move_type: negotiation_and_alteration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations
+
+  - selector_id: nsip.positioning_and_narration.v1
+    work_mode: nsip
+    move_type: positioning_and_narration
+    slices:
+      - slice_type: evidence_atoms
+      - slice_type: consultations
+        gating: [consultations_present]
+      - slice_type: decisions
+        gating: [decisions_present]
+      - slice_type: advice_cards
+      - slice_type: assumptions
+      - slice_type: limitations

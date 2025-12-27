@@ -114,6 +114,8 @@ Authority GIS layers are ingested as **spatial datasets/features**:
 * Store layer metadata (name/type/url) as canonical dataset records.
 * Download/refresh feature data where possible and load to `spatial_features` with provenance.
 * Where endpoints are broken/secured (see `missing_data.md`), record explicit gaps as `Assumption(type=data-gap)` during runs rather than silently omitting.
+* **Interpretation before LLM:** summarise GIS layers into planner-legible profiles (feature counts, geometry types, key attributes, limitations) before any LLM reasoning or cross-linking.
+* Use LLMs **heavily** for cross-linkage: propose policy ↔ GIS layer links from interpreted layer profiles and policy text, logging ToolRuns + provenance.
 
 Published “Spatial Analysis Engine” alignment implies:
 * maintain a **layer registry** (lineage, quality, refresh cadence) as canonical metadata,
@@ -150,6 +152,7 @@ as evidence or determinations.
 * Catalogue: `governance/GOOD_PRACTICE_CARDS.yaml`
 * Schema: `schemas/AdviceCard.schema.json`, `schemas/AdviceCardInstance.schema.json`
 * Spec: `governance/ADVICE_CARD_ENRICHMENT_SPEC.md`
+* Matching: semantic LLM/VLM judgement (no deterministic-only matching).
 
 ## 6. Spatial Enrichment (Geospatial Linkages)
 An explicit post-processing step running on a GIS worker (e.g., PostGIS or Geopandas).

@@ -19,6 +19,7 @@ import { Separator } from "./ui/separator";
 import { Logo } from "./Logo";
 import { useProject } from "../contexts/AuthorityContext";
 import { useExplainability } from "../contexts/ExplainabilityContext";
+import { useRun } from "../contexts/RunContext";
 
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
@@ -39,6 +40,7 @@ export function WorkbenchShell({
   const { authority, planProject } = useProject();
   const [showTraceCanvas, setShowTraceCanvas] = useState(false);
   const { level: explainabilityMode, setGlobalLevel } = useExplainability();
+  const { currentRunId, currentRunStatus } = useRun();
   const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const viewConfig: Record<ViewMode, { icon: any, label: string, component: any, description: string }> = {
@@ -208,7 +210,14 @@ export function WorkbenchShell({
               <Badge variant="outline" className="font-mono text-[10px] h-5 px-1.5 bg-white" style={{
                 borderColor: 'var(--color-neutral-300)',
                 color: 'var(--color-text)'
-              }}>run_8a4f2e</Badge>
+              }}>
+                {currentRunId ? currentRunId.slice(0, 8) : '—'}
+              </Badge>
+              {currentRunStatus && (
+                <Badge variant="secondary" className="h-5 text-[10px] px-1.5 bg-white border border-slate-200 text-slate-500">
+                  {currentRunStatus}
+                </Badge>
+              )}
             </div>
             <button
               onClick={() => setShowTraceCanvas(!showTraceCanvas)}

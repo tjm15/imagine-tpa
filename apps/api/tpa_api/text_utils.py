@@ -19,3 +19,9 @@ def _extract_json_object(text: str) -> dict[str, Any] | None:
     except Exception:
         return None
 
+
+def _estimate_tokens(text: str) -> int:
+    if not isinstance(text, str) or not text:
+        return 0
+    # Rough heuristic: English tokens are ~4 chars on average.
+    return max(1, len(text) // 4)

@@ -8,6 +8,7 @@ from uuid import uuid4
 
 from .spatial_fingerprint import compute_site_fingerprint_sync, extract_site_ids_from_state_vector
 from .spec_io import _read_yaml, _spec_root
+from .text_utils import _estimate_tokens
 
 
 MoveType = str
@@ -173,7 +174,6 @@ def build_or_refine_retrieval_frame_sync(
     issues: list[dict[str, Any]],
     token_budget: int | None,
     max_candidates_per_query: int,
-    max_atoms_per_issue: int,
 ) -> dict[str, Any]:
     """
     Creates a persisted RetrievalFrame row for the run+move_type.
@@ -201,7 +201,6 @@ def build_or_refine_retrieval_frame_sync(
     budgets = {
         "token_budget": int(token_budget) if isinstance(token_budget, int) else None,
         "max_candidates_per_query": int(max_candidates_per_query),
-        "max_atoms_per_issue": int(max_atoms_per_issue),
     }
 
     work_mode_clean = work_mode if isinstance(work_mode, str) and work_mode.strip() else "plan_studio"
@@ -543,7 +542,6 @@ def assemble_curated_evidence_set_sync(
     scenario: dict[str, Any],
     framing: dict[str, Any],
     issues: list[dict[str, Any]],
-    evidence_per_issue: int,
     token_budget: int | None,
 ) -> dict[str, Any]:
     """
@@ -554,9 +552,8 @@ def assemble_curated_evidence_set_sync(
     - spatial: deterministic site fingerprint tool (Slice C)
     - visual: VisualAsset candidates (Slice I scaffolding)
     """
-    evidence_per_issue = _clamp_int(evidence_per_issue, lo=1, hi=10)
-    max_candidates_per_query = max(10, min(40, evidence_per_issue * 8))
-    max_atoms_per_issue = max(2, min(12, evidence_per_issue * 3))
+    token_budget = int(token_budget) if isinstance(token_budget, int) else 128000
+    max_candidates_per_query = max(20, token_budget // 400)
 
     retrieval_frame = build_or_refine_retrieval_frame_sync(
         deps=deps,
@@ -571,7 +568,6 @@ def assemble_curated_evidence_set_sync(
         issues=issues,
         token_budget=token_budget,
         max_candidates_per_query=max_candidates_per_query,
-        max_atoms_per_issue=max_atoms_per_issue,
     )
 
     # --- Candidate generation (multimodal)
@@ -683,7 +679,7 @@ def assemble_curated_evidence_set_sync(
         purpose = q.get("purpose") if isinstance(q.get("purpose"), str) else "primary"
         top_k = q.get("top_k")
         limit = int(top_k) if isinstance(top_k, int) else max_candidates_per_query
-        limit = _clamp_int(limit, lo=5, hi=50)
+        limit = _clamp_int(limit, lo=5, hi=max_candidates_per_query)
         target_issue_ids: list[str]
         issue_id = q.get("issue_id")
         if isinstance(issue_id, str) and issue_id:
@@ -709,7 +705,7 @@ def assemble_curated_evidence_set_sync(
                         site_id=site_id,
                         authority_id=authority_id,
                         plan_cycle_id=plan_cycle_id,
-                        limit_features=120,
+                        token_budget=token_budget,
                     )
                     computed_site_tool_run_by_site_id[site_id] = tool_run_id
                     computed_site_fingerprint_by_site_id[site_id] = fingerprint or {}
@@ -737,29 +733,10 @@ def assemble_curated_evidence_set_sync(
                         },
                     )
 
-                # Also surface a bounded, explicit list of intersecting spatial features as candidates.
+                # Surface intersecting spatial features as candidates (selection is LLM-budgeted later).
                 intersections = fingerprint.get("intersections") if isinstance(fingerprint, dict) else None
                 if isinstance(intersections, list) and intersections:
-                    by_type: dict[str, list[dict[str, Any]]] = {}
-                    for it in intersections[:400]:
-                        if not isinstance(it, dict):
-                            continue
-                        fid = it.get("spatial_feature_id")
-                        if not isinstance(fid, str) or not fid:
-                            continue
-                        ftype = it.get("type") if isinstance(it.get("type"), str) and it.get("type") else "unknown"
-                        by_type.setdefault(ftype, []).append(it)
-
-                    selected_features: list[dict[str, Any]] = []
-                    for ftype, items in sorted(by_type.items(), key=lambda x: (-len(x[1]), x[0]))[:12]:
-                        for it in items[:3]:
-                            selected_features.append(it)
-                            if len(selected_features) >= 24:
-                                break
-                        if len(selected_features) >= 24:
-                            break
-
-                    for it in selected_features:
+                    for it in intersections:
                         fid = it.get("spatial_feature_id")
                         if not isinstance(fid, str) or not fid:
                             continue
@@ -775,8 +752,8 @@ def assemble_curated_evidence_set_sync(
                         label = str(label) if label is not None and str(label).strip() else fid[:8]
                         title = f"{ftype} · {label}"
                         summary = props.get("description") if isinstance(props.get("description"), str) else ""
-                        if not summary:
-                            summary = _trim_text(json.dumps(props, ensure_ascii=False), max_chars=700) if props else ""
+                        if not summary and props:
+                            summary = json.dumps(props, ensure_ascii=False)
                         evidence_ref = f"spatial_feature::{fid}::properties"
                         for iid in target_issue_ids:
                             add_candidate(
@@ -868,13 +845,14 @@ def assemble_curated_evidence_set_sync(
         if not query_text:
             continue
 
+        clause_limit = max(6, min(max_candidates_per_query, max(6, limit // 2)))
         clause = deps.retrieve_policy_clauses_hybrid_sync(
             query=query_text,
             authority_id=authority_id,
             plan_cycle_id=plan_cycle_id,
-            limit=max(6, min(30, limit // 2)),
+            limit=clause_limit,
             rerank=True,
-            rerank_top_n=max(10, min(50, limit)),
+            rerank_top_n=max(10, min(max_candidates_per_query, clause_limit)),
         )
         for tid in [clause.get("tool_run_id"), clause.get("rerank_tool_run_id")]:
             if isinstance(tid, str):
@@ -886,7 +864,7 @@ def assemble_curated_evidence_set_sync(
             plan_cycle_id=plan_cycle_id,
             limit=limit,
             rerank=True,
-            rerank_top_n=max(10, min(50, limit)),
+            rerank_top_n=max(10, min(max_candidates_per_query, limit)),
         )
         for tid in [chunk.get("tool_run_id"), chunk.get("rerank_tool_run_id")]:
             if isinstance(tid, str):
@@ -894,7 +872,7 @@ def assemble_curated_evidence_set_sync(
 
         clause_results = clause.get("results") if isinstance(clause, dict) else None
         if isinstance(clause_results, list):
-            for r in clause_results[:limit]:
+            for r in clause_results[:clause_limit]:
                 if not isinstance(r, dict):
                     continue
                 for iid in target_issue_ids:
@@ -947,6 +925,7 @@ def assemble_curated_evidence_set_sync(
                     "type": c.get("candidate_type"),
                     "title": c.get("title"),
                     "summary": c.get("summary"),
+                    "approx_tokens": _estimate_tokens((c.get("summary") or c.get("snippet") or "")),
                     "site_id": c.get("site_id"),
                     "tool_run_id": c.get("tool_run_id"),
                     "instrument_id": c.get("instrument_id"),
@@ -974,7 +953,7 @@ def assemble_curated_evidence_set_sync(
         "- You MUST only choose evidence_refs that appear in the provided candidate lists.\n"
         "- Candidate types may include: policy_clause, doc_chunk, site_fingerprint, spatial_feature, visual_asset, instrument_output.\n"
         "- For each issue:\n"
-        "  - choose up to max_atoms_per_issue total (across supporting/countervailing/contextual)\n"
+        "  - choose a reasonable total across supporting/countervailing/contextual under the token budget\n"
         "  - include at least 1 supporting item where possible\n"
         "  - include at least 1 countervailing item where plausible (not tokenistic)\n"
         "- If evidence is missing (e.g. spatial constraints, transport instruments, plan maps), emit ToolRequests.\n"
@@ -992,7 +971,6 @@ def assemble_curated_evidence_set_sync(
         "scenario": scenario,
         "political_framing": framing,
         "budgets": retrieval_frame.get("budgets"),
-        "max_atoms_per_issue": max_atoms_per_issue,
         "issues": issue_briefs,
         "deliberate_omissions_policy": retrieval_frame.get("deliberate_omissions_policy"),
         "instrument_hints": retrieval_frame.get("instrument_hints") if isinstance(retrieval_frame.get("instrument_hints"), list) else [],
@@ -1014,7 +992,6 @@ def assemble_curated_evidence_set_sync(
     if isinstance(selection_tool_run_id, str):
         tool_run_ids.append(selection_tool_run_id)
 
-    # Fallback selection if LLM unavailable/invalid: pick the top evidence_per_issue candidates per issue.
     selections_in = selection_obj.get("selections") if isinstance(selection_obj, dict) else None
     selection_by_issue: dict[str, dict[str, list[str]]] = {}
     if isinstance(selections_in, list):
@@ -1031,13 +1008,7 @@ def assemble_curated_evidence_set_sync(
             }
 
     if not selection_by_issue:
-        # deterministic fallback (logged via selection_errs/tool run)
-        for issue in issues:
-            iid = _safe_issue_id(issue)
-            if not iid:
-                continue
-            refs = candidates_by_issue.get(iid, [])[: evidence_per_issue]
-            selection_by_issue[iid] = {"supporting": refs, "countervailing": [], "contextual": []}
+        selection_errs.append("selection_empty")
 
     # Coverage enforcement (normative): if countervailing candidates exist but none were selected, re-prompt for those issues only.
     issues_needing_rerun: list[dict[str, Any]] = []
@@ -1096,7 +1067,6 @@ def assemble_curated_evidence_set_sync(
             "plan_cycle_id": plan_cycle_id,
             "scenario": scenario,
             "political_framing": framing,
-            "max_atoms_per_issue": max_atoms_per_issue,
             "issues": issues_needing_rerun[:12],
             "instrument_hints": selection_payload.get("instrument_hints") or [],
         }
@@ -1384,7 +1354,7 @@ def assemble_curated_evidence_set_sync(
         sel = selection_by_issue.get(iid) or {"supporting": [], "countervailing": [], "contextual": []}
         atoms_for_issue: list[str] = []
         for role in ("supporting", "countervailing", "contextual"):
-            for ev in sel.get(role, [])[:max_atoms_per_issue]:
+            for ev in sel.get(role, []):
                 atom_id = ensure_atom_for_ref(ev)
                 if not atom_id:
                     continue
@@ -1393,7 +1363,7 @@ def assemble_curated_evidence_set_sync(
         # de-dupe while preserving order
         seen: set[str] = set()
         atoms_for_issue = [a for a in atoms_for_issue if not (a in seen or seen.add(a))]
-        evidence_by_issue.append({"issue_id": iid, "evidence_atom_ids": atoms_for_issue[:max_atoms_per_issue]})
+        evidence_by_issue.append({"issue_id": iid, "evidence_atom_ids": atoms_for_issue})
 
     omissions: list[dict[str, Any]] = []
     if isinstance(selection_obj, dict):

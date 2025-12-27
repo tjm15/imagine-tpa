@@ -14,7 +14,7 @@ We implemented the abstract base classes defined in `platform/PROVIDER_INTERFACE
     *   Ensures traceability of every byte entering the system.
 
 *   **`DocParseProvider`** (`tpa_api.providers.docparse_http.HttpDocParseProvider`):
-    *   Encapsulates the document parsing logic (previously in `ingest_worker.py`).
+    *   Encapsulates the document parsing logic (previously embedded in the legacy worker monolith).
     *   Logs inputs (metadata, file size) and outputs (page count) to `tool_runs`.
     *   Provides a clean interface for the ingestion graph.
 

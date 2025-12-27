@@ -6,62 +6,95 @@ moves:
       - culp_stage
       - political_framing_selection
       - anchors
+      - ContextPack
     output:
       - Framing
       - Assumption[]
+    context_pack_dependencies:
+      required: [advice_cards]
+      optional: [assumptions, limitations]
   
   issue_surfacing:
     input:
       - RunGraph (slice)
       - Framing
+      - ContextPack
     output:
       - Issue[]
       - IssueMap
+    context_pack_dependencies:
+      required: [policy_clauses, advice_cards]
+      optional: [spatial_features, visual_assets, consultations, decisions, assumptions, limitations]
   
   evidence_curation:
     input:
       - Issue[]
       - KG (Knowledge Graph)
+      - ContextPack
     output:
       - CuratedEvidenceSet
       - ToolRequest[]
+    context_pack_dependencies:
+      required: [policy_clauses, advice_cards]
+      optional: [visual_assets, spatial_features, consultations, decisions, assumptions, limitations]
   
   evidence_interpretation:
     input:
       - CuratedEvidenceSet
       - ToolRun[]
+      - ContextPack
     output:
       - Interpretation[]
-      - PlanRealityInterpretation
+      - PlanRealityInterpretation[]
       - ReasoningTrace[]
+    context_pack_dependencies:
+      required: [evidence_atoms]
+      optional: [visual_assets, spatial_features, consultations, decisions, advice_cards, assumptions, limitations]
   
   considerations_formation:
     input:
       - Interpretation[]
       - Issue[]
+      - ContextPack
     output:
       - ConsiderationLedgerEntry[]
+    context_pack_dependencies:
+      required: [evidence_atoms]
+      optional: [policy_clauses, consultations, decisions, advice_cards, assumptions, limitations]
   
   weighing_and_balance:
     input:
       - ConsiderationLedgerEntry[]
       - Framing
+      - ContextPack
     output:
       - WeighingRecord
       - ReasoningTrace[]
+    context_pack_dependencies:
+      required: [evidence_atoms]
+      optional: [consultations, decisions, advice_cards, assumptions, limitations]
   
   negotiation_and_alteration:
     input:
       - WeighingRecord
       - ConsiderationLedgerEntry[]
+      - ContextPack
     output:
       - NegotiationMove[]
+    context_pack_dependencies:
+      required: [evidence_atoms]
+      optional: [consultations, decisions, advice_cards, assumptions, limitations]
   
   positioning_and_narration:
     input:
       - WeighingRecord
       - NegotiationMove[]
       - Framing
+      - ContextPack
     output:
       - Trajectory
       - ScenarioJudgementSheet
+      - ReasoningTrace[]
+    context_pack_dependencies:
+      required: [evidence_atoms]
+      optional: [consultations, decisions, advice_cards, assumptions, limitations]

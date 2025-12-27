@@ -826,6 +826,10 @@ def execute_tool_request_sync(*, tool_request_id: str) -> dict[str, Any]:
                 raise HTTPException(status_code=400, detail="ToolRequest.inputs.site_id must be provided for get_site_fingerprint")
             authority_id = inputs.get("authority_id") if isinstance(inputs.get("authority_id"), str) else None
             plan_cycle_id = inputs.get("plan_cycle_id") if isinstance(inputs.get("plan_cycle_id"), str) else None
+            token_budget = inputs.get("token_budget")
+            token_budget = int(token_budget) if isinstance(token_budget, int) else None
+            limit_features = inputs.get("limit_features")
+            limit_features = int(limit_features) if isinstance(limit_features, int) else None
             fingerprint, tool_run_id, errs = compute_site_fingerprint_sync(
                 db_fetch_one=_db_fetch_one,
                 db_fetch_all=_db_fetch_all,
@@ -834,7 +838,8 @@ def execute_tool_request_sync(*, tool_request_id: str) -> dict[str, Any]:
                 site_id=site_id,
                 authority_id=authority_id,
                 plan_cycle_id=plan_cycle_id,
-                limit_features=int(inputs.get("limit_features") or 120),
+                token_budget=token_budget,
+                limit_features=limit_features,
             )
             completed_at = _utc_now()
             evidence_refs = [f"tool_run::{tool_run_id}::site_fingerprint"]

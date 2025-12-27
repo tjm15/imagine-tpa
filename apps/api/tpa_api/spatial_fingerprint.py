@@ -53,7 +53,8 @@ def compute_site_fingerprint_sync(
     site_id: str,
     authority_id: str | None,
     plan_cycle_id: str | None,
-    limit_features: int = 80,
+    token_budget: int | None = None,
+    limit_features: int | None = None,
 ) -> tuple[dict[str, Any] | None, str, list[str]]:
     """
     Deterministic spatial enrichment tool (Slice C).
@@ -68,7 +69,11 @@ def compute_site_fingerprint_sync(
     tool_run_id = str(uuid4())
     started_at = utc_now()
     errors: list[str] = []
-    limit_features = max(1, min(int(limit_features), 500))
+    if isinstance(limit_features, int):
+        limit_features = max(1, limit_features)
+    if limit_features is None and isinstance(token_budget, int) and token_budget > 0:
+        estimated_tokens_per_feature = 200
+        limit_features = max(1, token_budget // estimated_tokens_per_feature)
 
     site = db_fetch_one(
         """
@@ -91,7 +96,16 @@ def compute_site_fingerprint_sync(
             (
                 tool_run_id,
                 "get_site_fingerprint",
-                json.dumps({"site_id": site_id, "authority_id": authority_id, "plan_cycle_id": plan_cycle_id}, ensure_ascii=False),
+                json.dumps(
+                    {
+                        "site_id": site_id,
+                        "authority_id": authority_id,
+                        "plan_cycle_id": plan_cycle_id,
+                        "token_budget": token_budget,
+                        "limit_features": limit_features,
+                    },
+                    ensure_ascii=False,
+                ),
                 json.dumps({"ok": False, "error": "site_not_found"}, ensure_ascii=False),
                 "error",
                 started_at,
@@ -109,6 +123,7 @@ def compute_site_fingerprint_sync(
         params.append(authority_id)
     where_sql = " AND ".join(where)
 
+    limit_clause = "LIMIT %s" if isinstance(limit_features, int) else ""
     try:
         rows = db_fetch_all(
             f"""
@@ -123,9 +138,9 @@ def compute_site_fingerprint_sync(
             JOIN sites s ON s.id = %s::uuid
             WHERE {where_sql}
             ORDER BY sf.type ASC
-            LIMIT %s
+            {limit_clause}
             """,
-            tuple([site_id] + params + [limit_features]),
+            tuple([site_id] + params + ([limit_features] if isinstance(limit_features, int) else [])),
         )
     except Exception as exc:  # noqa: BLE001
         rows = []
@@ -154,6 +169,16 @@ def compute_site_fingerprint_sync(
     if top_types:
         summary = "Intersects: " + ", ".join([f"{t} ({n})" for t, n in top_types])
 
+    limitations_text = (
+        "Deterministic PostGIS intersection checks against spatial_features currently loaded in the canonical DB. "
+        "If constraint layers are missing, results will be incomplete. Distances/network connectivity are not yet computed."
+    )
+    if isinstance(limit_features, int):
+        limitations_text = (
+            limitations_text
+            + f" Intersections were capped at {limit_features} features based on the available token budget."
+        )
+
     fingerprint = {
         "site_id": site_id,
         "authority_id": authority_id,
@@ -161,10 +186,7 @@ def compute_site_fingerprint_sync(
         "counts_by_type": counts_by_type,
         "intersections": features,
         "summary": summary,
-        "limitations_text": (
-            "Deterministic PostGIS intersection checks against spatial_features currently loaded in the canonical DB. "
-            "If constraint layers are missing, results will be incomplete. Distances/network connectivity are not yet computed."
-        ),
+        "limitations_text": limitations_text,
     }
 
     # Best-effort KG enrichment (Slice C): Site -> SpatialFeature INTERSECTS edges with tool_run provenance.
@@ -222,7 +244,13 @@ def compute_site_fingerprint_sync(
             tool_run_id,
             "get_site_fingerprint",
             json.dumps(
-                {"site_id": site_id, "authority_id": authority_id, "plan_cycle_id": plan_cycle_id, "limit_features": limit_features},
+                {
+                    "site_id": site_id,
+                    "authority_id": authority_id,
+                    "plan_cycle_id": plan_cycle_id,
+                    "token_budget": token_budget,
+                    "limit_features": limit_features,
+                },
                 ensure_ascii=False,
             ),
             json.dumps(
@@ -293,4 +321,3 @@ def compute_site_fingerprint_sync(
         pass
 
     return fingerprint, tool_run_id, errors
-

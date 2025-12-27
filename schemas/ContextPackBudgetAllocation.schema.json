@@ -1,0 +1,14 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "ContextPackBudgetAllocation",
+  "type": "object",
+  "description": "LLM-assisted allocation of token budget across ContextPack slices.",
+  "properties": {
+    "slice_budgets": {
+      "type": "object",
+      "additionalProperties": { "type": "integer", "minimum": 0 }
+    },
+    "notes": { "type": ["string", "null"] }
+  },
+  "required": ["slice_budgets"]
+}

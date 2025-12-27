@@ -3,6 +3,7 @@ import sys
 import asyncio
 from langgraph.checkpoint.memory import MemorySaver
 from tpa_api.ingestion.ingestion_graph import build_ingestion_graph
+from tpa_api.ingestion.run_state import create_ingest_run
 from tpa_api.db import init_db_pool, _db_fetch_one, _db_fetch_all
 from tpa_api.blob_store import read_blob_bytes
 
@@ -26,9 +27,7 @@ async def run_graph_for_job(job_id: str) -> dict[str, object]:
     if not docs:
         return {"status": "error", "error": "No documents found for this job."}
 
-    from tpa_api.ingest_worker import _create_ingest_run
-
-    run_id = _create_ingest_run(
+    run_id = create_ingest_run(
         ingest_batch_id=str(job["ingest_batch_id"]),
         authority_id=str(job["authority_id"]) if job.get("authority_id") is not None else None,
         plan_cycle_id=job.get("plan_cycle_id"),
@@ -72,19 +71,24 @@ async def run_graph_for_job(job_id: str) -> dict[str, object]:
         }
 
         config = {"configurable": {"thread_id": str(doc.get("id") or idx)}}
-        async for _event in graph.astream(initial_state, config):
-            pass
+        final_state = await graph.ainvoke(initial_state, config)
+        if isinstance(final_state, dict) and final_state.get("error"):
+            failures.append(f"{doc.get('id')}: {final_state.get('error')}")
+            continue
         processed += 1
 
-    if queue_mode == "separated":
-        from tpa_api.ingest_worker import run_vlm_stage, run_llm_stage, run_embeddings_stage  # noqa: PLC0415
+    if queue_mode == "separated" and not failures and not skipped:
+        from tpa_api.ingestion.tasks import run_vlm_stage, run_llm_stage, run_embeddings_stage  # noqa: PLC0415
 
         run_vlm_stage.delay(run_id).get()
         run_llm_stage.delay(run_id).get()
         run_embeddings_stage.delay(run_id).get()
 
+    status = "ok"
+    if failures or skipped:
+        status = "error"
     return {
-        "status": "ok",
+        "status": status,
         "run_id": run_id,
         "documents_processed": processed,
         "documents_skipped": skipped,

@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AdviceCardMatch",
+  "type": "object",
+  "description": "LLM-selected advice cards for a document scope.",
+  "properties": {
+    "selected_cards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "card_id": { "type": "string" },
+          "trigger_cues": { "type": "array", "items": { "type": "string" } },
+          "evidence_refs": { "type": "array", "items": { "$ref": "EvidenceRef.schema.json" } },
+          "notes": { "type": ["string", "null"] }
+        },
+        "required": ["card_id"]
+      }
+    }
+  },
+  "required": ["selected_cards"]
+}

@@ -29,7 +29,33 @@
     "started_at": { "type": ["string", "null"], "format": "date-time" },
     "ended_at": { "type": ["string", "null"], "format": "date-time" },
     "backtracked_from_move_id": { "type": ["string", "null"], "format": "uuid" },
-    "backtrack_reason": { "type": ["string", "null"] },
+    "backtrack_reason": {
+      "type": ["string", "null"],
+      "description": "Free-text explanation for backtracking (detail to accompany backtrack_reason_code)."
+    },
+    "backtrack_reason_code": {
+      "type": ["string", "null"],
+      "enum": [
+        "MISSING_EVIDENCE",
+        "CONFLICT_FOUND",
+        "POLICY_MISAPPLIED",
+        "SITE_FACT_INCORRECT",
+        "CONSULTEE_CONTRADICTION",
+        "UNCERTAINTY_TOO_HIGH",
+        "FRAMING_SHIFT",
+        "DRAFT_CLAIM_UNCITED",
+        null
+      ],
+      "description": "Canonical backtrack reason vocabulary (see grammar/GRAMMAR_ALIGNMENT.md)."
+    },
+    "fallback_mode": {
+      "type": ["boolean", "null"],
+      "description": "True when the move used a fallback/heuristic path instead of the preferred instrument."
+    },
+    "limitations_text": {
+      "type": ["string", "null"],
+      "description": "Explicit limitations when fallback_mode is true (planner-visible trace cue)."
+    },
     "inputs": { "type": "object" },
     "evidence_refs_considered": {
       "type": "array",
@@ -199,7 +225,11 @@
             "type": "object",
             "properties": {
               "trajectory": { "$ref": "Trajectory.schema.json" },
-              "scenario_judgement_sheet": { "$ref": "ScenarioJudgementSheet.schema.json" }
+              "scenario_judgement_sheet": { "$ref": "ScenarioJudgementSheet.schema.json" },
+              "reasoning_traces": {
+                "type": "array",
+                "items": { "$ref": "ReasoningTrace.schema.json" }
+              }
             },
             "required": ["trajectory", "scenario_judgement_sheet"]
           }

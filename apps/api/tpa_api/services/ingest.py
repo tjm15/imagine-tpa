@@ -492,11 +492,11 @@ def _create_ingest_job(
 
 def _enqueue_ingest_job(job_id: str) -> tuple[bool, str | None]:
     try:
-        from ..ingest_worker import celery_app  # noqa: PLC0415
+        from ..ingestion.tasks import celery_app  # noqa: PLC0415
     except Exception as exc:  # noqa: BLE001
         return False, f"celery_import_failed:{exc}"
     try:
-        celery_app.send_task("tpa_api.ingest_worker.process_ingest_job", args=[job_id])
+        celery_app.send_task("tpa_api.ingestion.tasks.process_ingest_job", args=[job_id])
     except Exception as exc:  # noqa: BLE001
         return False, f"celery_enqueue_failed:{exc}"
     return True, None

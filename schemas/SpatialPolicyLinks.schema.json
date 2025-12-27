@@ -1,0 +1,22 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SpatialPolicyLinks",
+  "type": "object",
+  "properties": {
+    "links": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "policy_clause_id": { "type": "string", "format": "uuid" },
+          "spatial_feature_id": { "type": "string", "format": "uuid" },
+          "relation": { "type": "string" },
+          "confidence": { "type": "string" },
+          "notes": { "type": "string" }
+        },
+        "required": ["policy_clause_id", "spatial_feature_id", "relation"]
+      }
+    }
+  },
+  "required": ["links"]
+}

@@ -21,8 +21,11 @@ The orchestrator runs as a `WorkflowProvider` workflow (LangGraph in OSS, Micros
 * Tab selection is always a human action recorded as an `AuditEvent`.
 
 ## 2) The 8-move loop (with explicit backtracking)
-The orchestrator must run the 8 moves in sequence.
-Backtracking is allowed but must be explicit (a new `MoveEvent` that records the reason for returning to an earlier move).
+The orchestrator must produce a trace that covers all 8 moves, but the runtime is not a strict pipeline.
+The run is a controlled, agentic trajectory through a contested reasoning space:
+* moves may loop, reorder, or re-run as needed,
+* backtracking must be explicit (a new `MoveEvent` with monotonic `sequence`),
+* backtracking reasons should use the controlled vocabulary in `grammar/GRAMMAR_ALIGNMENT.md`.
 
 ## 3) Non-determinism + traceability
 LLM/VLM providers are allowed to be non-deterministic.
@@ -68,3 +71,4 @@ If a tool/model is unavailable, the orchestrator may:
 * stop and raise a blocking `ToolRequest` for human resolution.
 
 Fallback output must be explicitly caveated via `limitations_text` and governance warnings.
+If fallback is used, it must be visible on the trace surface (MoveEvent fields, not hidden state).

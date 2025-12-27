@@ -28,6 +28,6 @@ Centralized all visual reasoning logic:
 ## Impact
 *   **Traceability**: Every VLM call is now a logged ToolRun with a registered Prompt Version.
 *   **Modularity**: Visual logic is decoupled from the worker and the graph.
-*   **Stability**: Removed reliance on ad-hoc functions in `prompts_rich.py` and `ingest_worker.py`.
+*   **Stability**: Removed reliance on ad-hoc functions in `prompts_rich.py` and the legacy worker monolith.
 
 The Ingestion Pipeline is now fully provider-backed.

@@ -34,9 +34,9 @@ The pass should use the canonical, citable substrate only:
 Do not infer judgement outcomes. Use advice cards for navigation and best-practice prompts only.
 
 ## Matching Logic
-- Prefer deterministic cues first (captions, headings, explicit labels).
-- LLM/VLM matching is allowed for ambiguous cues, but results must remain advisory.
-- Each instance should record the cues or evidence refs that triggered it.
+- Advice cards are matched **semantically** using LLM/VLM judgement, not hard keyword rules.
+- Deterministic cues (captions, headings, explicit labels) may be provided **as inputs** to the LLM, but must not be used as the final matcher.
+- Each instance should record the evidence refs or cues the model relied on, plus the model run provenance.
 
 ## De-duplication
 - Do not emit the same card more than once for the same scope.

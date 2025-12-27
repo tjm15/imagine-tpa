@@ -8,7 +8,7 @@
     *   Created `PromptService` to handle versioned registration of prompts in the database.
     *   Ensured all LLM calls register their prompt templates before execution.
 3.  **Policy Extraction Modularization**:
-    *   Extracted logic from `ingest_worker.py` into `tpa_api.ingestion.policy_extraction`.
+    *   Extracted logic from the legacy worker monolith into `tpa_api.ingestion.policy_extraction`.
     *   Refactored `extract_policy_structure`, `extract_policy_logic_assets`, and `extract_edges` to use the new provider stack.
 4.  **Ingestion Graph Update**:
     *   Updated `ingestion_graph.py` to use the new clean modules.

@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "SpatialFeatureInterpretation",
+  "type": "object",
+  "properties": {
+    "interpretations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "spatial_feature_id": { "type": "string", "format": "uuid" },
+          "interpreted_summary": { "type": "string" },
+          "interpreted_constraints": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "interpreted_limitations": { "type": "string" },
+          "confidence_hint": { "type": "string" }
+        },
+        "required": ["spatial_feature_id", "interpreted_summary"]
+      }
+    }
+  },
+  "required": ["interpretations"]
+}

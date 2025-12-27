@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from pathlib import Path
 from typing import TypedDict, List, Dict, Any, Optional
 from uuid import UUID
 
@@ -422,6 +423,250 @@ def node_canonical_load(state: IngestionState) -> IngestionState:
             "block_rows": _clean_db_rows(block_rows),
             "chunk_rows": _clean_db_rows(chunk_rows),
             "visual_rows": _clean_db_rows(visual_rows),
+        }
+    except Exception as exc:  # noqa: BLE001
+        log(f"!!! Canonical Load Failed: {exc}")
+        _progress(state, "canonical_load", {"error": str(exc)}, status="error")
+        return {**state, "error": str(exc)}
+
+
+def node_load_existing(state: IngestionState) -> IngestionState:
+    if state.get("error"):
+        return state
+    try:
+        document_id = state.get("document_id")
+        if not document_id:
+            return {**state, "error": "missing_document_id"}
+
+        doc_row = _db_fetch_one(
+            """
+            SELECT metadata, raw_source_uri, raw_content_type, raw_artifact_id, blob_path
+            FROM documents
+            WHERE id = %s::uuid
+            """,
+            (document_id,),
+        )
+        doc_metadata = state.get("doc_metadata") or (doc_row.get("metadata") if isinstance(doc_row, dict) else {}) or {}
+        raw_source_uri = doc_row.get("raw_source_uri") if isinstance(doc_row, dict) else None
+        blob_path = doc_row.get("blob_path") if isinstance(doc_row, dict) else None
+        filename = state.get("filename")
+        if not filename:
+            filename = Path(raw_source_uri or blob_path or f"{document_id}.pdf").name
+        content_type = state.get("content_type") or (doc_row.get("raw_content_type") if isinstance(doc_row, dict) else None)
+        raw_artifact_id = state.get("raw_artifact_id") or (doc_row.get("raw_artifact_id") if isinstance(doc_row, dict) else None)
+
+        bundle_semantic: dict[str, Any] = {}
+        bundle_row = _db_fetch_one(
+            """
+            SELECT blob_path
+            FROM parse_bundles
+            WHERE document_id = %s::uuid
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (document_id,),
+        )
+        if isinstance(bundle_row, dict) and isinstance(bundle_row.get("blob_path"), str):
+            bundle = _load_parse_bundle(bundle_row["blob_path"])
+            bundle_semantic = bundle.get("semantic") if isinstance(bundle.get("semantic"), dict) else {}
+
+        evidence_rows = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id, locator_value, fragment_id, source_type, source_id
+                FROM evidence_refs
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        evidence_ref_map: dict[str, str] = {}
+        evidence_ref_by_id: dict[str, str] = {}
+        for row in evidence_rows:
+            ref_id = row.get("id")
+            if not isinstance(ref_id, str):
+                continue
+            locator_value = row.get("locator_value")
+            fragment_id = row.get("fragment_id")
+            if isinstance(locator_value, str):
+                evidence_ref_map[locator_value] = ref_id
+            if isinstance(fragment_id, str):
+                evidence_ref_map[fragment_id] = ref_id
+            source_type = row.get("source_type")
+            source_id = row.get("source_id")
+            if isinstance(source_type, str) and isinstance(source_id, str) and isinstance(fragment_id, str):
+                evidence_ref_by_id[ref_id] = f"{source_type}::{source_id}::{fragment_id}"
+
+        block_rows_raw = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id, block_id, page_number, text, block_type, section_path,
+                       span_start, span_end, span_quality, evidence_ref_id
+                FROM layout_blocks
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                ORDER BY page_number ASC
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        block_rows: list[dict[str, Any]] = []
+        page_texts: dict[int, str] = {}
+        for row in block_rows_raw:
+            layout_block_id = row.get("id")
+            block_id = row.get("block_id")
+            evidence_ref_id = row.get("evidence_ref_id")
+            evidence_ref = evidence_ref_by_id.get(evidence_ref_id)
+            if not evidence_ref and layout_block_id and block_id:
+                evidence_ref = f"layout_block::{layout_block_id}::{block_id}"
+            page_number = row.get("page_number")
+            text = row.get("text") or ""
+            if isinstance(page_number, int):
+                page_texts[page_number] = (page_texts.get(page_number, "") + "\n" + text).strip()
+            block_rows.append(
+                {
+                    "layout_block_id": layout_block_id,
+                    "block_id": block_id,
+                    "page_number": page_number,
+                    "text": text,
+                    "type": row.get("block_type"),
+                    "section_path": row.get("section_path"),
+                    "span_start": row.get("span_start"),
+                    "span_end": row.get("span_end"),
+                    "span_quality": row.get("span_quality"),
+                    "evidence_ref_id": evidence_ref_id,
+                    "evidence_ref": evidence_ref,
+                }
+            )
+
+        chunk_rows_raw = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id, page_number, text, type, section_path,
+                       span_start, span_end, span_quality, evidence_ref_id, metadata
+                FROM chunks
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                ORDER BY page_number ASC
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        chunk_rows: list[dict[str, Any]] = []
+        for row in chunk_rows_raw:
+            chunk_id = row.get("id")
+            evidence_ref_id = row.get("evidence_ref_id")
+            evidence_ref = evidence_ref_by_id.get(evidence_ref_id)
+            if not evidence_ref and chunk_id:
+                fragment = None
+                metadata = row.get("metadata") if isinstance(row.get("metadata"), dict) else {}
+                fragment = metadata.get("evidence_ref_fragment")
+                if isinstance(fragment, str):
+                    evidence_ref = f"chunk::{chunk_id}::{fragment}"
+            chunk_rows.append(
+                {
+                    "chunk_id": chunk_id,
+                    "text": row.get("text"),
+                    "page_number": row.get("page_number"),
+                    "type": row.get("type"),
+                    "section_path": row.get("section_path"),
+                    "span_start": row.get("span_start"),
+                    "span_end": row.get("span_end"),
+                    "span_quality": row.get("span_quality"),
+                    "evidence_ref_id": evidence_ref_id,
+                    "evidence_ref": evidence_ref,
+                }
+            )
+
+        visual_rows = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id, page_number, asset_type, blob_path, evidence_ref_id, metadata
+                FROM visual_assets
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                ORDER BY page_number ASC
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        visual_assets: list[dict[str, Any]] = []
+        for row in visual_rows:
+            visual_assets.append(
+                {
+                    "visual_asset_id": row.get("id"),
+                    "page_number": row.get("page_number"),
+                    "asset_type": row.get("asset_type"),
+                    "blob_path": row.get("blob_path"),
+                    "evidence_ref_id": row.get("evidence_ref_id"),
+                    "metadata": row.get("metadata") if isinstance(row.get("metadata"), dict) else {},
+                }
+            )
+
+        policy_sections = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id AS policy_section_id, policy_code, title, text, section_path
+                FROM policy_sections
+                WHERE document_id = %s::uuid
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        policy_clauses = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT id AS policy_clause_id, policy_section_id, clause_ref, text, evidence_ref_id
+                FROM policy_clauses
+                WHERE policy_section_id IN (
+                  SELECT id FROM policy_sections WHERE document_id = %s::uuid
+                )
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+
+        link_rows = _clean_db_rows(
+            _db_fetch_all(
+                """
+                SELECT visual_asset_id, target_id
+                FROM visual_asset_links
+                WHERE target_type = 'policy_section'
+                  AND visual_asset_id IN (
+                    SELECT id FROM visual_assets WHERE document_id = %s::uuid
+                  )
+                  AND (%s::uuid IS NULL OR run_id = %s::uuid)
+                """,
+                (document_id, state.get("run_id"), state.get("run_id")),
+            )
+        )
+        links_by_asset: dict[str, list[str]] = {}
+        for row in link_rows:
+            asset_id = row.get("visual_asset_id")
+            target_id = row.get("target_id")
+            if not asset_id or not target_id:
+                continue
+            links_by_asset.setdefault(str(asset_id), []).append(str(target_id))
+
+        return {
+            **state,
+            "doc_metadata": doc_metadata,
+            "filename": filename,
+            "content_type": content_type,
+            "raw_artifact_id": raw_artifact_id,
+            "bundle_semantic": bundle_semantic,
+            "evidence_ref_map": evidence_ref_map,
+            "pages": [],
+            "page_texts": page_texts,
+            "block_rows": block_rows,
+            "chunk_rows": chunk_rows,
+            "visual_rows": visual_assets,
+            "policy_sections": policy_sections,
+            "policy_clauses": policy_clauses,
+            "links_by_asset": links_by_asset,
         }
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Canonical Load Failed: {exc}")
@@ -957,7 +1202,21 @@ def node_embeddings(state: IngestionState) -> IngestionState:
                 ),
             )
 
-        if state.get("counts", {}).get("visual_semantic_assertions", 0) > 0:
+        has_assertions = state.get("counts", {}).get("visual_semantic_assertions", 0) > 0
+        if not has_assertions:
+            has_assertions = bool(
+                _db_fetch_one(
+                    """
+                    SELECT id
+                    FROM visual_semantic_outputs
+                    WHERE (%s::uuid IS NULL OR run_id = %s::uuid)
+                      AND jsonb_array_length(assertions_jsonb) > 0
+                    LIMIT 1
+                    """,
+                    (state.get("run_id"), state.get("run_id")),
+                )
+            )
+        if has_assertions:
             _bump(
                 state,
                 "unit_embeddings_visual_assertion",
@@ -1027,5 +1286,36 @@ def build_ingestion_graph(checkpointer=None, *, mode: str = "full"):
         workflow.add_edge("visual_linking", "imagination")
         workflow.add_edge("imagination", "embeddings")
         workflow.add_edge("embeddings", END)
+
+    return workflow.compile(checkpointer=checkpointer or MemorySaver())
+
+
+def build_stage_graph(checkpointer=None, *, stage: str):
+    workflow = StateGraph(IngestionState)
+
+    workflow.add_node("load_existing", node_load_existing)
+    workflow.set_entry_point("load_existing")
+
+    if stage == "vlm":
+        workflow.add_node("visual_pipeline", node_visual_pipeline)
+        workflow.add_edge("load_existing", "visual_pipeline")
+        workflow.add_edge("visual_pipeline", END)
+    elif stage == "llm":
+        workflow.add_node("document_identity", node_document_identity)
+        workflow.add_node("structural_llm", node_structural_llm)
+        workflow.add_node("visual_linking", node_visual_linking)
+        workflow.add_node("imagination", node_imagination)
+
+        workflow.add_edge("load_existing", "document_identity")
+        workflow.add_edge("document_identity", "structural_llm")
+        workflow.add_edge("structural_llm", "visual_linking")
+        workflow.add_edge("visual_linking", "imagination")
+        workflow.add_edge("imagination", END)
+    elif stage == "embeddings":
+        workflow.add_node("embeddings", node_embeddings)
+        workflow.add_edge("load_existing", "embeddings")
+        workflow.add_edge("embeddings", END)
+    else:
+        raise ValueError(f"Unknown ingest stage: {stage}")
 
     return workflow.compile(checkpointer=checkpointer or MemorySaver())

@@ -26,7 +26,7 @@ System name: **The Planner's Assistant**.
 7. Negotiation & alteration
 8. Positioning & narration
 
-Source of truth: `grammar/GRAMMAR.md` + `grammar/MOVE_IO_CATALOGUE.yaml` + `schemas/*.schema.json`.
+Source of truth: `grammar/GRAMMAR.md` + `grammar/GRAMMAR_ALIGNMENT.md` + `grammar/MOVE_IO_CATALOGUE.yaml` + `schemas/*.schema.json`.
 
 ### Core system specs (by area)
 

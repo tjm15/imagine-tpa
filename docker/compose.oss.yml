@@ -256,7 +256,7 @@ services:
         condition: service_started
       tpa-docparse:
         condition: service_started
-    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO --concurrency=${TPA_INGEST_CPU_CONCURRENCY:-16} --queues ingest_cpu
+    command: celery -A tpa_api.ingestion.tasks.celery_app worker --loglevel=INFO --concurrency=${TPA_INGEST_CPU_CONCURRENCY:-16} --queues ingest_cpu
     <<: *service_defaults
 
   tpa-ingest-gpu:
@@ -299,7 +299,7 @@ services:
         condition: service_completed_successfully
       tpa-redis:
         condition: service_started
-    command: celery -A tpa_api.ingest_worker.celery_app worker --loglevel=INFO --concurrency=1 --queues ingest_vlm,ingest_llm,ingest_embed
+    command: celery -A tpa_api.ingestion.tasks.celery_app worker --loglevel=INFO --concurrency=1 --queues ingest_vlm,ingest_llm,ingest_embed,ingest_postprocess
     gpus: all
     <<: *service_defaults
 

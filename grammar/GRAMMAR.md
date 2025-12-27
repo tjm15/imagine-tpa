@@ -4,6 +4,9 @@
 This document defines the 8-move grammar that guides the system's logic.
 The grammar is a **procedural scaffold**, not a deterministic algorithm; agents should not overfit to it.
 
+Canonical alignment: `grammar/GRAMMAR_ALIGNMENT.md` defines the non-linear, trajectory-based
+use of this grammar and the controlled vocabulary for backtracking.
+
 ## 1. Framing
 **Goal**: Establish the "lens" for the session.
 * **Inputs**: User intent, CULP stage, specific "Political Framing" selection (e.g., "Maximize Housing Delivery", "Protect Green Belt"), Anchors.

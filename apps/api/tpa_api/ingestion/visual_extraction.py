@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from uuid import uuid4
+from uuid import uuid4, UUID
 from typing import Any
 
 from tpa_api.db import _db_execute, _db_fetch_one, _db_fetch_all
@@ -78,7 +78,7 @@ def _upsert_visual_semantic_output(
     material_index: dict[str, Any] | None = None,
     metadata_update: dict[str, Any] | None = None,
 ) -> None:
-    # Logic copied from ingest_worker.py but using new patterns if applicable
+    # Logic adapted from the legacy worker implementation, adjusted for providers.
     existing = _db_fetch_one(
         """
         SELECT id, metadata_jsonb
@@ -521,7 +521,152 @@ def extract_visual_region_assertions(
     run_id: str | None,
     visual_assets: list[dict[str, Any]],
 ) -> int:
-    # ... existing code ...
+    if not visual_assets:
+        return 0
+
+    prompt_id = "visual_region_assertions_v1"
+    total_assertions = 0
+    blob_provider = get_blob_store_provider()
+
+    for asset in visual_assets:
+        visual_asset_id = asset.get("visual_asset_id")
+        if not visual_asset_id:
+            continue
+        semantic_row = _db_fetch_one(
+            """
+            SELECT canonical_facts_jsonb, asset_specific_facts_jsonb, asset_type, asset_subtype, metadata_jsonb
+            FROM visual_semantic_outputs
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        canonical_facts = semantic_row.get("canonical_facts_jsonb") if isinstance(semantic_row, dict) else {}
+        asset_specific = semantic_row.get("asset_specific_facts_jsonb") if isinstance(semantic_row, dict) else {}
+        asset_type = semantic_row.get("asset_type") if isinstance(semantic_row, dict) else None
+        asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row, dict) else None
+
+        region_rows = _db_fetch_all(
+            """
+            SELECT id, bbox, bbox_quality, caption_text, metadata_jsonb
+            FROM visual_asset_regions
+            WHERE visual_asset_id = %s::uuid
+              AND (%s::uuid IS NULL OR run_id = %s::uuid)
+            ORDER BY created_at
+            """,
+            (visual_asset_id, run_id, run_id),
+        )
+        if not region_rows:
+            continue
+
+        assertions: list[dict[str, Any]] = []
+        for region in region_rows:
+            region_id = str(region.get("id"))
+            meta = region.get("metadata_jsonb") if isinstance(region.get("metadata_jsonb"), dict) else {}
+            region_blob_path = meta.get("region_blob_path")
+            region_evidence_ref = meta.get("evidence_ref")
+            if not isinstance(region_blob_path, str):
+                continue
+            try:
+                blob_data = blob_provider.get_blob(region_blob_path, run_id=run_id, ingest_batch_id=ingest_batch_id)
+                image_bytes = blob_data["bytes"]
+            except Exception:  # noqa: BLE001
+                continue
+
+            prompt = (
+                "You are a planning visual assertion instrument. Return ONLY valid JSON.\n"
+                "Given a cropped region from a planning visual, produce atomic assertions anchored to this region.\n"
+                "Do NOT assess policy compliance or planning balance; describe what the region appears to show or claim.\n"
+                "Output shape:\n"
+                "{\n"
+                '  "assertions": [\n'
+                "    {\n"
+                '      "assertion_id": "uuid",\n'
+                '      "assertion_type": "string",\n'
+                '      "statement": "string",\n'
+                '      "polarity": "supports|raises_risk|neutral",\n'
+                '      "basis": ["string"],\n'
+                '      "confidence": 0.0,\n'
+                '      "risk_flags": ["string"],\n'
+                '      "material_consideration_tags": ["string"],\n'
+                '      "follow_up_requests": ["string"],\n'
+                f'      "evidence_region_id": "{region_id}"\n'
+                "    }\n"
+                "  ]\n"
+                "}\n"
+                "Use assertion_type from this vocabulary when possible:\n"
+                "design_scale_massing, design_form_roofline, design_materiality, design_frontage_and_activation,\n"
+                "design_rhythm_grain, townscape_subordination_or_dominance, townscape_skyline_effect,\n"
+                "townscape_view_corridor_effect, townscape_street_enclosure, heritage_setting_effect,\n"
+                "heritage_harm_signal, heritage_view_of_designated_asset, amenity_overlooking_signal,\n"
+                "amenity_enclosure_outlook_signal, amenity_daylight_sunlight_signal, amenity_noise_activity_signal,\n"
+                "access_point_and_visibility_signal, servicing_feasibility_signal, parking_cycle_provision_signal,\n"
+                "trees_retention_or_loss_signal, landscape_character_signal, drainage_strategy_signal, flood_risk_signal,\n"
+                "context_omission_risk, scale_presentation_risk, idealisation_risk, viewpoint_bias_risk.\n"
+                "Material consideration tags should be chosen from:\n"
+                "design.scale_massing, design.form_roofline, design.materials_detailing, design.public_realm_frontage,\n"
+                "townscape.character_appearance, townscape.views_skyline, townscape.street_enclosure,\n"
+                "heritage.setting_significance, heritage.views_assets,\n"
+                "amenity.privacy_overlooking, amenity.daylight_sunlight, amenity.outlook_enclosure,\n"
+                "transport.access_highway_safety, transport.parking_cycle, transport.servicing,\n"
+                "landscape.trees_planting, landscape.open_space, ecology.habitat_cues,\n"
+                "water.flood_risk, water.drainage_suds, construction.phasing_logistics,\n"
+                "evidence.representation_limits.\n"
+                f"Asset type: {asset_type or 'unknown'}; asset subtype: {asset_subtype or 'null'}.\n"
+                f"Canonical facts: {json.dumps(canonical_facts, ensure_ascii=False)}\n"
+                f"Asset-specific facts: {json.dumps(asset_specific, ensure_ascii=False)}\n"
+                f"Region bbox: {json.dumps(region.get('bbox'), ensure_ascii=False)}\n"
+                f"Region caption: {region.get('caption_text') or ''}\n"
+            )
+
+            obj, tool_run_id, errs = _run_vlm_prompt(
+                prompt_id=prompt_id,
+                prompt_version=1,
+                prompt_name="Region assertions",
+                purpose="Extract region-level assertions from a visual crop.",
+                system_template=None,
+                user_text=prompt,
+                image_bytes=image_bytes,
+                output_schema=None,
+                run_id=run_id,
+                ingest_batch_id=ingest_batch_id,
+            )
+            if errs or not isinstance(obj, dict):
+                continue
+            region_assertions = obj.get("assertions") if isinstance(obj.get("assertions"), list) else []
+            for assertion in region_assertions:
+                if not isinstance(assertion, dict):
+                    continue
+                assertion_id = assertion.get("assertion_id")
+                try:
+                    if not isinstance(assertion_id, str):
+                        raise ValueError("invalid")
+                    UUID(assertion_id)
+                except Exception:  # noqa: BLE001
+                    assertion_id = str(uuid4())
+                assertion["assertion_id"] = assertion_id
+                if not assertion.get("evidence_region_id"):
+                    assertion["evidence_region_id"] = region_id
+                if isinstance(region_evidence_ref, str) and region_evidence_ref:
+                    assertion["evidence_region_ref"] = region_evidence_ref
+                assertions.append(assertion)
+            total_assertions += len(region_assertions)
+
+        material_index = _build_material_index(assertions)
+        _upsert_visual_semantic_output(
+            visual_asset_id=visual_asset_id,
+            run_id=run_id,
+            schema_version="1.0",
+            output_kind="classification",
+            tool_run_id=None,
+            assertions=assertions,
+            material_index=material_index,
+            metadata_update={"region_assertions_count": len(assertions)},
+        )
+
+    return total_assertions
 def extract_visual_agent_findings(
     *,
     ingest_batch_id: str,
@@ -736,14 +881,14 @@ def detect_redline_boundary_mask(
             # apps/api/tpa_api/providers/segmentation_http.py expects 'prompts': prompts
             # The HTTP service usually takes a list of prompts.
             # I need to verify what the underlying service expects.
-            # In `ingest_worker.py`: payload = {"image_base64": ..., "prompts": {"box": bbox}}
+            # Legacy payload shape: {"image_base64": ..., "prompts": {"box": bbox}}
             # My provider: `payload = { "image_base64": ..., "prompts": prompts }`
             # So I should pass `{"box": bbox}` as the prompts object if that's what the service wants?
             # Wait, `SegmentationProvider` says `prompts: list[dict]`.
             # `HttpSegmentationProvider` passes it as `prompts`.
             # If the backend expects `{"box": ...}` dict, I should probably adapt or pass dict.
             # Let's assume for now I pass `{"box": bbox}` as the prompts argument, even if type hint says list.
-            # Actually, looking at `ingest_worker` line 2685: `payload = {"image_base64": ..., "prompts": {"box": bbox}}`
+            # Legacy payload shape used prompts={"box": bbox}.
             # So `prompts` is a dict there. My interface said list.
             # I will pass the dict for now to match the backend expectation.
             options={"run_id": run_id, "ingest_batch_id": ingest_batch_id}
@@ -757,7 +902,7 @@ def detect_redline_boundary_mask(
     # payload = { "image_base64": ..., "prompts": prompts }
     # So if I pass prompts={"box": bbox}, it sends `{"prompts": {"box": bbox}}`. Correct.
     
-    # Wait, `ingest_worker` passed `prompts={"box": bbox}`.
+    # Legacy worker passed prompts={"box": bbox}.
     # So I call `seg_provider.segment(..., prompts={"box": bbox})`.
     
     # But wait, `segment` signature is `prompts: list[dict] | None`. 
