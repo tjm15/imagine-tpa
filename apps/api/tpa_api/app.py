@@ -17,6 +17,7 @@ from .routes.ingest import router as ingest_router
 from .routes.monitoring import router as monitoring_router
 from .routes.applications import router as applications_router
 from .routes.advice_cards import router as advice_cards_router
+from .routes.authored_artefacts import router as authored_artefacts_router
 from .routes.plan_cycles import router as plan_cycles_router
 from .routes.plan_projects import router as plan_projects_router
 from .routes.publications import router as publications_router
@@ -65,6 +66,7 @@ def create_app() -> FastAPI:
     app.include_router(gateways_router)
     app.include_router(examination_router)
     app.include_router(publications_router)
+    app.include_router(authored_artefacts_router)
     app.include_router(applications_router)
     app.include_router(advice_cards_router)
     app.include_router(monitoring_router)

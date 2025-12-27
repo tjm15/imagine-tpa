@@ -667,7 +667,7 @@ export function DebugView() {
       return;
     }
     const controller = new AbortController();
-    fetchJson<DebugGraphData>(`/trace/runs/${selectedTraceRunId}?mode=${traceMode}`, controller.signal)
+    fetchJson<DebugGraphData>(`/api/trace/runs/${selectedTraceRunId}?mode=${traceMode}`, controller.signal)
       .then((res) => {
         if (res.ok) {
           setTraceGraph(res.data);

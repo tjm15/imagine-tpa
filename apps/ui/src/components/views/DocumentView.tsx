@@ -1,281 +1,358 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { EditorContent, useEditor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import Placeholder from '@tiptap/extension-placeholder';
+import { FileText, Sparkles, AlertTriangle, CheckCircle2, Clock, Wand2 } from 'lucide-react';
 import { WorkspaceMode } from '../../App';
-import { FileText, Plus, Link2, MessageSquare, Sparkles, AlertCircle, Info, ChevronRight, CheckCircle } from 'lucide-react';
-import { Card, CardContent } from "../ui/card";
-import { Badge } from "../ui/badge";
-import { Button } from "../ui/button";
-import { Separator } from "../ui/separator";
-import { Alert, AlertDescription, AlertTitle } from "../ui/alert";
-
-import { ExplainabilityLevel } from '../../contexts/ExplainabilityContext';
+import { useProject } from '../../contexts/AuthorityContext';
+import { EvidenceMark } from '../editor/EvidenceMark';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Input } from '../ui/input';
 
 interface DocumentViewProps {
   workspace: WorkspaceMode;
-  explainabilityLevel?: ExplainabilityLevel;
+}
+
+interface AuthoredArtefact {
+  authored_artefact_id: string;
+  workspace: string;
+  plan_project_id?: string | null;
+  application_id?: string | null;
+  culp_stage_id?: string | null;
+  artefact_type: string;
+  title: string;
+  status: string;
+  content_format: string;
+  content: Record<string, any>;
+  updated_at?: string | null;
+}
+
+interface DraftSuggestion {
+  suggestion_id: string;
+  block_type: string;
+  content: string;
+  evidence_refs: string[];
+  limitations_text?: string | null;
+  requires_judgement_run?: boolean;
+}
+
+const DEFAULT_CONTENT = {
+  type: 'doc',
+  content: [
+    {
+      type: 'paragraph',
+      content: [{ type: 'text', text: 'Start drafting here.' }],
+    },
+  ],
+};
+
+function buildDefaultTitle(workspace: WorkspaceMode) {
+  return workspace === 'plan' ? 'Place Portrait' : 'Officer Report';
 }
 
 export function DocumentView({ workspace }: DocumentViewProps) {
-  const title = workspace === 'plan' 
-    ? 'Place Portrait: Baseline Evidence' 
-    : 'Officer Report: 24/0456/FUL';
+  const { authority, planProject, projectId } = useProject();
+  const [artefact, setArtefact] = useState<AuthoredArtefact | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const [draftPrompt, setDraftPrompt] = useState('');
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
+  const [suggestions, setSuggestions] = useState<DraftSuggestion[]>([]);
+
+  const saveTimeoutRef = useRef<number | null>(null);
+  const lastSavedRef = useRef<string>('');
+
+  const artefactType = workspace === 'plan' ? 'place_portrait' : 'officer_report';
+  const title = artefact?.title || buildDefaultTitle(workspace);
+  const authorityId = authority?.id || planProject?.authority_id || null;
+  const planProjectId = workspace === 'plan' ? planProject?.plan_project_id ?? null : null;
+  const applicationId = workspace === 'casework' ? projectId ?? null : null;
+
+  const editor = useEditor({
+    extensions: [
+      StarterKit,
+      Placeholder.configure({
+        placeholder: 'Draft your narrative, policies, or analysis here. Evidence refs stay attached to each claim.',
+      }),
+      EvidenceMark,
+    ],
+    content: DEFAULT_CONTENT,
+    editorProps: {
+      attributes: {
+        class:
+          'min-h-[420px] rounded-lg border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed text-slate-800 focus:outline-none',
+      },
+    },
+  });
+
+  const saveArtefact = async (nextContent: Record<string, any>) => {
+    if (!artefact) return;
+    setSaveState('saving');
+    try {
+      const resp = await fetch(`/api/authored-artefacts/${artefact.authored_artefact_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content_jsonb: nextContent }),
+      });
+      if (!resp.ok) {
+        throw new Error(`Failed to save (${resp.status})`);
+      }
+      const data = (await resp.json()) as AuthoredArtefact;
+      setArtefact(data);
+      lastSavedRef.current = JSON.stringify(nextContent);
+      setSaveState('saved');
+    } catch (err: any) {
+      setSaveState('error');
+      console.error(err);
+    }
+  };
+
+  useEffect(() => {
+    if (!editor) return;
+    const handler = () => {
+      if (!artefact) return;
+      const json = editor.getJSON();
+      const serialized = JSON.stringify(json);
+      if (serialized === lastSavedRef.current) return;
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+      saveTimeoutRef.current = window.setTimeout(() => {
+        saveArtefact(json);
+      }, 800);
+    };
+    editor.on('update', handler);
+    return () => {
+      editor.off('update', handler);
+      if (saveTimeoutRef.current) {
+        window.clearTimeout(saveTimeoutRef.current);
+      }
+    };
+  }, [editor, artefact?.authored_artefact_id]);
+
+  useEffect(() => {
+    if (!editor || !artefact) return;
+    const incoming = artefact.content && Object.keys(artefact.content).length ? artefact.content : DEFAULT_CONTENT;
+    const serialized = JSON.stringify(incoming);
+    if (serialized === lastSavedRef.current) return;
+    lastSavedRef.current = serialized;
+    editor.commands.setContent(incoming, false);
+  }, [editor, artefact?.authored_artefact_id]);
+
+  useEffect(() => {
+    const loadArtefact = async () => {
+      if (!authorityId || (!planProjectId && !applicationId)) return;
+      setLoading(true);
+      setLoadError(null);
+      try {
+        const params = new URLSearchParams({
+          workspace,
+          artefact_type: artefactType,
+          limit: '1',
+        });
+        if (planProjectId) params.set('plan_project_id', planProjectId);
+        if (applicationId) params.set('application_id', applicationId);
+
+        const resp = await fetch(`/api/authored-artefacts?${params.toString()}`);
+        if (!resp.ok) {
+          throw new Error(`Failed to load drafts (${resp.status})`);
+        }
+        const data = await resp.json();
+        const existing = Array.isArray(data.authored_artefacts) ? data.authored_artefacts[0] : null;
+        if (existing) {
+          setArtefact(existing);
+          return;
+        }
+
+        const createResp = await fetch('/api/authored-artefacts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            workspace,
+            artefact_type: artefactType,
+            title: buildDefaultTitle(workspace),
+            plan_project_id: planProjectId,
+            application_id: applicationId,
+            culp_stage_id: planProject?.current_stage_id ?? null,
+            status: 'draft',
+            content_format: 'tiptap_json',
+            created_by: 'planner',
+          }),
+        });
+        if (!createResp.ok) {
+          throw new Error(`Failed to create draft (${createResp.status})`);
+        }
+        const created = (await createResp.json()) as AuthoredArtefact;
+        setArtefact(created);
+      } catch (err: any) {
+        setLoadError(err?.message || 'Failed to load draft');
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadArtefact();
+  }, [workspace, planProjectId, applicationId, authorityId]);
+
+  const saveStatus = useMemo(() => {
+    if (saveState === 'saving') return { label: 'Saving...', icon: Clock, tone: 'text-slate-500' };
+    if (saveState === 'saved') return { label: 'Saved', icon: CheckCircle2, tone: 'text-emerald-600' };
+    if (saveState === 'error') return { label: 'Save failed', icon: AlertTriangle, tone: 'text-amber-600' };
+    return { label: 'Draft', icon: FileText, tone: 'text-slate-500' };
+  }, [saveState]);
+
+  const StatusIcon = saveStatus.icon;
+
+  const handleGenerateDraft = async () => {
+    if (!artefact) return;
+    setDraftLoading(true);
+    setDraftError(null);
+    try {
+      const resp = await fetch('/api/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          draft_request_id: window.crypto.randomUUID(),
+          requested_at: new Date().toISOString(),
+          requested_by: 'planner',
+          artefact_type: artefact.artefact_type,
+          user_prompt: draftPrompt || artefact.title,
+          constraints: {
+            authority_id: authorityId,
+            plan_cycle_id: planProject?.metadata?.plan_cycle_id ?? null,
+          },
+        }),
+      });
+      if (!resp.ok) {
+        throw new Error(`Draft request failed (${resp.status})`);
+      }
+      const data = await resp.json();
+      const nextSuggestions = Array.isArray(data.suggestions) ? data.suggestions : [];
+      setSuggestions(nextSuggestions);
+    } catch (err: any) {
+      setDraftError(err?.message || 'Draft generation failed');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  const insertSuggestion = (suggestion: DraftSuggestion) => {
+    if (!editor) return;
+    const refs = Array.isArray(suggestion.evidence_refs) ? suggestion.evidence_refs : [];
+    const marks = refs.length ? [{ type: 'evidenceRef', attrs: { refs } }] : [];
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: 'paragraph',
+        content: [{ type: 'text', text: suggestion.content, marks }],
+      })
+      .run();
+  };
+
+  if (loading) {
+    return <div className="p-6 text-sm text-slate-500">Loading draft workspace…</div>;
+  }
+
+  if (loadError) {
+    return <div className="p-6 text-sm text-amber-700">{loadError}</div>;
+  }
+
+  if (!artefact) {
+    return <div className="p-6 text-sm text-slate-500">No draft is available yet.</div>;
+  }
 
   return (
-    <div className="max-w-4xl mx-auto p-8 font-sans">
-      {/* Document Header */}
-      <div className="mb-10 pb-6 border-b border-slate-200">
-        <div className="flex items-center gap-2 text-sm text-blue-600 font-medium mb-3">
+    <div className="max-w-5xl mx-auto p-8 space-y-6">
+      <header className="space-y-2">
+        <div className="flex items-center gap-2 text-xs uppercase tracking-wider text-slate-500">
           <FileText className="w-4 h-4" />
-          <span className="uppercase tracking-wider text-xs">{workspace === 'plan' ? 'Deliverable Document' : 'Officer Report'}</span>
+          {workspace === 'plan' ? 'Living Document' : 'Officer Report Draft'}
         </div>
-        <h1 className="text-4xl font-bold text-slate-900 mb-4 tracking-tight">{title}</h1>
-        <div className="flex flex-wrap items-center gap-4 text-sm text-slate-500">
-          <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 rounded-sm font-normal">Draft v2.3</Badge>
-          <span>Last edited 18 Dec 2024</span>
-          <span>by <span className="text-slate-900 font-medium">Sarah Mitchell</span></span>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-3xl font-bold text-slate-900">{title}</h1>
+          <Badge variant="outline" className="text-xs">
+            {artefact.status}
+          </Badge>
+          <div className={`flex items-center gap-1 text-xs ${saveStatus.tone}`}>
+            <StatusIcon className="w-3.5 h-3.5" />
+            <span>{saveStatus.label}</span>
+          </div>
         </div>
-      </div>
+        <p className="text-sm text-slate-500">
+          Drafts are stored as authored artefacts with embedded evidence marks. AI suggestions remain advisory.
+        </p>
+      </header>
 
-      {/* Document Content */}
-      <div className="space-y-8 max-w-none text-slate-800 leading-relaxed">
-        {workspace === 'plan' ? (
-          <>
-            <section className="space-y-4">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                 <span className="text-slate-300 text-xl font-normal">01</span> Introduction
-              </h2>
-              <p className="text-lg text-slate-600 leading-relaxed">
-                This place portrait provides the baseline evidence for Cambridge's local plan review under the new CULP system. 
-                It establishes the current context against which spatial strategy options will be assessed.
-              </p>
-              <p>
-                The portrait draws on multiple evidence sources including Census 2021, local monitoring data, and commissioned 
-                technical studies. All limitations are explicitly noted.
-              </p>
-              
-              <div className="flex items-center gap-2 pl-4 border-l-2 border-blue-200 py-1">
-                   <Link2 className="w-3.5 h-3.5 text-blue-500" />
-                   <span className="text-sm font-medium text-blue-700 cursor-pointer hover:underline">Evidence Source: Census 2021 Data Pack</span>
-              </div>
-            </section>
-
-            <section className="space-y-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 mt-8">
-                  <span className="text-slate-300 text-xl font-normal">02</span> Housing Context
-              </h2>
-              
-              <Card className="bg-slate-50/50 border-slate-200 shadow-sm overflow-hidden">
-                 <div className="bg-slate-100/50 px-4 py-2 border-b border-slate-200 flex items-center justify-between">
-                    <h3 className="text-sm font-semibold text-slate-700">Key Indicators: Housing Market</h3>
-                    <Badge variant="secondary" className="bg-white text-slate-500 border-slate-200">Q3 2024</Badge>
-                 </div>
-                 <CardContent className="p-6">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                        <div>
-                            <div className="text-sm text-slate-500 mb-1">Current Stock</div>
-                            <div className="text-2xl font-bold text-slate-900">52,400</div>
-                            <div className="text-xs text-slate-400">dwellings</div>
-                        </div>
-                        <div>
-                            <div className="text-sm text-slate-500 mb-1">Affordability Ratio</div>
-                            <div className="text-2xl font-bold text-orange-600">12.8x</div>
-                            <div className="text-xs text-orange-600/80">High Risk</div>
-                        </div>
-                        <div>
-                            <div className="text-sm text-slate-500 mb-1">Delivery (5yr avg)</div>
-                            <div className="text-2xl font-bold text-slate-900">1,240</div>
-                            <div className="text-xs text-slate-400">dpa</div>
-                        </div>
-                        <div>
-                            <div className="text-sm text-slate-500 mb-1">Target Need</div>
-                            <div className="text-2xl font-bold text-slate-900">1,800</div>
-                            <div className="text-xs text-slate-400">dpa</div>
-                        </div>
+      <section className="grid gap-4 lg:grid-cols-[1.2fr_1fr]">
+        <Card className="border-slate-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Wand2 className="w-4 h-4 text-[color:var(--color-accent)]" />
+              Generate drafting prompts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              value={draftPrompt}
+              onChange={(event) => setDraftPrompt(event.target.value)}
+              placeholder="Ask for a draft section, argument, or policy clause"
+            />
+            <div className="flex items-center gap-2">
+              <Button size="sm" onClick={handleGenerateDraft} disabled={draftLoading}>
+                <Sparkles className="w-4 h-4 mr-1" />
+                {draftLoading ? 'Generating…' : 'Generate'}
+              </Button>
+              {draftError && <span className="text-xs text-amber-700">{draftError}</span>}
+            </div>
+            {suggestions.length > 0 && (
+              <div className="space-y-3">
+                {suggestions.map((suggestion) => (
+                  <div key={suggestion.suggestion_id} className="border border-slate-200 rounded-md p-3 bg-white">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm text-slate-800 whitespace-pre-line">{suggestion.content}</p>
+                        {suggestion.evidence_refs?.length > 0 && (
+                          <p className="mt-2 text-[11px] text-slate-500">
+                            Evidence: {suggestion.evidence_refs.join(', ')}
+                          </p>
+                        )}
+                      </div>
+                      <Button size="sm" variant="outline" onClick={() => insertSuggestion(suggestion)}>
+                        Insert
+                      </Button>
                     </div>
-                    <Separator className="my-4" />
-                    <div className="flex items-center gap-2 text-xs text-slate-500">
-                        <Info className="w-3.5 h-3.5" />
-                        <span>Source: Census 2021, ONS House Price Statistics, AMR 2023</span>
-                    </div>
-                 </CardContent>
-              </Card>
-
-              <p>
-                Cambridge faces acute housing pressure. The affordability ratio of 12.8x significantly exceeds both the regional 
-                average (8.2x) and represents a deterioration from 10.5x in 2015.
-              </p>
-              
-               <div className="flex items-center gap-2 pl-4 border-l-2 border-blue-200 py-1">
-                   <Link2 className="w-3.5 h-3.5 text-blue-500" />
-                   <span className="text-sm font-medium text-blue-700 cursor-pointer hover:underline">Evidence Source: ONS Housing Statistics</span>
+                    {suggestion.requires_judgement_run && (
+                      <div className="mt-2 text-[11px] text-amber-700">
+                        Requires judgement run before sign-off.
+                      </div>
+                    )}
+                  </div>
+                ))}
               </div>
+            )}
+          </CardContent>
+        </Card>
 
-              <Alert className="bg-blue-50 border-blue-100 text-blue-900">
-                 <Sparkles className="h-4 w-4 text-blue-600" />
-                 <AlertTitle className="text-blue-800 font-semibold mb-1">AI Suggestion</AlertTitle>
-                 <AlertDescription className="text-blue-800/80 text-sm">
-                    Consider adding comparison with Cambridge's Knowledge Economy employment growth (3.2% pa) to establish 
-                    jobs-housing imbalance context.
-                 </AlertDescription>
-                 <div className="flex gap-2 mt-3">
-                    <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white h-7 text-xs">Accept Suggestion</Button>
-                    <Button size="sm" variant="ghost" className="text-blue-600 hover:bg-blue-100 h-7 text-xs">Dismiss</Button>
-                 </div>
-              </Alert>
+        <Card className="border-slate-200">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm">Draft metadata</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2 text-xs text-slate-600">
+            <div className="flex justify-between"><span>Workspace</span><span>{workspace}</span></div>
+            <div className="flex justify-between"><span>Artefact type</span><span>{artefact.artefact_type}</span></div>
+            <div className="flex justify-between"><span>Authority</span><span>{authority?.name || authorityId || '—'}</span></div>
+            <div className="flex justify-between"><span>Updated</span><span>{artefact.updated_at || '—'}</span></div>
+          </CardContent>
+        </Card>
+      </section>
 
-              <div className="p-4 bg-amber-50 rounded-lg border border-amber-100 flex gap-3 text-sm text-amber-900">
-                 <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0" />
-                 <div>
-                    <span className="font-semibold text-amber-800">Evidence Gap:</span> Detailed housing needs assessment for specific groups (older persons, students, key workers) 
-                    is currently being commissioned. Expected completion: Q1 2025.
-                 </div>
-              </div>
-            </section>
-
-            <section className="space-y-4">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 mt-8">
-                  <span className="text-slate-300 text-xl font-normal">03</span> Transport & Connectivity
-              </h2>
-              <p>
-                Cambridge benefits from strong rail connectivity to London (50 mins) and excellent local cycling infrastructure. 
-                However, strategic road capacity remains constrained, particularly on the A14 corridor.
-              </p>
-              
-               <div className="flex items-center gap-2 pl-4 border-l-2 border-blue-200 py-1">
-                   <Link2 className="w-3.5 h-3.5 text-blue-500" />
-                   <span className="text-sm font-medium text-blue-700 cursor-pointer hover:underline">Evidence Source: DfT Connectivity Tool</span>
-              </div>
-              
-               <div className="p-4 bg-slate-50 rounded-lg border border-slate-200 flex gap-3 text-sm text-slate-600">
-                 <Info className="w-5 h-5 text-slate-400 flex-shrink-0" />
-                 <div>
-                    <span className="font-semibold text-slate-700">Methodology Note:</span> DfT Connectivity Tool provides journey time accessibility but does not account for capacity constraints 
-                    or local congestion patterns. Supplementary traffic modeling is in progress.
-                 </div>
-              </div>
-            </section>
-          </>
-        ) : (
-          <>
-            <section className="space-y-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-                 <span className="text-slate-300 text-xl font-normal">01</span> Site & Proposal
-              </h2>
-              <Card className="bg-slate-50/50 border-slate-200 shadow-sm">
-                 <CardContent className="p-6">
-                    <div className="grid grid-cols-2 gap-y-4 gap-x-8 text-sm">
-                       <div>
-                            <div className="text-slate-500 mb-1">Address</div>
-                            <div className="font-medium text-slate-900">45 Mill Road, Cambridge CB1 2AD</div>
-                       </div>
-                       <div>
-                            <div className="text-slate-500 mb-1">Ward</div>
-                            <div className="font-medium text-slate-900">Petersfield</div>
-                       </div>
-                       <div>
-                            <div className="text-slate-500 mb-1">Applicant</div>
-                            <div className="font-medium text-slate-900">Mill Road Developments Ltd</div>
-                       </div>
-                       <div>
-                            <div className="text-slate-500 mb-1">Agent</div>
-                            <div className="font-medium text-slate-900">Smith Planning Associates</div>
-                       </div>
-                    </div>
-                 </CardContent>
-              </Card>
-              <p>
-                The application site comprises a ground floor retail unit (Use Class E) within a two-storey building in the 
-                Mill Road District Centre. The proposal seeks to change the use to residential (2 x 1-bed flats), with internal 
-                alterations but no external changes.
-              </p>
-            </section>
-
-            <section className="space-y-4">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 mt-8">
-                  <span className="text-slate-300 text-xl font-normal">02</span> Planning Assessment
-              </h2>
-              
-              <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-slate-800">Principle of Development</h3>
-                <p>
-                    Policy DM12 requires the retention of ground floor retail uses in District Centres unless the unit has been 
-                    actively marketed for 12 months. The applicant has provided marketing evidence demonstrating unsuccessful 
-                    attempts to let the unit over 15 months at market rates.
-                </p>
-                
-                 <div className="flex items-center gap-2 pl-4 border-l-2 border-purple-200 py-1 mb-4">
-                    <Link2 className="w-3.5 h-3.5 text-purple-500" />
-                    <span className="text-sm font-medium text-purple-700 cursor-pointer hover:underline">Policy Reference: DM12 (District Centres)</span>
-                </div>
-
-                <Alert className="bg-indigo-50 border-indigo-100 text-indigo-900">
-                    <MessageSquare className="h-4 w-4 text-indigo-600" />
-                    <AlertTitle className="text-indigo-800 font-semibold mb-1">Officer Note</AlertTitle>
-                    <AlertDescription className="text-indigo-800/80 text-sm">
-                        Highways response received 29 Nov - no objection subject to secure cycle storage condition. 
-                        Conservation officer satisfied with internal conversion approach.
-                    </AlertDescription>
-                </Alert>
-              </div>
-
-              <div className="space-y-2 mt-6">
-                <h3 className="text-lg font-semibold text-slate-800">Residential Amenity</h3>
-                <p>
-                    The proposed flats would achieve minimum space standards (Policy H9) and benefit from existing rear courtyard 
-                    access. Natural light to habitable rooms is adequate based on site inspection.
-                </p>
-                
-                 <div className="flex items-center gap-2 pl-4 border-l-2 border-blue-200 py-1">
-                    <Link2 className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-sm font-medium text-blue-700 cursor-pointer hover:underline">Evidence Source: Site Visit 12 Dec</span>
-                </div>
-              </div>
-            </section>
-
-            <section className="space-y-6">
-              <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-2 mt-8">
-                  <span className="text-slate-300 text-xl font-normal">03</span> Recommendation
-              </h2>
-              <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-6 shadow-sm">
-                <div className="flex items-center gap-3 mb-3">
-                    <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600">
-                        <CheckCircle className="w-5 h-5" />
-                    </div>
-                    <span className="text-lg font-bold text-emerald-800 tracking-wide">APPROVE</span>
-                </div>
-                <p className="text-sm text-emerald-900/80 font-medium">
-                  Subject to conditions:
-                </p>
-                <ul className="list-disc pl-5 mt-2 space-y-1 text-sm text-emerald-900/70">
-                    <li>Secure cycle storage (2 spaces)</li>
-                    <li>Removal of permitted development rights</li>
-                    <li>Retention of front elevation details</li>
-                </ul>
-              </div>
-            </section>
-          </>
-        )}
-      </div>
-
-      {/* Floating Toolbar */}
-      <div className="fixed bottom-6 left-1/2 transform -translate-x-1/2 z-30">
-        <div className="bg-white/90 backdrop-blur-md rounded-full shadow-xl border border-slate-200 p-1.5 flex items-center gap-1.5 ring-1 ring-black/5">
-          <TooltipButton icon={Link2} label="Insert Citation" />
-          <TooltipButton icon={MessageSquare} label="Add Comment" />
-          <TooltipButton icon={Plus} label="Insert Evidence" />
-          <div className="w-px h-5 bg-slate-200 mx-1" />
-          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white rounded-full px-4 h-9 shadow-sm gap-2">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>AI Suggestion</span>
-          </Button>
-        </div>
-      </div>
+      <section className="space-y-3">
+        {editor && <EditorContent editor={editor} />}
+      </section>
     </div>
   );
-}
-
-function TooltipButton({ icon: Icon, label }: { icon: any, label: string }) {
-    return (
-        <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full text-slate-500 hover:text-slate-900 hover:bg-slate-100" title={label}>
-            <Icon className="w-4 h-4" />
-        </Button>
-    )
 }

@@ -56,3 +56,26 @@
     --color-neutral-300: #d4d4e0;
     --color-neutral-200: #e6e6ef;
 }
+
+.ProseMirror {
+  outline: none;
+}
+
+.ProseMirror p {
+  margin: 0.6rem 0;
+}
+
+.ProseMirror h1,
+.ProseMirror h2,
+.ProseMirror h3 {
+  font-weight: 700;
+  color: var(--color-ink);
+  margin: 1rem 0 0.5rem;
+}
+
+.evidence-mark {
+  background: rgba(50, 156, 133, 0.12);
+  border-bottom: 1px dashed rgba(50, 156, 133, 0.5);
+  padding: 0 2px;
+  border-radius: 3px;
+}

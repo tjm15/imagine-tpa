@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect } from 'react';
 import {
     ReactFlow,
     Background,
@@ -14,14 +14,23 @@ import '@xyflow/react/dist/style.css';
 interface TraceGraphProps {
     nodes: Node[];
     edges: Edge[];
+    height?: number;
 }
 
-const TraceGraph: React.FC<TraceGraphProps> = ({ nodes: initialNodes, edges: initialEdges }) => {
+const TraceGraph: React.FC<TraceGraphProps> = ({ nodes: initialNodes, edges: initialEdges, height = 280 }) => {
     const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
     const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+    useEffect(() => {
+        setNodes(initialNodes);
+    }, [initialNodes, setNodes]);
+
+    useEffect(() => {
+        setEdges(initialEdges);
+    }, [initialEdges, setEdges]);
+
     return (
-        <div className="w-full h-full min-h-[500px] border border-stone-200 rounded-lg">
+        <div className="w-full border border-stone-200 rounded-lg" style={{ height }}>
             <ReactFlow
                 nodes={nodes}
                 edges={edges}

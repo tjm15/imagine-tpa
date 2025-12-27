@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import {
   LayoutGrid, ChevronLeft, FileText, Map, Scale, Camera,
-  Sparkles, AlertCircle, Eye, Download, Play, Menu, Bell, ChevronDown,
-  Search, Settings, Share2, PanelRightOpen, PanelRightClose, ArrowRight
+  Sparkles, AlertCircle, Eye, Download, Menu, Bell, ChevronDown,
+  Search, Settings, Share2, PanelRightOpen, PanelRightClose
 } from 'lucide-react';
 import { WorkspaceMode, ViewMode } from '../App';
 import { DocumentView } from './views/DocumentView';
@@ -20,6 +20,8 @@ import { Logo } from "./Logo";
 import { useProject } from "../contexts/AuthorityContext";
 import { useExplainability } from "../contexts/ExplainabilityContext";
 import { useRun } from "../contexts/RunContext";
+import { ReasoningTray } from "./ReasoningTray";
+import { TraceCanvas } from "./TraceCanvas";
 
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
@@ -42,6 +44,7 @@ export function WorkbenchShell({
   const { level: explainabilityMode, setGlobalLevel } = useExplainability();
   const { currentRunId, currentRunStatus } = useRun();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const traceHeight = 340;
 
   const viewConfig: Record<ViewMode, { icon: any, label: string, component: any, description: string }> = {
     document: {
@@ -268,57 +271,28 @@ export function WorkbenchShell({
 
             {/* Trace Canvas Overlay */}
             {showTraceCanvas && (
-              <div className="border-b backdrop-blur-sm p-4 animate-in slide-in-from-top-4 duration-200 z-10 absolute top-0 left-0 right-0 shadow-sm" style={{
-                backgroundColor: 'rgba(50, 156, 133, 0.08)',
-                borderColor: 'var(--color-accent)'
-              }}>
-                <div className="flex items-start gap-4 max-w-5xl mx-auto">
-                  <div className="p-2 rounded-full mt-1" style={{ backgroundColor: 'var(--color-accent-light)' }}>
-                    <Play className="w-4 h-4" style={{ color: 'var(--color-accent-dark)' }} />
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center justify-between mb-2">
-                      <h4 className="text-sm font-semibold" style={{ color: 'var(--color-ink)' }}>Reasoning Trace Canvas</h4>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setShowTraceCanvas(false)} style={{ color: 'var(--color-accent)' }}>
-                        <span className="sr-only">Close</span>
-                        <span aria-hidden="true">×</span>
-                      </Button>
-                    </div>
-
-                    <div className="flex items-center gap-2 text-xs overflow-x-auto pb-2 scrollbar-hide">
-                      <div className="flex-shrink-0 px-3 py-1.5 bg-white rounded border shadow-sm" style={{
-                        borderColor: 'var(--color-accent)',
-                        color: 'var(--color-ink)'
-                      }}>1. Framing</div>
-                      <ArrowRight className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--color-accent-light)' }} />
-                      <div className="flex-shrink-0 px-3 py-1.5 bg-white rounded border shadow-sm" style={{
-                        borderColor: 'var(--color-accent)',
-                        color: 'var(--color-ink)'
-                      }}>2. Issue Surfacing</div>
-                      <ArrowRight className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--color-accent-light)' }} />
-                      <div className="flex-shrink-0 px-3 py-1.5 bg-white rounded border shadow-sm" style={{
-                        borderColor: 'var(--color-accent)',
-                        color: 'var(--color-ink)'
-                      }}>3. Evidence Curation</div>
-                      <ArrowRight className="w-3 h-3 flex-shrink-0" style={{ color: 'var(--color-accent-light)' }} />
-                      <div className="flex-shrink-0 px-3 py-1.5 text-white rounded shadow-md ring-2 ring-offset-1" style={{
-                        backgroundColor: 'var(--color-accent)',
-                        // ringColor is not a valid style property, removed
-                      }}>4. Interpretation</div>
-                    </div>
-                    <p className="text-xs mt-2" style={{ color: 'var(--color-text)' }}>
-                      Click any element below to reveal upstream evidence and tool runs that support it.
-                    </p>
-                  </div>
-                </div>
+              <div className="animate-in slide-in-from-top-4 duration-200 z-10 absolute top-0 left-0 right-0 shadow-sm">
+                <TraceCanvas
+                  runId={currentRunId}
+                  mode={explainabilityMode}
+                  onClose={() => setShowTraceCanvas(false)}
+                />
               </div>
             )}
 
-            <div className={`flex-1 overflow-auto transition-all duration-300 ${showTraceCanvas ? 'pt-[140px]' : ''}`}>
+            <div
+              className="flex-1 overflow-auto transition-all duration-300"
+              style={{ paddingTop: showTraceCanvas ? `${traceHeight}px` : undefined }}
+            >
               <div className="h-full w-full">
                 <ActiveViewComponent workspace={workspace} explainabilityLevel={explainabilityMode} />
               </div>
             </div>
+            <ReasoningTray
+              runId={currentRunId}
+              mode={explainabilityMode}
+              onOpenTrace={() => setShowTraceCanvas(true)}
+            />
           </div>
 
           {/* Context Margin (Right Sidebar) */}
