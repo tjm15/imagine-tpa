@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, type CSSProperties } from 'react';
 import { 
   Sparkles, User, Info, ExternalLink, AlertTriangle, 
-  CheckCircle, FileText, GitBranch, Clock
+  CheckCircle, FileText, GitBranch, Clock, HelpCircle
 } from 'lucide-react';
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -14,6 +14,7 @@ import {
   type EvidenceCard,
   type ToolRun 
 } from '../fixtures/mockData';
+import type { TraceTarget } from '../lib/trace';
 
 // ============================================================================
 // CONFIDENCE & STATUS TYPES
@@ -42,7 +43,7 @@ interface ProvenanceIndicatorProps {
   provenance: ProvenanceData;
   size?: 'sm' | 'md';
   showConfidence?: boolean;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 export function ProvenanceIndicator({ 
@@ -78,7 +79,7 @@ export function ProvenanceIndicator({
                 ? 'text-emerald-600' 
                 : provenance.confidence === 'medium' 
                   ? 'text-amber-600' 
-                  : 'text-red-600'
+                  : 'text-slate-600'
             }`}>
               {provenance.confidence === 'high' ? '●' : provenance.confidence === 'medium' ? '◐' : '○'}
             </span>
@@ -107,7 +108,7 @@ export function ProvenanceIndicator({
 
 interface ProvenanceDetailProps {
   provenance: ProvenanceData;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
   onClose?: () => void;
 }
 
@@ -242,10 +243,28 @@ function ProvenanceDetail({ provenance, onOpenTrace, onClose }: ProvenanceDetail
           variant="ghost" 
           size="sm" 
           className="h-7 text-xs gap-1"
-          onClick={onOpenTrace}
+          onClick={() => {
+            const primaryEvidenceId = provenance.evidenceIds?.[0];
+            if (primaryEvidenceId) {
+              onOpenTrace?.({
+                kind: 'evidence',
+                id: primaryEvidenceId,
+                label: getEvidenceById(primaryEvidenceId)?.title ?? primaryEvidenceId,
+              });
+              onClose?.();
+              return;
+            }
+
+            onOpenTrace?.({
+              kind: 'run',
+              label: 'Current run',
+              note: provenance.toolRunId ? `Focus: tool run ${provenance.toolRunId}` : undefined,
+            });
+            onClose?.();
+          }}
         >
-          <GitBranch className="w-3 h-3" />
-          Open Trace Canvas
+          <HelpCircle className="w-3 h-3" />
+          Why?
         </Button>
         <Button 
           variant="outline" 
@@ -331,7 +350,7 @@ export function ConfidenceBadge({ confidence, size = 'md' }: ConfidenceBadgeProp
   const colors = {
     high: 'bg-emerald-100 text-emerald-700',
     medium: 'bg-amber-100 text-amber-700',
-    low: 'bg-red-100 text-red-700'
+    low: 'bg-slate-100 text-slate-700'
   };
   
   return (
@@ -345,7 +364,7 @@ export function ConfidenceBadge({ confidence, size = 'md' }: ConfidenceBadgeProp
 }
 
 export function StatusBadge({ status }: { status: ContentStatus }) {
-  const config: Record<ContentStatus, { icon: typeof CheckCircle; className: string; label: string }> = {
+  const config: Record<ContentStatus, { icon: typeof CheckCircle; className: string; label: string; style?: CSSProperties }> = {
     draft: { 
       icon: Clock, 
       className: 'border-dashed border-slate-300 text-slate-500 bg-white',
@@ -363,8 +382,12 @@ export function StatusBadge({ status }: { status: ContentStatus }) {
     },
     contested: { 
       icon: AlertTriangle, 
-      className: 'border-red-300 text-red-700 bg-red-50',
-      label: 'Contested'
+      className: 'border-amber-300 text-slate-700 bg-slate-50',
+      label: 'Contested',
+      style: {
+        backgroundImage:
+          'repeating-linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0, rgba(245, 158, 11, 0.18) 6px, rgba(255,255,255,0) 6px, rgba(255,255,255,0) 12px)',
+      },
     },
     stale: { 
       icon: AlertTriangle, 
@@ -373,10 +396,10 @@ export function StatusBadge({ status }: { status: ContentStatus }) {
     }
   };
   
-  const { icon: Icon, className, label } = config[status];
+  const { icon: Icon, className, label, style } = config[status];
   
   return (
-    <Badge variant="outline" className={`text-[10px] h-5 ${className}`}>
+    <Badge variant="outline" className={`text-[10px] h-5 ${className}`} style={style}>
       <Icon className="w-3 h-3 mr-1" />
       {label}
     </Badge>
@@ -391,7 +414,7 @@ interface ProvenanceWrapperProps {
   provenance: ProvenanceData;
   children: React.ReactNode;
   className?: string;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 export function ProvenanceWrapper({ 
@@ -404,7 +427,7 @@ export function ProvenanceWrapper({
     draft: 'border-dashed border-slate-300',
     provisional: 'border-solid border-amber-200',
     settled: 'border-solid border-emerald-200',
-    contested: 'border-solid border-red-200 border-l-2 border-l-red-400',
+    contested: 'border-solid border-slate-200 border-l-2 border-l-amber-400',
     stale: 'border-solid border-slate-200 opacity-75'
   };
   
@@ -429,7 +452,7 @@ export function ProvenanceWrapper({
           provenance.status === 'provisional' 
             ? 'bg-amber-500 text-white' 
             : provenance.status === 'contested'
-              ? 'bg-red-500 text-white'
+              ? 'bg-amber-200 text-amber-900'
               : 'bg-slate-400 text-white'
         }`}>
           {provenance.status.charAt(0).toUpperCase() + provenance.status.slice(1)}

@@ -10,7 +10,7 @@
  * - Track changes mode
  */
 
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useMemo } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
@@ -18,7 +18,7 @@ import Highlight from '@tiptap/extension-highlight';
 import { 
   Bold, Italic, List, ListOrdered, Quote, Heading1, Heading2, 
   MessageSquare, Bookmark, Sparkles, Undo, Redo, FileText, 
-  Type, Link, Code, CheckCircle2, AlertCircle, ChevronDown, Loader2
+  Type, Link, Code, CheckCircle2, AlertCircle, ChevronDown, Loader2, HelpCircle
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
@@ -26,13 +26,18 @@ import { useDroppable } from '@dnd-kit/core';
 import { useAppState, useAppDispatch } from '../../lib/appState';
 import { simulateDraft, getStageSuggestions } from '../../lib/aiSimulation';
 import { toast } from 'sonner';
+import type { TraceTarget } from '../../lib/trace';
 
 interface DocumentEditorProps {
   initialContent?: string;
   placeholder?: string;
   stageId?: string;
+  explainabilityMode?: ExplainabilityMode;
+  onOpenTrace?: (target?: TraceTarget) => void;
   onSave?: (content: string, html: string) => void;
 }
+
+type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface AISuggestion {
   id: string;
@@ -41,19 +46,64 @@ interface AISuggestion {
   accepted: boolean;
 }
 
+type AIHintSeverity = 'info' | 'provisional' | 'risk';
+
+interface AIHint {
+  id: string;
+  severity: AIHintSeverity;
+  title: string;
+  detail: string;
+  traceTarget?: TraceTarget;
+  insertText?: string;
+}
+
+function hintBadge(severity: AIHintSeverity) {
+  if (severity === 'risk') {
+    return <Badge className="text-[10px] h-5 bg-red-50 text-red-700 border border-red-200 hover:bg-red-50">Legal risk</Badge>;
+  }
+  if (severity === 'provisional') {
+    return <Badge className="text-[10px] h-5 bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-50">Provisional</Badge>;
+  }
+  return <Badge className="text-[10px] h-5 bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-100">Info</Badge>;
+}
+
+function WhyIconButton({
+  visible,
+  onClick,
+  tooltip,
+}: {
+  visible: boolean;
+  onClick?: () => void;
+  tooltip: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`h-7 w-7 rounded-md flex items-center justify-center text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors ${
+        visible ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+      }`}
+      aria-label="Open trace"
+      title={tooltip}
+      onClick={onClick}
+    >
+      <HelpCircle className="w-4 h-4" />
+    </button>
+  );
+}
+
 export function DocumentEditor({ 
   initialContent = '', 
   placeholder = 'Start drafting your planning document...',
   stageId = 'baseline',
+  explainabilityMode = 'summary',
+  onOpenTrace,
   onSave 
 }: DocumentEditorProps) {
   const dispatch = useAppDispatch();
-  const { document, aiState, currentStageId } = useAppState();
+  const { document, aiState } = useAppState();
   
   const [showAISuggestions, setShowAISuggestions] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [streamedText, setStreamedText] = useState('');
   const [commentDraft, setCommentDraft] = useState('');
   const [activeCommentRange, setActiveCommentRange] = useState<{ from: number; to: number } | null>(null);
 
@@ -90,6 +140,17 @@ export function DocumentEditor({
     },
   });
 
+  useEffect(() => {
+    if (!editor) return;
+    const text = editor.getText();
+    if (text && text !== document.content) {
+      dispatch({
+        type: 'UPDATE_DOCUMENT',
+        payload: { content: text },
+      });
+    }
+  }, [editor, dispatch, document.content]);
+
   // Load AI suggestions for current stage
   useEffect(() => {
     const suggestions = getStageSuggestions(stageId);
@@ -101,19 +162,61 @@ export function DocumentEditor({
     })));
   }, [stageId]);
 
+  const aiHints = useMemo<AIHint[]>(() => {
+    const text = document.content || '';
+    const citationCount = document.citations?.length ?? 0;
+    const hints: AIHint[] = [];
+
+    const hasNumbers = /\d/.test(text);
+    if (hasNumbers && citationCount === 0) {
+      hints.push({
+        id: 'hint-cite-figures',
+        severity: 'provisional',
+        title: 'Cite key figures',
+        detail: 'Numeric claims detected but there are no citations yet.',
+        traceTarget: { kind: 'evidence', id: 'ev-affordability', label: 'Affordability evidence (demo)' },
+      });
+    }
+
+    const mentionsTransport = /\b(A14|transport|rail|connectivity|cycling|bus)\b/i.test(text);
+    const hasTransportLimitation = /\b(DfT|connectivity tool|capacity constraints|congestion)\b/i.test(text);
+    if (stageId === 'baseline' && mentionsTransport && !hasTransportLimitation) {
+      hints.push({
+        id: 'hint-limitations',
+        severity: 'provisional',
+        title: 'Add transport limitations note',
+        detail: 'Transport baseline should surface tool limitations and assumptions (capacity, congestion, future growth).',
+        insertText:
+          '\n\nLimitations: DfT connectivity outputs do not model capacity constraints or future growth scenarios; treat results as indicative only.\n',
+        traceTarget: { kind: 'evidence', id: 'ev-transport-dft', label: 'DfT connectivity evidence (demo)' },
+      });
+    }
+
+    if (stageId === 'casework' && /\bAPPROVE\b/i.test(text) && !/\bcondition/i.test(text)) {
+      hints.push({
+        id: 'hint-conditions',
+        severity: 'info',
+        title: 'Draft conditions list',
+        detail: 'Recommendation is present; conditions section may need drafting.',
+        insertText:
+          '\n\nConditions (draft):\n- Secure covered cycle storage (2 spaces)\n- Removal of permitted development rights\n- Retention of front elevation details\n',
+        traceTarget: { kind: 'run', label: 'Current run', note: 'Officer conditions checklist is logged as a reasoning artefact (demo).' },
+      });
+    }
+
+    return hints.slice(0, 3);
+  }, [document.content, document.citations, stageId]);
+
   const handleAIDraft = useCallback(async () => {
-    setIsGenerating(true);
-    setStreamedText('');
     dispatch({ type: 'START_AI_GENERATION', payload: { task: 'draft' } });
+    toast.info('Generating draft...');
 
     await simulateDraft(
       stageId,
-      (chunk) => {
-        setStreamedText(prev => prev + chunk);
-        dispatch({ type: 'UPDATE_AI_STREAM', payload: { text: chunk } });
+      (text, progress) => {
+        dispatch({ type: 'UPDATE_AI_STREAM', payload: { text, progress } });
       },
       () => {
-        setIsGenerating(false);
         dispatch({ type: 'COMPLETE_AI_GENERATION' });
         toast.success('Draft generated successfully');
       }
@@ -136,11 +239,21 @@ export function DocumentEditor({
   }, [editor]);
 
   const insertStreamedDraft = useCallback(() => {
-    if (!editor || !streamedText) return;
-    editor.chain().focus().insertContent(streamedText).run();
-    setStreamedText('');
+    if (!editor || !aiState.streamedText) return;
+    editor.chain().focus().insertContent(aiState.streamedText).run();
+    dispatch({ type: 'UPDATE_AI_STREAM', payload: { text: '', progress: 0 } });
     toast.success('Draft inserted into document');
-  }, [editor, streamedText]);
+  }, [editor, aiState.streamedText, dispatch]);
+
+  const applyHint = useCallback(
+    (hint: AIHint) => {
+      if (!editor) return;
+      if (!hint.insertText) return;
+      editor.chain().focus().insertContent(hint.insertText).run();
+      toast.success('Inserted suggested text');
+    },
+    [editor]
+  );
 
   const addCitation = useCallback(() => {
     if (!editor) return;
@@ -285,15 +398,15 @@ export function DocumentEditor({
             variant="ghost"
             size="sm"
             onClick={handleAIDraft}
-            disabled={isGenerating}
+            disabled={aiState.isGenerating}
             className="gap-2 text-violet-700 hover:bg-violet-50"
           >
-            {isGenerating ? (
+            {aiState.isGenerating ? (
               <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <Sparkles className="w-4 h-4" />
             )}
-            {isGenerating ? 'Generating...' : 'AI Draft'}
+            {aiState.isGenerating ? 'Generating...' : 'AI Draft'}
           </Button>
           <button
             onClick={() => setShowAISuggestions(!showAISuggestions)}
@@ -336,6 +449,48 @@ export function DocumentEditor({
         </div>
       </div>
 
+      {/* Inline AI hints/warnings (compact, officer-facing) */}
+      {aiHints.length > 0 && (
+        <div className="border-b border-neutral-200 bg-slate-50/50 px-3 py-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="w-4 h-4 text-amber-600" />
+              <span className="text-xs font-semibold text-slate-700 truncate">AI review</span>
+              <Badge variant="outline" className="text-[10px] bg-white">{aiHints.length} hint{aiHints.length === 1 ? '' : 's'}</Badge>
+            </div>
+            <span className="text-[11px] text-slate-500">{stageId}</span>
+          </div>
+          <div className="mt-2 space-y-1">
+            {aiHints.map((hint) => (
+              <div key={hint.id} className="group flex items-start gap-2 rounded-lg bg-white border border-neutral-200 px-2.5 py-2">
+                <div className="flex-shrink-0">{hintBadge(hint.severity)}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-slate-800">{hint.title}</div>
+                  {explainabilityMode !== 'summary' ? (
+                    <div className="text-[11px] text-slate-600 mt-0.5">{hint.detail}</div>
+                  ) : null}
+                </div>
+                {hint.insertText ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs"
+                    onClick={() => applyHint(hint)}
+                  >
+                    Insert
+                  </Button>
+                ) : null}
+                <WhyIconButton
+                  visible={explainabilityMode !== 'summary'}
+                  tooltip={explainabilityMode === 'forensic' ? 'Open trace' : 'Why? (open trace)'}
+                  onClick={() => onOpenTrace?.(hint.traceTarget)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* AI Suggestions Panel */}
       {showAISuggestions && aiSuggestions.length > 0 && (
         <div className="border-b border-neutral-200 bg-violet-50/50 p-3">
@@ -370,7 +525,7 @@ export function DocumentEditor({
       )}
 
       {/* Streaming Draft Preview */}
-      {streamedText && (
+      {aiState.streamedText && (
         <div className="border-b border-neutral-200 bg-green-50/50 p-3">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
@@ -382,7 +537,7 @@ export function DocumentEditor({
             </Button>
           </div>
           <div className="bg-white rounded-lg p-3 border border-green-200 max-h-40 overflow-y-auto">
-            <p className="text-sm text-slate-700 whitespace-pre-wrap">{streamedText}</p>
+            <p className="text-sm text-slate-700 whitespace-pre-wrap">{aiState.streamedText}</p>
           </div>
         </div>
       )}

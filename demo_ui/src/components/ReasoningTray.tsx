@@ -17,10 +17,11 @@ import {
   type ReasoningMove,
   getMoveStatus 
 } from '../fixtures/mockData';
+import type { TraceTarget } from '../lib/trace';
 
 interface ReasoningTrayProps {
   runId: string;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
   onSelectConsideration?: (id: string) => void;
 }
 

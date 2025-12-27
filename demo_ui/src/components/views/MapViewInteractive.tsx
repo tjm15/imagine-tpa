@@ -39,13 +39,14 @@ import {
 import { useAppState } from '../../lib/appState';
 import { toast } from 'sonner';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
+import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface MapViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 interface PopupInfo {
@@ -238,7 +239,17 @@ export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace
           {onOpenTrace && (
             <button
               className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline mt-1"
-              onClick={onOpenTrace}
+              onClick={() => {
+                if (selectedSite) {
+                  onOpenTrace({ kind: 'site', id: selectedSite, label: `Site: ${selectedSite}` });
+                  return;
+                }
+                if (popupInfo?.layerType === 'constraint') {
+                  onOpenTrace({ kind: 'constraint', id: String(popupInfo.properties.name ?? 'constraint'), label: String(popupInfo.properties.name ?? 'Constraint') });
+                  return;
+                }
+                onOpenTrace({ kind: 'run', label: 'Current run' });
+              }}
             >
               Trace selection
             </button>
@@ -390,7 +401,7 @@ export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace
                         variant="ghost"
                         size="sm" 
                         className="w-full mt-2 text-xs"
-                        onClick={onOpenTrace}
+                        onClick={() => onOpenTrace({ kind: 'site', id: String(popupInfo.properties.id), label: String(popupInfo.properties.name ?? popupInfo.properties.id) })}
                       >
                         Trace this site
                       </Button>
@@ -550,8 +561,15 @@ export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace
             </div>
             <p className="text-xs text-slate-600">Sketch a {drawingMode} to query constraints and nearby evidence. We’ll pin the evidence stack and open trace.</p>
             <div className="flex items-center gap-2 mt-2 text-xs">
-              <ProvenanceIndicator provenance={{ source: 'human', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-shlaa-2024','ev-affordability'] }} />
-              <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Open trace</button>
+              <ProvenanceIndicator
+                provenance={{ source: 'human', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-shlaa-2024','ev-affordability'] }}
+                onOpenTrace={onOpenTrace}
+              />
+              {onOpenTrace ? (
+                <button className="text-blue-600 hover:underline" onClick={() => onOpenTrace({ kind: 'evidence', id: 'ev-shlaa-2024', label: 'SHLAA 2024' })}>
+                  Open trace
+                </button>
+              ) : null}
             </div>
           </div>
         )}

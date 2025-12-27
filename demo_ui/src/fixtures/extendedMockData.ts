@@ -469,11 +469,13 @@ export interface SitePhoto {
   };
 }
 
+const demoPhotoUrl = (fileName: string) => new URL(`../assets/demo/${fileName}`, import.meta.url).toString();
+
 export const mockPhotos: SitePhoto[] = [
   {
     id: 'photo-1',
     siteId: 'SHLAA/045',
-    url: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?w=800',
+    url: demoPhotoUrl('northern-fringe-street.svg'),
     caption: 'Northern Fringe site - view from Milton Road looking north',
     date: '2024-12-10',
     type: 'street',
@@ -482,7 +484,7 @@ export const mockPhotos: SitePhoto[] = [
   {
     id: 'photo-2',
     siteId: 'SHLAA/045',
-    url: 'https://images.unsplash.com/photo-1416169607655-0c2b3ce2e1cc?w=800',
+    url: demoPhotoUrl('northern-fringe-aerial.svg'),
     caption: 'Northern Fringe - aerial context showing Science Park adjacency',
     date: '2024-11-15',
     type: 'aerial',
@@ -490,7 +492,7 @@ export const mockPhotos: SitePhoto[] = [
   {
     id: 'photo-3',
     siteId: 'SHLAA/067',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800',
+    url: demoPhotoUrl('southern-gateway-context.svg'),
     caption: 'Southern Gateway - existing industrial buildings',
     date: '2024-12-08',
     type: 'context',
@@ -498,7 +500,7 @@ export const mockPhotos: SitePhoto[] = [
   {
     id: 'photo-4',
     siteId: 'site-mill-road',
-    url: 'https://images.unsplash.com/photo-1480714378408-67cf0d13bc1b?w=800',
+    url: demoPhotoUrl('mill-road-frontage.svg'),
     caption: '45 Mill Road - street frontage',
     date: '2024-12-12',
     type: 'street',
@@ -506,7 +508,7 @@ export const mockPhotos: SitePhoto[] = [
   {
     id: 'photo-5',
     siteId: 'site-mill-road',
-    url: 'https://images.unsplash.com/photo-1449157291145-7efd050a4d0e?w=800',
+    url: demoPhotoUrl('mill-road-courtyard.svg'),
     caption: '45 Mill Road - rear courtyard access',
     date: '2024-12-12',
     type: 'detail',
@@ -516,7 +518,7 @@ export const mockPhotos: SitePhoto[] = [
 // Add helper properties for photo lightbox
 export const mockPhotosForLightbox = mockPhotos.map(p => ({
   ...p,
-  thumbnailUrl: p.url + '&h=150',
+  thumbnailUrl: p.url,
   fullUrl: p.url,
 }));
 

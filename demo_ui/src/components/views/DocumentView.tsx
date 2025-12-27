@@ -1,18 +1,18 @@
-import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { FileText, Link2, GitBranch } from 'lucide-react';
+import { FileText, HelpCircle } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { DocumentEditor } from '../editor/DocumentEditor';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
+import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface DocumentViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 const initialBaselineText = `<h1>Place Portrait: Baseline Evidence</h1>
@@ -52,44 +52,40 @@ const initialCaseworkText = `<h1>Officer Report: 24/0456/FUL</h1>
   <li>Retention of front elevation details</li>
 </ul>`;
 
-const inlineAnchors = [
-  {
-    id: 'affordability',
-    title: 'Housing affordability ratios',
-    summary: '12.8x vs 8.2x regional average; deterioration since 2015',
-    status: 'provisional' as const,
-    provenance: { source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-affordability', 'ev-census-2021'], assumptions: ['Uses ONS East of England boundary'], limitations: 'Does not adjust for recent mortgage rate shifts.' }
-  },
-  {
-    id: 'supply-gap',
-    title: 'Housing supply gap',
-    summary: '11k identified vs 27k required over plan period',
-    status: 'contested' as const,
-    provenance: { source: 'ai', confidence: 'medium', status: 'contested', evidenceIds: ['ev-shlaa-2024'], assumptions: ['Delivery rates match 5y average'], limitations: 'Viability testing incomplete.' }
-  },
-  {
-    id: 'transport',
-    title: 'Transport constraints',
-    summary: 'A14 capacity constraint and mode shift dependency',
-    status: 'draft' as const,
-    provenance: { source: 'human', confidence: 'medium', status: 'draft', evidenceIds: ['ev-dft-connectivity'], limitations: 'Local congestion modelling pending.' }
-  }
-];
-
 export function DocumentView({ workspace, explainabilityMode = 'summary', onOpenTrace }: DocumentViewProps) {
   const title = workspace === 'plan'
     ? 'Place Portrait: Baseline Evidence'
     : 'Officer Report: 24/0456/FUL';
-  const [activeAnchor, setActiveAnchor] = useState(inlineAnchors[0]);
 
   const handleWhy = () => {
-    onOpenTrace?.();
+    onOpenTrace?.({
+      kind: 'document',
+      id: workspace === 'plan' ? 'deliverable-place-portrait' : 'case-24-0456',
+      label: title,
+      note: 'Document-level trace falls back to run-level context unless a specific element is selected.',
+    });
   };
+
+  const whyTooltip = (() => {
+    if (explainabilityMode === 'forensic') return 'Open trace';
+    if (explainabilityMode === 'inspect') {
+      return (
+        <div className="text-xs space-y-1">
+          <div className="font-medium">Provisional · 3 sources</div>
+          <div>Policies: H2, DM12</div>
+          <div>Constraints: Conservation Area</div>
+        </div>
+      );
+    }
+    return 'Based on Policies H2, DM12 (3 sources)';
+  })();
+
+  const whyVisibilityClass = explainabilityMode === 'summary' ? 'opacity-0 group-hover:opacity-100' : 'opacity-100';
 
   return (
     <div className="max-w-4xl mx-auto p-8 font-sans">
       {/* Document Header */}
-      <div className="mb-6 pb-4 border-b border-slate-200">
+      <div className="mb-6 pb-4 border-b border-slate-200 group">
         <div className="flex items-center gap-2 text-sm text-blue-600 font-medium mb-3">
           <FileText className="w-4 h-4" />
           <span className="uppercase tracking-wider text-xs">{workspace === 'plan' ? 'Deliverable Document' : 'Officer Report'}</span>
@@ -98,7 +94,9 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
           <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{title}</h1>
           <Badge variant="secondary" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">{explainabilityMode} mode</Badge>
           <StatusBadge status="provisional" />
-          <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021','ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
+          <div className={`${whyVisibilityClass} transition-opacity`}>
+            <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021','ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-2">
           <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 rounded-sm font-normal">Draft v2.3</Badge>
@@ -108,12 +106,18 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className="text-blue-600 hover:underline flex items-center gap-1" onClick={handleWhy}>
-                  <GitBranch className="w-4 h-4" />
-                  Why is this here?
+                <button
+                  type="button"
+                  className={`${whyVisibilityClass} transition-opacity text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md p-1`}
+                  onClick={handleWhy}
+                  aria-label="Why?"
+                >
+                  <HelpCircle className="w-4 h-4" />
                 </button>
               </TooltipTrigger>
-              <TooltipContent>Open the trace canvas for this section</TooltipContent>
+              <TooltipContent side="bottom" className="max-w-xs">
+                {whyTooltip}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         </div>
@@ -130,57 +134,10 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
       <DocumentEditor 
         initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
         stageId={workspace === 'plan' ? 'baseline' : 'casework'}
+        explainabilityMode={explainabilityMode}
+        onOpenTrace={onOpenTrace}
         placeholder="Start drafting your planning document..."
       />
-
-      {/* Inline provenance anchors + trace */}
-      <div className="mt-6 p-4 bg-slate-50 border border-slate-200 rounded-lg">
-        <div className="flex items-center justify-between mb-2 text-sm">
-          <div className="flex items-center gap-2 text-slate-700">
-            <Link2 className="w-4 h-4 text-blue-500" />
-            <span>Inline provenance anchors</span>
-          </div>
-          <button className="text-xs text-blue-600 hover:underline" onClick={handleWhy}>Why is this here?</button>
-        </div>
-        <div className="grid gap-2 md:grid-cols-3">
-          {inlineAnchors.map(anchor => (
-            <button
-              key={anchor.id}
-              onClick={() => setActiveAnchor(anchor)}
-              className={`text-left p-3 rounded border transition-colors ${
-                activeAnchor.id === anchor.id ? 'bg-white border-blue-200 shadow-sm' : 'bg-white/80 border-slate-200 hover:border-blue-200'
-              }`}
-            >
-              <div className="flex items-center gap-2 mb-1">
-                <StatusBadge status={anchor.status} />
-                <ProvenanceIndicator provenance={anchor.provenance} compact onOpenTrace={onOpenTrace} />
-              </div>
-              <div className="text-sm font-medium text-slate-800">{anchor.title}</div>
-              <p className="text-xs text-slate-600 mt-1 line-clamp-2">{anchor.summary}</p>
-            </button>
-          ))}
-        </div>
-        {activeAnchor && (
-          <div className="mt-3 p-3 border border-dashed border-blue-200 rounded-md bg-white">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <GitBranch className="w-4 h-4 text-blue-600" />
-              Trace detail
-            </div>
-            <p className="text-xs text-slate-600 mt-1">{activeAnchor.summary}</p>
-            <div className="flex flex-wrap items-center gap-2 mt-2 text-[11px]">
-              {activeAnchor.provenance.evidenceIds?.map(eid => (
-                <Badge key={eid} variant="outline" className="bg-slate-50">{eid}</Badge>
-              ))}
-              {activeAnchor.provenance.assumptions && activeAnchor.provenance.assumptions.map(a => (
-                <Badge key={a} variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">Assumption</Badge>
-              ))}
-              {activeAnchor.provenance.limitations && (
-                <Badge variant="secondary" className="bg-red-50 text-red-700 border-red-200">Limitation</Badge>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

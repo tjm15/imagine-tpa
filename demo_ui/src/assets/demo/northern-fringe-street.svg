@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="500" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc" />
+      <stop offset="0.55" stop-color="#eef2f7" />
+      <stop offset="1" stop-color="#e2e8f0" />
+    </linearGradient>
+    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#f5c315" />
+      <stop offset="1" stop-color="#f59e0b" />
+    </linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)" />
+  <g opacity="0.12" stroke="#0f172a" stroke-width="1">
+    <path d="M60 110H740" />
+    <path d="M60 160H740" />
+    <path d="M60 210H740" />
+    <path d="M60 260H740" />
+    <path d="M60 310H740" />
+    <path d="M60 360H740" />
+    <path d="M140 90V410" />
+    <path d="M240 90V410" />
+    <path d="M340 90V410" />
+    <path d="M440 90V410" />
+    <path d="M540 90V410" />
+    <path d="M640 90V410" />
+  </g>
+  <g>
+    <path d="M128 312L238 262L316 286L402 248L538 284L642 252L694 286V356L620 392L514 376L414 406L298 392L196 410L128 382Z" fill="#cbd5e1" opacity="0.9" />
+    <path d="M140 320L246 272L314 292L410 256L536 292L640 262L684 292V352L618 382L514 368L414 396L298 384L196 402L140 378Z" fill="#94a3b8" opacity="0.5" />
+  </g>
+  <g>
+    <path d="M238 262L316 286L402 248L538 284L642 252" fill="none" stroke="url(#accent)" stroke-width="5" stroke-linecap="round" />
+    <circle cx="402" cy="248" r="9" fill="#0f172a" opacity="0.9" />
+    <circle cx="402" cy="248" r="5" fill="url(#accent)" />
+  </g>
+  <g font-family="Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica Neue, Arial" fill="#0f172a">
+    <text x="32" y="44" font-size="20" font-weight="650">Northern Fringe · Street context</text>
+    <text x="32" y="72" font-size="12" fill="#475569">Illustrative placeholder (not a real photograph) · Demo UI</text>
+  </g>
+  <g>
+    <rect x="32" y="454" width="736" height="18" rx="9" fill="#0f172a" opacity="0.06" />
+    <rect x="32" y="454" width="262" height="18" rx="9" fill="url(#accent)" opacity="0.85" />
+    <text x="48" y="467" font-family="Inter, ui-sans-serif, system-ui" font-size="11" fill="#0f172a">Viewpoint: Milton Road → North · Date: 2024‑12‑10</text>
+  </g>
+</svg>
+

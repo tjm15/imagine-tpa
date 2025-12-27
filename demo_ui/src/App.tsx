@@ -8,8 +8,8 @@ import { AppStateProvider, useAppDispatch } from './lib/appState';
 import { ModalManager } from './components/modals/ModalDialogs';
 import { processDroppedEvidence } from './lib/aiSimulation';
 
-export type WorkspaceMode = 'plan' | 'casework';
-export type ViewMode = 'document' | 'map' | 'judgement' | 'reality';
+export type WorkspaceMode = 'plan' | 'casework' | 'monitoring';
+export type ViewMode = 'document' | 'map' | 'judgement' | 'reality' | 'monitoring';
 
 // Main app content with DnD handling
 function AppContent() {
@@ -19,9 +19,18 @@ function AppContent() {
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [draggedItem, setDraggedItem] = useState<{ id: string; type: string } | null>(null);
 
+  const handleWorkspaceChange = useCallback((next: WorkspaceMode) => {
+    setWorkspace(next);
+    setActiveView((prev) => {
+      if (next === 'monitoring') return 'monitoring';
+      if (prev === 'monitoring') return 'document';
+      return prev;
+    });
+  }, []);
+
   const handleOpenProject = (projectId: string) => {
     setActiveProject(projectId);
-    setActiveView('document');
+    setActiveView(workspace === 'monitoring' ? 'monitoring' : 'document');
   };
 
   const handleBackToHome = () => {
@@ -67,15 +76,15 @@ function AppContent() {
   }, []);
 
   if (!activeProject) {
-    return workspace === 'plan' ? (
-      <StrategicHome 
-        onOpenProject={handleOpenProject}
-        onSwitchWorkspace={() => setWorkspace('casework')}
-      />
-    ) : (
+    return workspace === 'casework' ? (
       <CaseworkHome 
         onOpenCase={handleOpenProject}
-        onSwitchWorkspace={() => setWorkspace('plan')}
+        onSwitchWorkspace={() => handleWorkspaceChange('plan')}
+      />
+    ) : (
+      <StrategicHome 
+        onOpenProject={handleOpenProject}
+        onSwitchWorkspace={() => handleWorkspaceChange('casework')}
       />
     );
   }
@@ -90,7 +99,7 @@ function AppContent() {
         workspace={workspace}
         activeView={activeView!}
         onViewChange={setActiveView}
-        onWorkspaceChange={setWorkspace}
+        onWorkspaceChange={handleWorkspaceChange}
         onBackToHome={handleBackToHome}
         projectId={activeProject}
       />

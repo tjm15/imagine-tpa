@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2, Database, Terminal, Sparkles, X } from 'lucide-react';
+import { Camera, MapPin, Eye, Download, AlertTriangle, Maximize2, Database, Terminal, Sparkles, X, HelpCircle } from 'lucide-react';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '../ui/tooltip';
+import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface RealityViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 export function RealityView({ workspace, explainabilityMode = 'summary', onOpenTrace }: RealityViewProps) {
@@ -19,6 +21,7 @@ export function RealityView({ workspace, explainabilityMode = 'summary', onOpenT
     { id: 'south', label: 'Rear courtyard', note: 'Private amenity space; scope for cycle storage.', captured: '12 Nov 2024' }
   ];
   const [lightbox, setLightbox] = useState<string | null>(null);
+  const whyVisibilityClass = explainabilityMode === 'summary' ? 'opacity-0 group-hover:opacity-100' : 'opacity-100';
   return (
     <div className="h-full flex flex-col">
       {/* Header */}
@@ -32,7 +35,7 @@ export function RealityView({ workspace, explainabilityMode = 'summary', onOpenT
             {onOpenTrace && (
               <button
                 className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline"
-                onClick={onOpenTrace}
+                onClick={() => onOpenTrace({ kind: 'run', label: 'Current run' })}
               >
                 Trace
               </button>
@@ -112,10 +115,15 @@ export function RealityView({ workspace, explainabilityMode = 'summary', onOpenT
                 </div>
                 <div className="grid sm:grid-cols-2 gap-3">
                   {photos.map(photo => (
-                    <button
+                    <div
                       key={photo.id}
                       onClick={() => setLightbox(photo.id)}
-                      className="text-left border rounded-lg overflow-hidden hover:border-blue-200 transition-colors"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') setLightbox(photo.id);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      className="text-left border rounded-lg overflow-hidden hover:border-blue-200 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-200"
                     >
                       <div className="aspect-video bg-neutral-100 relative">
                         <div className="absolute inset-0 flex items-center justify-center">
@@ -131,10 +139,21 @@ export function RealityView({ workspace, explainabilityMode = 'summary', onOpenT
                         <div className="flex items-center gap-2 text-xs text-neutral-500">
                           <Camera className="w-3 h-3" />
                           <span>Captured: {photo.captured}</span>
-                          <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Trace</button>
+                          {onOpenTrace ? (
+                            <button
+                              type="button"
+                              className="text-blue-600 hover:underline"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOpenTrace({ kind: 'evidence', id: 'ev-site-visit', label: 'Site visit notes' });
+                              }}
+                            >
+                              Trace
+                            </button>
+                          ) : null}
                         </div>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>
@@ -317,10 +336,28 @@ export function RealityView({ workspace, explainabilityMode = 'summary', onOpenT
             <div className="aspect-video bg-neutral-100 rounded flex items-center justify-center mb-3">
               <Camera className="w-12 h-12 text-neutral-300" />
             </div>
-            <div className="flex items-center gap-2 text-sm text-neutral-700">
+            <div className="flex items-center gap-2 text-sm text-neutral-700 group">
               <StatusBadge status="settled" />
               <ProvenanceIndicator provenance={{ source: 'human', confidence: 'high', status: 'settled', evidenceIds: ['ev-site-visit'] }} showConfidence onOpenTrace={onOpenTrace} />
-              <button className="text-blue-600 hover:underline" onClick={onOpenTrace}>Why is this here?</button>
+              {onOpenTrace && (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        type="button"
+                        className={`${whyVisibilityClass} transition-opacity text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md p-1`}
+                        onClick={() => onOpenTrace?.({ kind: 'evidence', id: 'ev-site-visit', label: 'Site visit notes' })}
+                        aria-label="Why?"
+                      >
+                        <HelpCircle className="w-4 h-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      {explainabilityMode === 'forensic' ? 'Open trace' : 'Based on site visit evidence (1 source)'}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              )}
             </div>
           </div>
         </div>

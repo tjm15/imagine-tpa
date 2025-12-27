@@ -5,13 +5,14 @@ import { ProvenanceIndicator, ConfidenceBadge, StatusBadge } from '../Provenance
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
 import { mockConsiderations } from '../../fixtures/mockData';
+import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
 
 interface JudgementViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
-  onOpenTrace?: () => void;
+  onOpenTrace?: (target?: TraceTarget) => void;
 }
 
 interface ScenarioTab {
@@ -52,7 +53,7 @@ export function JudgementView({ workspace, explainabilityMode = 'summary', onOpe
           {onOpenTrace && (
             <button
               className="text-[11px] text-[color:var(--color-gov-blue)] underline-offset-2 hover:underline"
-              onClick={onOpenTrace}
+              onClick={() => onOpenTrace({ kind: 'run', label: 'Current run' })}
             >
               Trace
             </button>
@@ -110,6 +111,7 @@ export function JudgementView({ workspace, explainabilityMode = 'summary', onOpe
                     limitations: 'Balance is conditional on framing selection.'
                   }}
                   showConfidence
+                  onOpenTrace={onOpenTrace}
                 />
                 <StatusBadge status="provisional" />
               </div>
@@ -163,7 +165,9 @@ export function JudgementView({ workspace, explainabilityMode = 'summary', onOpe
                       )}
                       <div className="mt-2 flex items-center gap-2 text-[11px] text-blue-700">
                         <GitBranch className="w-3 h-3" />
-                        <button className="hover:underline" onClick={onOpenTrace}>Trace</button>
+                        <button className="hover:underline" onClick={() => onOpenTrace?.({ kind: 'consideration', id: c.id, label: c.title || c.issue })}>
+                          Trace
+                        </button>
                       </div>
                     </div>
                   ))}
