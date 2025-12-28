@@ -15,9 +15,9 @@ import {
   mockInterpretations,
   mockPolicies,
   type ReasoningMove,
-  getMoveStatus 
 } from '../fixtures/mockData';
 import type { TraceTarget } from '../lib/trace';
+import { useAppState } from '../lib/appState';
 
 interface ReasoningTrayProps {
   runId: string;
@@ -41,12 +41,30 @@ const moveOrder: ReasoningMove[] = [
   'considerations', 'balance', 'negotiation', 'positioning'
 ];
 
+const moveBlurb: Record<ReasoningMove, string> = {
+  framing: 'Confirming purpose, scope, and political framing before proceeding.',
+  issues: 'Surfacing material issues, constraints, and policy hooks to test.',
+  evidence: 'Curating sources, checking gaps, and recording limitations.',
+  interpretation: 'Interpreting evidence against tests and plan requirements.',
+  considerations: 'Forming the considerations ledger (benefits, harms, conflicts).',
+  balance: 'Weighing considerations under the chosen framing to reach a view.',
+  negotiation: 'Altering proposals/conditions/obligations to resolve conflicts.',
+  positioning: 'Producing the final position and a coherent, challenge-ready narrative.'
+};
+
+function deriveCurrentMove(moveStatus: Record<ReasoningMove, 'complete' | 'in-progress' | 'pending'>): ReasoningMove {
+  return moveOrder.find(m => moveStatus[m] === 'in-progress')
+    || [...moveOrder].reverse().find(m => moveStatus[m] === 'complete')
+    || 'framing';
+}
+
 export function ReasoningTray({ runId, onOpenTrace, onSelectConsideration }: ReasoningTrayProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<'progress' | 'ledger' | 'trace'>('progress');
-  
-  const moveStatus = getMoveStatus(runId);
-  const currentMove = moveOrder.find(m => moveStatus[m] === 'in-progress') || 'framing';
+
+  const { reasoningMoves } = useAppState();
+  const moveStatus = reasoningMoves;
+  const currentMove = deriveCurrentMove(moveStatus);
   
   const completedCount = Object.values(moveStatus).filter(s => s === 'complete').length;
   const progressPercent = Math.round((completedCount / 8) * 100);
@@ -145,7 +163,7 @@ export function ReasoningTray({ runId, onOpenTrace, onSelectConsideration }: Rea
           {/* Tab Content */}
           <div className="h-48">
             {activeTab === 'progress' && (
-              <ReasoningProgress moveStatus={moveStatus} />
+              <ReasoningProgress moveStatus={moveStatus} currentMove={currentMove} />
             )}
             {activeTab === 'ledger' && (
               <ConsiderationsLedger onSelect={onSelectConsideration} />
@@ -164,7 +182,13 @@ export function ReasoningTray({ runId, onOpenTrace, onSelectConsideration }: Rea
 // SUB-COMPONENTS
 // ============================================================================
 
-function ReasoningProgress({ moveStatus }: { moveStatus: Record<ReasoningMove, 'complete' | 'in-progress' | 'pending'> }) {
+function ReasoningProgress({
+  moveStatus,
+  currentMove,
+}: {
+  moveStatus: Record<ReasoningMove, 'complete' | 'in-progress' | 'pending'>;
+  currentMove: ReasoningMove;
+}) {
   return (
     <ScrollArea className="h-full">
       <div className="p-4">
@@ -227,22 +251,21 @@ function ReasoningProgress({ moveStatus }: { moveStatus: Record<ReasoningMove, '
           <div className="flex items-center gap-2 mb-2">
             <Clock className="w-4 h-4 text-amber-600" />
             <span className="text-sm font-medium" style={{ color: 'var(--color-ink)' }}>
-              Currently: Balance
+              Currently: {moveLabels[currentMove].label}
             </span>
           </div>
           <p className="text-xs" style={{ color: 'var(--color-text)' }}>
-            Weighing considerations under the selected political framing. 
-            Housing need (decisive) vs heritage impact (significant).
+            {moveBlurb[currentMove]}
           </p>
           <div className="flex gap-2 mt-3">
             <Button size="sm" variant="outline" className="h-7 text-xs">
-              View Considerations
+              View Detail
             </Button>
             <Button size="sm" className="h-7 text-xs" style={{
               backgroundColor: 'var(--color-accent)',
               color: 'white'
             }}>
-              Complete Balance
+              Complete Move
             </Button>
           </div>
         </div>

@@ -1,0 +1,5 @@
+{
+  "name": "Local Plan Mode - TPA Demo",
+  "description": "A spatial strategy interface for The Planner's Assistant, featuring scenario modeling, site allocation assessment, and AI-driven inspector reasoning.",
+  "requestFramePermissions": []
+}

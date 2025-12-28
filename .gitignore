@@ -166,3 +166,4 @@ docker-compose.override.yml
 *.tmp
 *.temp
 .cache/
+.http-8086.pid

@@ -58,6 +58,7 @@
             "yet-another-react-lightbox": "^3.27.0"
       },
       "devDependencies": {
+            "@playwright/test": "^1.57.0",
             "@types/node": "^20.10.0",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "vite": "^6.4.1"

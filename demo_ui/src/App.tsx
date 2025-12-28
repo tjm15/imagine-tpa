@@ -77,40 +77,44 @@ function AppContent() {
     }
   }, []);
 
-  return (
-    <Shell activeMode={workspace} onNavigate={handleWorkspaceChange}>
-      <DndContext 
-        collisionDetection={closestCenter}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        {activeProject ? (
-          <WorkbenchShell
-            workspace={workspace}
-            activeView={activeView!}
-            onViewChange={setActiveView}
-            onWorkspaceChange={handleWorkspaceChange}
-            onBackToHome={handleBackToDashboard}
-            projectId={activeProject}
-          />
-        ) : workspace === 'casework' ? (
-          <CaseworkHome onOpenCase={handleOpenProject} />
-        ) : (
-          <StrategicHome onOpenProject={handleOpenProject} />
-        )}
-        
-        {/* Drag Overlay for visual feedback */}
-        <DragOverlay>
-          {draggedItem && (
-            <div className="bg-white rounded-lg shadow-xl p-3 border-2 border-blue-400 max-w-xs">
-              <span className="text-sm font-medium text-blue-700">
-                {draggedItem.type === 'evidence' ? '📄 Dragging evidence' : '🖼️ Dragging photo'}
-              </span>
-            </div>
-          )}
-        </DragOverlay>
-      </DndContext>
+  const content = activeProject ? (
+    <WorkbenchShell
+      workspace={workspace}
+      activeView={activeView!}
+      onViewChange={setActiveView}
+      onWorkspaceChange={handleWorkspaceChange}
+      onBackToHome={handleBackToDashboard}
+      projectId={activeProject}
+    />
+  ) : (
+    <Shell activeMode={workspace} onNavigate={handleWorkspaceChange} variant="home">
+      {workspace === 'casework' ? (
+        <CaseworkHome onOpenCase={handleOpenProject} />
+      ) : (
+        <StrategicHome onOpenProject={handleOpenProject} />
+      )}
     </Shell>
+  );
+
+  return (
+    <DndContext 
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      {content}
+      
+      {/* Drag Overlay for visual feedback */}
+      <DragOverlay>
+        {draggedItem && (
+          <div className="bg-white rounded-lg shadow-xl p-3 border-2 border-blue-400 max-w-xs">
+            <span className="text-sm font-medium text-blue-700">
+              {draggedItem.type === 'evidence' ? '📄 Dragging evidence' : '🖼️ Dragging photo'}
+            </span>
+          </div>
+        )}
+      </DragOverlay>
+    </DndContext>
   );
 }
 

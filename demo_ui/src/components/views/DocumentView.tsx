@@ -1,13 +1,23 @@
+import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { FileText, HelpCircle } from 'lucide-react';
+import { FileText, HelpCircle, BookOpenCheck } from 'lucide-react';
 import { Badge } from "../ui/badge";
+import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { DocumentEditor } from '../editor/DocumentEditor';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
+import { NarrativeGuide } from '../NarrativeGuide';
+import { ReasoningTray } from '../ReasoningTray';
 import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
+
+const EXPLAINABILITY_LABEL: Record<ExplainabilityMode, string> = {
+  summary: 'Summary',
+  inspect: 'Inspect',
+  forensic: 'Forensic',
+};
 
 interface DocumentViewProps {
   workspace: WorkspaceMode;
@@ -17,7 +27,7 @@ interface DocumentViewProps {
 
 const initialBaselineText = `<h1>Place Portrait: Baseline Evidence</h1>
 <h2>Introduction</h2>
-<p>This place portrait provides the baseline evidence for Cambridge's local plan review under the new CULP system. It establishes the current context against which spatial strategy options will be assessed.</p>
+<p>This place portrait provides the baseline evidence for Cambridge's local plan review under the new plan process. It establishes the current context against which spatial strategy options will be assessed.</p>
 <p>The portrait draws on multiple evidence sources including Census 2021, local monitoring data, and commissioned technical studies. All limitations are explicitly noted.</p>
 <h2>Housing Context</h2>
 <p>Cambridge faces acute housing pressure. The affordability ratio of 12.8x significantly exceeds both the regional average (8.2x) and represents a deterioration from 10.5x in 2015.</p>
@@ -53,6 +63,9 @@ const initialCaseworkText = `<h1>Officer Report: 24/0456/FUL</h1>
 </ul>`;
 
 export function DocumentView({ workspace, explainabilityMode = 'summary', onOpenTrace }: DocumentViewProps) {
+  const [showGuide, setShowGuide] = useState(true);
+  const [templateToInsert, setTemplateToInsert] = useState<{ content: string; id: number } | null>(null);
+
   const title = workspace === 'plan'
     ? 'Place Portrait: Baseline Evidence'
     : 'Officer Report: 24/0456/FUL';
@@ -83,60 +96,95 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
   const whyVisibilityClass = explainabilityMode === 'summary' ? 'opacity-0 group-hover:opacity-100' : 'opacity-100';
 
   return (
-    <div className="max-w-4xl mx-auto p-8 font-sans">
+    <div className="h-full flex flex-col font-sans bg-white overflow-hidden">
       {/* Document Header */}
-      <div className="mb-6 pb-4 border-b border-slate-200 group">
-        <div className="flex items-center gap-2 text-sm text-blue-600 font-medium mb-3">
-          <FileText className="w-4 h-4" />
-          <span className="uppercase tracking-wider text-xs">{workspace === 'plan' ? 'Deliverable Document' : 'Officer Report'}</span>
+      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-200 group bg-white z-10">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2 text-sm text-blue-600 font-medium mb-2">
+              <FileText className="w-4 h-4" />
+              <span className="uppercase tracking-wider text-xs">{workspace === 'plan' ? 'Deliverable Document' : 'Officer Report'}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{title}</h1>
+              <Badge variant="secondary" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">{EXPLAINABILITY_LABEL[explainabilityMode]} mode</Badge>
+              <StatusBadge status="provisional" />
+              <div className={`${whyVisibilityClass} transition-opacity`}>
+                <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021','ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
+              </div>
+            </div>
+            <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-2">
+              <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 rounded-sm font-normal">Draft v2.3</Badge>
+              <span>Last edited 18 Dec 2024</span>
+              <span>by <span className="text-slate-900 font-medium">Sarah Mitchell</span></span>
+              <Separator orientation="vertical" className="h-4" />
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      type="button"
+                      className={`${whyVisibilityClass} transition-opacity text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md p-1`}
+                      onClick={handleWhy}
+                      aria-label="Why?"
+                    >
+                      <HelpCircle className="w-4 h-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-xs">
+                    {whyTooltip}
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </div>
+          </div>
+          
+          <Button 
+            variant={showGuide ? "secondary" : "outline"} 
+            size="sm" 
+            onClick={() => setShowGuide(!showGuide)}
+            className="gap-2 ml-4"
+          >
+            <BookOpenCheck className="w-4 h-4" />
+            {showGuide ? 'Hide Guide' : 'Show Guide'}
+          </Button>
         </div>
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-3xl font-bold text-slate-900 tracking-tight">{title}</h1>
-          <Badge variant="secondary" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">{explainabilityMode} mode</Badge>
-          <StatusBadge status="provisional" />
-          <div className={`${whyVisibilityClass} transition-opacity`}>
-            <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021','ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
+      </div>
+
+      <div className="flex-1 flex overflow-hidden">
+        {/* Editor Area */}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-3xl mx-0 p-4 sm:p-6">
+            {/* Inline callouts to anchor provenance and state language */}
+            <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
+              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">Settled: Intro</Badge>
+              <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">Provisional: Housing</Badge>
+              <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200">Draft: Transport</Badge>
+            </div>
+
+            {/* TipTap Editor (fully interactive) */}
+            <DocumentEditor 
+              initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
+              stageId={workspace === 'plan' ? 'baseline' : 'casework'}
+              explainabilityMode={explainabilityMode}
+              onOpenTrace={onOpenTrace}
+              placeholder="Start drafting your planning document..."
+              templateToInsert={templateToInsert}
+            />
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-2">
-          <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 rounded-sm font-normal">Draft v2.3</Badge>
-          <span>Last edited 18 Dec 2024</span>
-          <span>by <span className="text-slate-900 font-medium">Sarah Mitchell</span></span>
-          <Separator orientation="vertical" className="h-4" />
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className={`${whyVisibilityClass} transition-opacity text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-md p-1`}
-                  onClick={handleWhy}
-                  aria-label="Why?"
-                >
-                  <HelpCircle className="w-4 h-4" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="bottom" className="max-w-xs">
-                {whyTooltip}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+
+        {/* Guide Sidebar */}
+        {showGuide && (
+          <div className="w-80 border-l bg-slate-50 overflow-hidden flex-shrink-0 flex flex-col">
+            <NarrativeGuide onInsertTemplate={(content) => setTemplateToInsert({ content, id: Date.now() })} />
+          </div>
+        )}
       </div>
 
-      {/* Inline callouts to anchor provenance and state language */}
-      <div className="flex flex-wrap items-center gap-3 mb-4 text-sm">
-        <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">Settled: Intro</Badge>
-        <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">Provisional: Housing</Badge>
-        <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200">Draft: Transport</Badge>
-      </div>
-
-      {/* TipTap Editor (fully interactive) */}
-      <DocumentEditor 
-        initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
-        stageId={workspace === 'plan' ? 'baseline' : 'casework'}
-        explainabilityMode={explainabilityMode}
+      {/* Reasoning Tray */}
+      <ReasoningTray 
+        runId="run_8a4f2e" 
         onOpenTrace={onOpenTrace}
-        placeholder="Start drafting your planning document..."
       />
     </div>
   );

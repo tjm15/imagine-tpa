@@ -193,8 +193,8 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
       <div className="p-3 border-b border-neutral-200 bg-white sticky top-0 z-10 shadow-sm">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-base font-semibold leading-tight">CULP Process</h2>
-            <p className="text-[11px] text-slate-500">Legible, demo-friendly rail</p>
+            <h2 className="text-base font-semibold leading-tight">Plan Process</h2>
+            <p className="text-[11px] text-slate-500">Planner-first workflow for plan-making</p>
           </div>
           <Badge variant="secondary" className="text-[10px]">Demo</Badge>
         </div>
@@ -211,7 +211,7 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
 
       {/* Phase List */}
       <div className="flex-1 min-h-0 overflow-y-auto pr-1">
-        <div className="p-2.5 space-y-2.5">
+        <div className="p-2 space-y-2">
           {phases.map((phase) => {
             const isExpanded = expandedPhases.includes(phase.id);
             const phaseStages = stageProgress.filter(s => phase.stages.includes(s.id));
@@ -257,15 +257,15 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
                                   : 'bg-white hover:border-blue-100'
                             }`}
                           >
-                            <div className="flex items-center gap-1.5 w-24">
+                            <div className="flex items-center gap-1.5 w-16 flex-shrink-0">
                               {getStatusIcon(progress?.status || 'pending')}
                               <Icon className="w-4 h-4 text-slate-500" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-[13px] font-medium truncate">{stage.name}</span>
-                                {isGateway && <Badge variant="outline" className="text-[9px]">Gateway</Badge>}
-                                {progress?.status === 'completed' && <Badge variant="secondary" className="text-[9px]">Done</Badge>}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[13px] font-medium leading-tight">{stage.name}</span>
+                                {isGateway && <Badge variant="outline" className="text-[9px] flex-shrink-0">Gateway</Badge>}
+                                {progress?.status === 'completed' && <Badge variant="secondary" className="text-[9px] flex-shrink-0">Done</Badge>}
                               </div>
                               <p className="text-[11px] text-slate-500 line-clamp-2">{stage.description}</p>
                             </div>

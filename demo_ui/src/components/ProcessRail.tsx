@@ -18,7 +18,7 @@ export function ProcessRail({ workspace }: ProcessRailProps) {
       <div className="h-full flex flex-col bg-slate-50/30">
         <div className="p-4 border-b border-slate-200 bg-white">
           <h3 className="text-sm font-semibold text-slate-900">Programme Board</h3>
-          <p className="text-xs text-slate-500 mt-0.5">CULP 30-month process</p>
+            <p className="text-xs text-slate-500 mt-0.5">Plan process overview</p>
         </div>
         
         <ScrollArea className="flex-1">

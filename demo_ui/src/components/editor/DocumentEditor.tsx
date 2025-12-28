@@ -33,6 +33,7 @@ interface DocumentEditorProps {
   placeholder?: string;
   stageId?: string;
   explainabilityMode?: ExplainabilityMode;
+  templateToInsert?: { content: string; id: number } | null;
   onOpenTrace?: (target?: TraceTarget) => void;
   onSave?: (content: string, html: string) => void;
 }
@@ -96,6 +97,7 @@ export function DocumentEditor({
   placeholder = 'Start drafting your planning document...',
   stageId = 'baseline',
   explainabilityMode = 'summary',
+  templateToInsert,
   onOpenTrace,
   onSave 
 }: DocumentEditorProps) {
@@ -161,6 +163,14 @@ export function DocumentEditor({
       accepted: false,
     })));
   }, [stageId]);
+
+  // Handle template insertion
+  useEffect(() => {
+    if (templateToInsert && editor) {
+      editor.chain().focus().insertContent(templateToInsert.content).run();
+      toast.success('Template inserted');
+    }
+  }, [templateToInsert, editor]);
 
   const aiHints = useMemo<AIHint[]>(() => {
     const text = document.content || '';

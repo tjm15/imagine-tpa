@@ -9,7 +9,7 @@
  * - Drawing tools for spatial queries
  */
 
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import Map, { 
   Source, 
   Layer, 
@@ -47,6 +47,10 @@ interface MapViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
   onOpenTrace?: (target?: TraceTarget) => void;
+  // Scenario modelling support
+  scenarioId?: string;
+  allocatedSiteIds?: string[];
+  omittedSiteIds?: string[];
 }
 
 interface PopupInfo {
@@ -119,9 +123,83 @@ const conservationStyle = {
   },
 };
 
-export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace }: MapViewProps) {
+export function MapView({ 
+  workspace, 
+  explainabilityMode = 'summary', 
+  onOpenTrace,
+  scenarioId,
+  allocatedSiteIds,
+  omittedSiteIds,
+}: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
   const { openModal, notify } = useAppState();
+  
+  // When in scenario mode, filter sites by allocated/omitted
+  const isScenarioMode = Boolean(scenarioId && allocatedSiteIds);
+  
+  // Create scenario-aware site data
+  const scenarioSiteAllocations = useMemo(() => {
+    if (!isScenarioMode) return siteAllocations;
+    
+    // Add an 'allocated' property to each feature for styling
+    return {
+      ...siteAllocations,
+      features: siteAllocations.features.map(f => ({
+        ...f,
+        properties: {
+          ...f.properties,
+          allocated: allocatedSiteIds?.includes(f.properties.id) ?? false,
+        },
+      })),
+    };
+  }, [isScenarioMode, allocatedSiteIds]);
+  
+  // Scenario-aware site styles
+  const scenarioSitesStyle = useMemo(() => {
+    if (!isScenarioMode) return sitesStyle;
+    
+    return {
+      ...sitesStyle,
+      paint: {
+        ...sitesStyle.paint,
+        'fill-color': [
+          'case',
+          ['get', 'allocated'],
+          '#10b981', // emerald for allocated
+          '#94a3b8', // grey for omitted
+        ] as unknown as string,
+        'fill-opacity': [
+          'case',
+          ['get', 'allocated'],
+          0.6,
+          0.3,
+        ] as unknown as number,
+      },
+    };
+  }, [isScenarioMode]);
+  
+  const scenarioSitesOutlineStyle = useMemo(() => {
+    if (!isScenarioMode) return sitesOutlineStyle;
+    
+    return {
+      ...sitesOutlineStyle,
+      paint: {
+        ...sitesOutlineStyle.paint,
+        'line-color': [
+          'case',
+          ['get', 'allocated'],
+          '#059669', // darker emerald
+          '#64748b', // grey
+        ] as unknown as string,
+        'line-width': [
+          'case',
+          ['get', 'allocated'],
+          2.5,
+          1.5,
+        ] as unknown as number,
+      },
+    };
+  }, [isScenarioMode]);
   
   const [viewState, setViewState] = useState({
     longitude: 0.1218,
@@ -326,9 +404,9 @@ export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace
 
           {/* Site Allocations */}
           {layerVisibility.sites && (
-            <Source type="geojson" data={siteAllocations}>
-              <Layer {...sitesStyle} />
-              <Layer {...sitesOutlineStyle} />
+            <Source type="geojson" data={scenarioSiteAllocations}>
+              <Layer {...scenarioSitesStyle} />
+              <Layer {...scenarioSitesOutlineStyle} />
             </Source>
           )}
 
@@ -629,3 +707,6 @@ export function MapView({ workspace, explainabilityMode = 'summary', onOpenTrace
     </div>
   );
 }
+
+// Also export as MapViewInteractive for scenario modelling
+export { MapView as MapViewInteractive };

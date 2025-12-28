@@ -282,7 +282,42 @@ export const cambridgeBoundary: GeoJSON.Feature<GeoJSON.Polygon> = {
   },
 };
 
-export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
+// ============================================================================
+// SAAD INDICATOR TYPES (Suitability, Availability, Achievability, Deliverability)
+// ============================================================================
+
+export type SAADStatus = 'green' | 'amber' | 'red';
+
+export interface SAADIndicators {
+  suitability: SAADStatus;
+  availability: SAADStatus;
+  achievability: SAADStatus;
+  deliverability: SAADStatus;
+}
+
+export interface SiteConstraint {
+  id: string;
+  name: string;
+  severity: 'high' | 'medium' | 'low';
+  implications: string;
+  mitigation: string;
+}
+
+export interface EnrichedSiteProperties {
+  id: string;
+  name: string;
+  capacity: number;
+  status: 'shortlisted' | 'under-assessment' | 'committed' | 'omitted';
+  landType: 'brownfield' | 'greenfield' | 'urban-extension';
+  greenBelt: boolean;
+  aiSummary: string;
+  saad: SAADIndicators;
+  accessibilityScore: number; // 0-10
+  sustainabilityScore: number; // 0-10
+  constraints: SiteConstraint[];
+}
+
+export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon, EnrichedSiteProperties> = {
   type: 'FeatureCollection',
   features: [
     {
@@ -292,8 +327,17 @@ export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
         name: 'Northern Fringe',
         capacity: 450,
         status: 'shortlisted',
+        landType: 'greenfield',
         greenBelt: true,
-        constraints: ['contaminated land', 'noise'],
+        aiSummary: 'Large greenfield site adjacent to Cambridge Science Park offering strategic capacity for employment-led mixed-use development. Green Belt release would require exceptional circumstances justification.',
+        saad: { suitability: 'amber', availability: 'green', achievability: 'amber', deliverability: 'green' },
+        accessibilityScore: 7.2,
+        sustainabilityScore: 6.8,
+        constraints: [
+          { id: 'c1', name: 'Contaminated Land', severity: 'medium', implications: 'Former industrial use requires Phase 2 investigation. May affect viability.', mitigation: 'Remediation strategy to be secured via condition. Cost estimate £1.2m included in viability.' },
+          { id: 'c2', name: 'Noise (A14)', severity: 'low', implications: 'Northern boundary within 55dB contour from A14.', mitigation: 'Acoustic buffer zone and building orientation. No residential within 50m of boundary.' },
+          { id: 'c3', name: 'Green Belt', severity: 'high', implications: 'Site is within Cambridge Green Belt. Release requires exceptional circumstances.', mitigation: 'Compensatory improvements to remaining Green Belt. Strong sustainability case for employment-led growth.' },
+        ],
       },
       geometry: {
         type: 'Polygon',
@@ -313,8 +357,15 @@ export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
         name: 'Southern Gateway',
         capacity: 320,
         status: 'under-assessment',
+        landType: 'brownfield',
         greenBelt: false,
-        constraints: ['flood zone 2'],
+        aiSummary: 'Previously developed industrial land with excellent public transport links via Cambridge South station. Flood risk requires sequential approach but site passes the exception test.',
+        saad: { suitability: 'green', availability: 'amber', achievability: 'green', deliverability: 'amber' },
+        accessibilityScore: 8.8,
+        sustainabilityScore: 9.1,
+        constraints: [
+          { id: 'c4', name: 'Flood Zone 2', severity: 'medium', implications: 'Eastern portion in Flood Zone 2. Sequential test required.', mitigation: 'Site layout places vulnerable uses in Zone 1. SUDS and finished floor levels +600mm above 1:100+CC.' },
+        ],
       },
       geometry: {
         type: 'Polygon',
@@ -334,8 +385,16 @@ export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
         name: 'Eastern Expansion',
         capacity: 680,
         status: 'shortlisted',
+        landType: 'urban-extension',
         greenBelt: true,
-        constraints: ['heritage proximity'],
+        aiSummary: 'Strategic urban extension providing the largest single site capacity. Infrastructure requirements are significant but deliverable within plan period with phased approach.',
+        saad: { suitability: 'green', availability: 'green', achievability: 'amber', deliverability: 'amber' },
+        accessibilityScore: 6.5,
+        sustainabilityScore: 7.4,
+        constraints: [
+          { id: 'c5', name: 'Heritage Proximity', severity: 'medium', implications: 'Site adjoins Leper Chapel (Grade I). Setting assessment required.', mitigation: 'Landscaped buffer and sensitive design. Historic England engaged in masterplanning.' },
+          { id: 'c6', name: 'Green Belt', severity: 'high', implications: 'Major Green Belt release. Strategic importance requires robust justification.', mitigation: 'Comprehensive Green Belt review demonstrates reduced contribution to GB purposes. New defensible boundary.' },
+        ],
       },
       geometry: {
         type: 'Polygon',
@@ -355,7 +414,12 @@ export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
         name: 'Station Area Regeneration',
         capacity: 280,
         status: 'committed',
+        landType: 'brownfield',
         greenBelt: false,
+        aiSummary: 'Committed brownfield regeneration with planning permission granted. Highly sustainable location at Cambridge Central station. Delivery on track for 2026 start.',
+        saad: { suitability: 'green', availability: 'green', achievability: 'green', deliverability: 'green' },
+        accessibilityScore: 9.5,
+        sustainabilityScore: 9.3,
         constraints: [],
       },
       geometry: {
@@ -369,8 +433,111 @@ export const siteAllocations: GeoJSON.FeatureCollection<GeoJSON.Polygon> = {
         ]],
       },
     },
+    {
+      type: 'Feature',
+      properties: {
+        id: 'SHLAA/102',
+        name: 'West Cambridge Extension',
+        capacity: 520,
+        status: 'shortlisted',
+        landType: 'greenfield',
+        greenBelt: true,
+        aiSummary: 'University-adjacent site offering research-led development opportunity. Strong functional relationship with West Cambridge campus but Green Belt sensitivity.',
+        saad: { suitability: 'amber', availability: 'green', achievability: 'green', deliverability: 'green' },
+        accessibilityScore: 7.8,
+        sustainabilityScore: 7.1,
+        constraints: [
+          { id: 'c7', name: 'Green Belt', severity: 'high', implications: 'Green Belt site with high landscape sensitivity.', mitigation: 'Integrated with university campus. Landscape-led masterplan.' },
+          { id: 'c8', name: 'Ecology', severity: 'medium', implications: 'Protected species (great crested newts) present.', mitigation: 'Receptor site identified. District Level Licensing in place.' },
+        ],
+      },
+      geometry: {
+        type: 'Polygon',
+        coordinates: [[
+          [0.0856, 52.2034],
+          [0.0923, 52.2067],
+          [0.0978, 52.2034],
+          [0.0912, 52.2001],
+          [0.0856, 52.2034],
+        ]],
+      },
+    },
   ],
 };
+
+// ============================================================================
+// STRATEGIC SCENARIOS
+// ============================================================================
+
+export interface StrategicScenario {
+  id: string;
+  name: string;
+  description: string;
+  allocatedSiteIds: string[];
+  omittedSiteIds: string[];
+  totalCapacity: number;
+  narrative: string;
+  color: 'blue' | 'amber' | 'emerald' | 'purple';
+}
+
+export const strategicScenarios: StrategicScenario[] = [
+  {
+    id: 'scenario-transit',
+    name: 'Transit-Oriented Innovation',
+    description: 'Prioritise brownfield sites with excellent public transport accessibility',
+    allocatedSiteIds: ['SHLAA/067', 'BF/012', 'SHLAA/102'],
+    omittedSiteIds: ['SHLAA/045', 'SHLAA/089'],
+    totalCapacity: 1120,
+    narrative: 'This scenario focuses growth on brownfield and previously developed land with strong public transport connections. The Southern Gateway and Station Area sites anchor the strategy, with West Cambridge providing research-led housing. Green Belt sites are excluded, limiting overall capacity but minimising landscape impact. This approach strongly aligns with climate objectives but may face deliverability challenges meeting the full housing target.',
+    color: 'blue',
+  },
+  {
+    id: 'scenario-heritage',
+    name: 'Heritage-Led Infill',
+    description: 'Maximise brownfield capacity while protecting heritage assets',
+    allocatedSiteIds: ['SHLAA/067', 'BF/012'],
+    omittedSiteIds: ['SHLAA/045', 'SHLAA/089', 'SHLAA/102'],
+    totalCapacity: 600,
+    narrative: 'A conservative strategy that allocates only sites with minimal heritage impact and no Green Belt release. This protects Cambridge\'s historic character but significantly undersupplies against housing need. Additional allocations would be required in the next plan period, likely requiring difficult decisions on currently omitted sites.',
+    color: 'amber',
+  },
+  {
+    id: 'scenario-strategic',
+    name: 'Strategic Urban Extensions',
+    description: 'Maximise capacity through strategic Green Belt releases',
+    allocatedSiteIds: ['SHLAA/045', 'SHLAA/067', 'SHLAA/089', 'BF/012', 'SHLAA/102'],
+    omittedSiteIds: [],
+    totalCapacity: 2250,
+    narrative: 'This scenario allocates all assessed sites to maximise housing delivery and support economic growth. It requires exceptional circumstances justification for Green Belt release but provides a comprehensive housing land supply with headroom. Infrastructure requirements are significant but achievable with developer contributions and public investment in transport improvements.',
+    color: 'emerald',
+  },
+];
+
+// Helper functions for scenarios
+export function getScenarioById(id: string): StrategicScenario | undefined {
+  return strategicScenarios.find(s => s.id === id);
+}
+
+export function getSitesForScenario(scenarioId: string): {
+  allocated: GeoJSON.Feature<GeoJSON.Polygon, EnrichedSiteProperties>[];
+  omitted: GeoJSON.Feature<GeoJSON.Polygon, EnrichedSiteProperties>[];
+} {
+  const scenario = getScenarioById(scenarioId);
+  if (!scenario) return { allocated: [], omitted: [] };
+  
+  return {
+    allocated: siteAllocations.features.filter(f => 
+      scenario.allocatedSiteIds.includes(f.properties.id)
+    ),
+    omitted: siteAllocations.features.filter(f => 
+      scenario.omittedSiteIds.includes(f.properties.id)
+    ),
+  };
+}
+
+export function getEnrichedSiteById(id: string): GeoJSON.Feature<GeoJSON.Polygon, EnrichedSiteProperties> | undefined {
+  return siteAllocations.features.find(f => f.properties.id === id);
+}
 
 export const constraintsLayers: Record<string, GeoJSON.FeatureCollection> = {
   greenBelt: {

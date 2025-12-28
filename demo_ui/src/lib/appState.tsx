@@ -180,14 +180,14 @@ const initialState: AppState = {
   reasoningMoves: {
     framing: 'complete',
     issues: 'complete',
-    evidence: 'complete',
-    interpretation: 'complete',
-    considerations: 'complete',
-    balance: 'in-progress',
+    evidence: 'in-progress',
+    interpretation: 'pending',
+    considerations: 'pending',
+    balance: 'pending',
     negotiation: 'pending',
     positioning: 'pending',
   },
-  currentMove: 'balance',
+  currentMove: 'evidence',
   
   aiState: {
     isGenerating: false,

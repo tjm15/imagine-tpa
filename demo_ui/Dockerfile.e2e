@@ -1,0 +1,14 @@
+FROM mcr.microsoft.com/playwright:v1.49.0-noble
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci
+
+COPY . .
+
+# Expose the port for the web server (if we were accessing it from outside, but we run tests inside)
+EXPOSE 5173
+
+# Default command to run tests
+CMD ["npx", "playwright", "test"]
