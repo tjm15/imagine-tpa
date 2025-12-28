@@ -48,6 +48,7 @@ const DEFAULT_LEFT_PANEL_WIDTH_PX = 320;
 const DEFAULT_RIGHT_PANEL_WIDTH_PX = 360;
 const MIN_PANEL_WIDTH_PX = 280;
 const MAX_PANEL_WIDTH_PX = 460;
+const MIN_MAIN_CONTENT_WIDTH_PX = 780;
 const OVERLAY_BREAKPOINT_PX = 1280;
 
 function clampPanelWidth(px: number) {
@@ -173,6 +174,14 @@ export function WorkbenchShell({
   }, [isOverlay]);
 
   useEffect(() => {
+    enforceMainWidthBudget();
+    if (isOverlay) return;
+
+    window.addEventListener('resize', enforceMainWidthBudget);
+    return () => window.removeEventListener('resize', enforceMainWidthBudget);
+  }, [enforceMainWidthBudget, isOverlay]);
+
+  useEffect(() => {
     // Default right sidebar section per view
     if (activeView === 'document') setRightSection('policy');
     else if (activeView === 'map') setRightSection('constraints');
@@ -215,6 +224,43 @@ export function WorkbenchShell({
     setRightOpenDesktop(open);
     setStoredValue(sidebarKey('right', workspace, 'open'), String(open));
   }, [isOverlay, workspace]);
+
+  const enforceMainWidthBudget = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (isOverlay) return;
+
+    const viewportWidth = window.innerWidth;
+    const maxSidebarWidth = Math.max(
+      MIN_PANEL_WIDTH_PX,
+      viewportWidth - ICON_RAIL_WIDTH_PX * 2 - MIN_MAIN_CONTENT_WIDTH_PX,
+    );
+
+    setLeftPanelWidthPx((current) => {
+      const next = clampPanelWidth(Math.min(current, maxSidebarWidth));
+      return next === current ? current : next;
+    });
+
+    setRightPanelWidthPx((current) => {
+      const next = clampPanelWidth(Math.min(current, maxSidebarWidth));
+      return next === current ? current : next;
+    });
+
+    let availableWidth = viewportWidth - ICON_RAIL_WIDTH_PX * 2;
+    if (leftPanelOpen) availableWidth -= Math.min(leftPanelWidthPx, maxSidebarWidth);
+    if (rightPanelOpen) availableWidth -= Math.min(rightPanelWidthPx, maxSidebarWidth);
+
+    if (availableWidth >= MIN_MAIN_CONTENT_WIDTH_PX) return;
+
+    // Prefer to collapse the right panel first to keep the process rail visible.
+    if (rightPanelOpen && availableWidth < MIN_MAIN_CONTENT_WIDTH_PX) {
+      setRightPanelOpen(false);
+      availableWidth += rightPanelWidthPx;
+    }
+
+    if (leftPanelOpen && availableWidth < MIN_MAIN_CONTENT_WIDTH_PX) {
+      setLeftPanelOpen(false);
+    }
+  }, [isOverlay, leftPanelOpen, rightPanelOpen, leftPanelWidthPx, rightPanelWidthPx, setLeftPanelOpen, setRightPanelOpen]);
 
   const startResizeLeft = useCallback((event: React.PointerEvent) => {
     event.preventDefault();

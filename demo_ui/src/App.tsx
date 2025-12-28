@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, closestCenter } from '@dnd-kit/core';
 import { Toaster, toast } from 'sonner';
+import { Shell } from './components/Shell';
 import { WorkbenchShell } from './components/WorkbenchShell';
 import { StrategicHome } from './components/StrategicHome';
 import { CaseworkHome } from './components/CaseworkHome';
@@ -21,6 +22,7 @@ function AppContent() {
 
   const handleWorkspaceChange = useCallback((next: WorkspaceMode) => {
     setWorkspace(next);
+    setActiveProject(null);
     setActiveView((prev) => {
       if (next === 'monitoring') return 'monitoring';
       if (prev === 'monitoring') return 'document';
@@ -33,7 +35,7 @@ function AppContent() {
     setActiveView(workspace === 'monitoring' ? 'monitoring' : 'document');
   };
 
-  const handleBackToHome = () => {
+  const handleBackToDashboard = () => {
     setActiveProject(null);
     setActiveView(null);
   };
@@ -75,46 +77,40 @@ function AppContent() {
     }
   }, []);
 
-  if (!activeProject) {
-    return workspace === 'casework' ? (
-      <CaseworkHome 
-        onOpenCase={handleOpenProject}
-        onSwitchWorkspace={() => handleWorkspaceChange('plan')}
-      />
-    ) : (
-      <StrategicHome 
-        onOpenProject={handleOpenProject}
-        onSwitchWorkspace={() => handleWorkspaceChange('casework')}
-      />
-    );
-  }
-
   return (
-    <DndContext 
-      collisionDetection={closestCenter}
-      onDragStart={handleDragStart}
-      onDragEnd={handleDragEnd}
-    >
-      <WorkbenchShell
-        workspace={workspace}
-        activeView={activeView!}
-        onViewChange={setActiveView}
-        onWorkspaceChange={handleWorkspaceChange}
-        onBackToHome={handleBackToHome}
-        projectId={activeProject}
-      />
-      
-      {/* Drag Overlay for visual feedback */}
-      <DragOverlay>
-        {draggedItem && (
-          <div className="bg-white rounded-lg shadow-xl p-3 border-2 border-blue-400 max-w-xs">
-            <span className="text-sm font-medium text-blue-700">
-              {draggedItem.type === 'evidence' ? '📄 Dragging evidence' : '🖼️ Dragging photo'}
-            </span>
-          </div>
+    <Shell activeMode={workspace} onNavigate={handleWorkspaceChange}>
+      <DndContext 
+        collisionDetection={closestCenter}
+        onDragStart={handleDragStart}
+        onDragEnd={handleDragEnd}
+      >
+        {activeProject ? (
+          <WorkbenchShell
+            workspace={workspace}
+            activeView={activeView!}
+            onViewChange={setActiveView}
+            onWorkspaceChange={handleWorkspaceChange}
+            onBackToHome={handleBackToDashboard}
+            projectId={activeProject}
+          />
+        ) : workspace === 'casework' ? (
+          <CaseworkHome onOpenCase={handleOpenProject} />
+        ) : (
+          <StrategicHome onOpenProject={handleOpenProject} />
         )}
-      </DragOverlay>
-    </DndContext>
+        
+        {/* Drag Overlay for visual feedback */}
+        <DragOverlay>
+          {draggedItem && (
+            <div className="bg-white rounded-lg shadow-xl p-3 border-2 border-blue-400 max-w-xs">
+              <span className="text-sm font-medium text-blue-700">
+                {draggedItem.type === 'evidence' ? '📄 Dragging evidence' : '🖼️ Dragging photo'}
+              </span>
+            </div>
+          )}
+        </DragOverlay>
+      </DndContext>
+    </Shell>
   );
 }
 
