@@ -110,9 +110,9 @@ export function ScenarioModellingView({
       />
 
       {/* Main Content - Two Column Layout */}
-      <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+      <div className="flex-1 flex overflow-hidden">
         {/* Left Column: Map + Narrative */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white min-h-[400px] lg:min-h-0">
+        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white">
           {/* Map Container */}
           <div className="flex-1 relative min-h-[300px]">
             {/* Map Label */}
@@ -276,7 +276,7 @@ export function ScenarioModellingView({
         </div>
 
         {/* Right Column: Sites Panel */}
-        <div className="w-full lg:w-[420px] flex-shrink-0 border-t lg:border-t-0 lg:border-l border-slate-200 overflow-hidden bg-slate-50 max-h-[500px] lg:max-h-none">
+        <div className="w-[420px] flex-shrink-0 border-l border-slate-200 overflow-hidden bg-slate-50">
           <AllocatedSitesPanel
             allocatedSites={allocated}
             omittedSites={omitted}

@@ -59,6 +59,7 @@
       },
       "devDependencies": {
             "@playwright/test": "^1.57.0",
+            "@tailwindcss/vite": "^4.1.18",
             "@types/node": "^20.10.0",
             "@vitejs/plugin-react-swc": "^3.10.2",
             "vite": "^6.4.1"

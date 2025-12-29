@@ -13,7 +13,8 @@ import { useState, useCallback, useMemo } from 'react';
 import { 
   Search, FileText, Map, Image, MessageSquare, 
   Users, ChevronRight, ExternalLink, GripVertical, 
-  Plus, Eye, Star, BookOpen, LayoutGrid, List as ListIcon, HelpCircle
+  Plus, Eye, Star, BookOpen, LayoutGrid, List as ListIcon, HelpCircle,
+  Map as MapIcon
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -24,6 +25,7 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
+import { MapViewInteractive } from '../views/MapViewInteractive';
 import { 
   mockPhotosForLightbox,
   mockPolicyDetails, 
@@ -36,16 +38,19 @@ import { useAppState, useAppDispatch } from '../../lib/appState';
 import { toast } from 'sonner';
 import type { TraceTarget } from '../../lib/trace';
 
+import { WorkspaceMode } from '../../App';
+
 interface ContextMarginProps {
   onEvidenceSelect?: (evidenceId: string) => void;
   section?: ContextSection;
   explainabilityMode?: ExplainabilityMode;
   onOpenTrace?: (target?: TraceTarget) => void;
+  workspace?: WorkspaceMode;
 }
 
 type ViewMode = 'grid' | 'list';
 type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
-type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed';
+type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed' | 'map';
 type EvidenceCategory = 'all' | 'documents' | 'photos' | 'responses';
 type DemoFilter = 'members-briefed' | 'site-shlaa' | 'consultation-heat';
 

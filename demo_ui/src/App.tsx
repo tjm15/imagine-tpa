@@ -10,7 +10,7 @@ import { ModalManager } from './components/modals/ModalDialogs';
 import { processDroppedEvidence } from './lib/aiSimulation';
 
 export type WorkspaceMode = 'plan' | 'casework' | 'monitoring';
-export type ViewMode = 'document' | 'map' | 'judgement' | 'reality' | 'monitoring';
+export type ViewMode = 'studio' | 'strategy' | 'monitoring';
 
 // Main app content with DnD handling
 function AppContent() {
@@ -25,14 +25,14 @@ function AppContent() {
     setActiveProject(null);
     setActiveView((prev) => {
       if (next === 'monitoring') return 'monitoring';
-      if (prev === 'monitoring') return 'document';
+      if (prev === 'monitoring') return 'studio';
       return prev;
     });
   }, []);
 
   const handleOpenProject = (projectId: string) => {
     setActiveProject(projectId);
-    setActiveView(workspace === 'monitoring' ? 'monitoring' : 'document');
+    setActiveView(workspace === 'monitoring' ? 'monitoring' : 'studio');
   };
 
   const handleBackToDashboard = () => {

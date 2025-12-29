@@ -19,14 +19,11 @@ import {
 } from 'lucide-react';
 import { WorkspaceMode, ViewMode } from '../App';
 import { DocumentView } from './views/DocumentView';
-import { MapView } from './views/MapView';
-import { JudgementView } from './views/JudgementView';
-import { ScenarioModellingView } from './scenarios/ScenarioModellingView';
-import { RealityView } from './views/RealityView';
+import { StrategyView } from './views/StrategyView';
 import { MonitoringView } from './views/MonitoringView';
 import { ContextMarginInteractive } from './layout/ContextMarginInteractive';
 import { ProcessRail } from './layout/ProcessRail';
-import { ReasoningTrayInteractive } from './ReasoningTrayInteractive';
+import { ReasoningTray } from './ReasoningTray';
 import { TraceOverlay } from './modals/TraceOverlay';
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
@@ -40,7 +37,7 @@ import type { TraceTarget } from '../lib/trace';
 import { Shell } from './Shell';
 
 type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
-type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed';
+type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed' | 'map';
 
 const ICON_RAIL_WIDTH_PX = 56;
 const DEFAULT_LEFT_PANEL_WIDTH_PX = 320;
@@ -118,6 +115,7 @@ export function WorkbenchShell({
 }: WorkbenchShellProps) {
   const dispatch = useAppDispatch();
   const { currentStageId, aiState, reasoningMoves } = useAppState();
+  const currentRunId = 'run_8a4f2e';
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
   const [explainabilityMode, setExplainabilityMode] = useState<ExplainabilityMode>('summary');
@@ -174,8 +172,8 @@ export function WorkbenchShell({
 
   useEffect(() => {
     // Default right sidebar section per view
-    if (activeView === 'document') setRightSection('policy');
-    else if (activeView === 'map') setRightSection('constraints');
+    if (activeView === 'studio') setRightSection('policy');
+    else if (activeView === 'strategy') setRightSection('constraints');
     else if (activeView === 'monitoring') setRightSection('feed');
     else setRightSection('evidence');
   }, [activeView]);
@@ -333,7 +331,7 @@ export function WorkbenchShell({
   }, [dispatch]);
 
   // Determine if the current view should be full-bleed (no sidebars)
-  const isFullBleedView = workspace === 'plan' && activeView === 'judgement';
+  const isFullBleedView = workspace === 'plan' && activeView === 'strategy';
 
   const viewConfig = workspace === 'monitoring'
     ? {
@@ -345,30 +343,22 @@ export function WorkbenchShell({
         },
       }
     : {
-        document: {
+        studio: {
           icon: FileText,
-          label: workspace === 'plan' ? 'Deliverable' : 'Officer Report',
+          label: workspace === 'plan' ? 'Studio' : 'Report',
           component: DocumentView,
-          description: 'Draft and edit the primary document',
+          description: workspace === 'plan' 
+            ? 'Document workspace with embedded figures and evidence' 
+            : 'Officer report drafting with inline citations',
         },
-        map: {
+        strategy: {
           icon: Map,
-          label: workspace === 'plan' ? 'Map & Plans' : 'Site & Plans',
-          component: MapView,
-          description: 'Geospatial context and constraints',
-        },
-        judgement: {
-          icon: Scale,
-          label: workspace === 'plan' ? 'Scenarios' : 'Balance',
-          component: workspace === 'plan' ? ScenarioModellingView : JudgementView,
-          description: workspace === 'plan' ? 'Site allocation strategy modelling' : 'Weighing evidence and policy',
-          fullBleed: workspace === 'plan', // Scenario view takes full width
-        },
-        reality: {
-          icon: Camera,
-          label: workspace === 'plan' ? 'Visuals' : 'Photos',
-          component: RealityView,
-          description: 'Site photos and 3D visualisations',
+          label: workspace === 'plan' ? 'Strategy' : 'Assessment',
+          component: StrategyView,
+          description: workspace === 'plan' 
+            ? 'Spatial strategy modelling with scenario comparison' 
+            : 'Site assessment with spatial context and visual evidence',
+          fullBleed: workspace === 'plan', // Strategy view takes full width in plan mode
         },
       };
 
@@ -416,12 +406,12 @@ export function WorkbenchShell({
       onToggleSidebar={() => setLeftPanelOpen(!leftPanelOpen)}
       isSidebarOpen={leftPanelOpen}
     >
-      <div className="h-full flex flex-col overflow-hidden font-sans" style={{ 
+      <div className="h-full min-h-0 flex flex-col overflow-hidden font-sans" style={{ 
         backgroundColor: 'var(--color-surface)',
         color: 'var(--color-text)'
       }}>
         {/* Top Header - Global Navigation */}
-        <header className="bg-white border-b flex-shrink-0 z-20 shadow-sm relative" style={{ borderColor: 'var(--color-neutral-300)' }}>
+        <header className="bg-white border-b flex-shrink-0 sticky top-0 z-50 shadow-sm" style={{ borderColor: 'var(--color-neutral-300)' }}>
           <div className="flex items-center justify-between h-14 px-4">
             {/* Left: Branding & Navigation */}
             <div className="flex items-center gap-4">
@@ -648,22 +638,28 @@ export function WorkbenchShell({
           )}
 
           {/* Main Workspace */}
-          <div className="flex-1 flex overflow-hidden relative">
+          <div className="flex-1 flex overflow-hidden relative min-h-0">
             {/* Main View */}
-            <div className="flex-1 overflow-hidden flex flex-col relative">
-              <div className="flex-1 overflow-hidden">
+            <div className="flex-1 overflow-hidden flex flex-col relative min-h-0">
+              <div className="flex-1 overflow-auto min-h-0">
                 <div className="h-full w-full">
                   <ActiveViewComponent
                     workspace={workspace}
                     explainabilityMode={explainabilityMode}
                     onOpenTrace={openTrace}
+                    onToggleMap={() => {
+                      setRightSection('map');
+                      setRightPanelOpen(true);
+                    }}
                   />
                 </div>
               </div>
 
               {/* Reasoning Tray - Hidden in full-bleed views */}
               {!isFullBleedView && (
-                <ReasoningTrayInteractive runId="run_8a4f2e" onOpenTrace={openTrace} />
+                <div className="sticky bottom-0 z-40">
+                  <ReasoningTray runId={currentRunId || 'run_8a4f2e'} onOpenTrace={openTrace} />
+                </div>
               )}
             </div>
           </div>
@@ -707,6 +703,7 @@ export function WorkbenchShell({
                     { id: 'policy' as const, label: 'Policy', icon: BookOpen },
                     { id: 'constraints' as const, label: 'Constraints', icon: ShieldAlert },
                     { id: 'feed' as const, label: 'Feed', icon: Bell },
+                    { id: 'map' as const, label: 'Map', icon: Map },
                   ] satisfies { id: ContextSection; label: string; icon: typeof FileText }[]
                 ).map((item) => {
                   const Icon = item.icon;
@@ -742,6 +739,7 @@ export function WorkbenchShell({
                   <ContextMarginInteractive
                     section={rightSection}
                     explainabilityMode={explainabilityMode}
+                    workspace={workspace}
                     onOpenTrace={openTrace}
                   />
                   <div
@@ -764,6 +762,7 @@ export function WorkbenchShell({
                 <ContextMarginInteractive
                   section={rightSection}
                   explainabilityMode={explainabilityMode}
+                  workspace={workspace}
                   onOpenTrace={openTrace}
                 />
                 <div

@@ -406,7 +406,7 @@ function TraceSummary({ runId, onOpenFull }: { runId: string; onOpenFull?: () =>
                   </span>
                 </div>
                 <p className="text-[10px] mt-0.5" style={{ color: 'var(--color-text)' }}>
-                  {move.inputIds.length} inputs → {move.outputIds.length} outputs
+                  {(Array.isArray(move.inputIds) ? move.inputIds.length : 0)} inputs → {(Array.isArray(move.outputIds) ? move.outputIds.length : 0)} outputs
                 </p>
               </div>
             </div>

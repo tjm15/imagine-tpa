@@ -104,12 +104,10 @@ export function ReasoningTrayInteractive({ runId, onOpenTrace }: ReasoningTrayPr
     []
   );
 
-  const heightPx = isExpanded ? 260 : 44;
-
   return (
     <div
-      className="border-t bg-white transition-[height] duration-200 ease-in-out overflow-hidden"
-      style={{ height: heightPx, borderColor: 'var(--color-neutral-300)' }}
+      className="border-t bg-white transition-all duration-200 ease-in-out flex flex-col"
+      style={{ maxHeight: isExpanded ? '50vh' : '44px', borderColor: 'var(--color-neutral-300)' }}
     >
       {/* Handle */}
       <button
@@ -169,7 +167,7 @@ export function ReasoningTrayInteractive({ runId, onOpenTrace }: ReasoningTrayPr
       </button>
 
       {/* Content */}
-      <div className="h-[216px] px-4 py-3 grid grid-cols-1 lg:grid-cols-2 gap-3 border-t border-neutral-200">
+      <div className="flex-1 min-h-0 overflow-auto px-4 py-3 grid grid-cols-1 lg:grid-cols-2 gap-3 border-t border-neutral-200 bg-white">
         <div className="min-w-0">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold text-slate-600 tracking-wide uppercase">Headline considerations</span>

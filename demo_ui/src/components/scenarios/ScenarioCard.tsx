@@ -30,7 +30,7 @@ export function ScenarioCard({ scenario, selected, onClick }: ScenarioCardProps)
     <button
       onClick={onClick}
       className={cn(
-        'relative flex flex-col items-start p-4 rounded-xl border-2 transition-all duration-200 text-left min-h-[140px]',
+        'relative flex flex-col items-start p-4 rounded-xl border-2 transition-all duration-200 text-left min-h-[140px] flex-1 min-w-0',
         selected 
           ? cn(config.border, config.bg, 'shadow-md')
           : 'border-slate-200 bg-white hover:border-indigo-200 hover:bg-slate-50'

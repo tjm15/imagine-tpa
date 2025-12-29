@@ -4,6 +4,9 @@
   import path from 'path';
 
   export default defineConfig({
+    // Use relative asset paths so the built app still renders when opened from a file:// URL or
+    // served from a non-root path (prevents the blank screen with missing CSS/JS).
+    base: './',
     plugins: [react()],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -52,6 +55,7 @@
     build: {
       target: 'esnext',
       outDir: 'build',
+      sourcemap: true,
     },
     server: {
       port: 3000,

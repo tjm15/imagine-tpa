@@ -183,8 +183,8 @@ export function NarrativeGuide({ onInsertTemplate }: NarrativeGuideProps) {
   const guide = GUIDES[currentMove];
 
   return (
-    <Card className="h-full border-l-0 rounded-none shadow-none bg-slate-50/50">
-      <CardHeader className="px-4 pt-4 pb-3">
+    <Card className="h-full border-l-0 rounded-none shadow-none bg-slate-50/50 flex flex-col">
+      <CardHeader className="px-4 pt-4 pb-3 flex-shrink-0">
         <div className="flex items-center gap-2 mb-1">
           <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 uppercase text-[10px] tracking-wider">
             Current Move
@@ -199,7 +199,7 @@ export function NarrativeGuide({ onInsertTemplate }: NarrativeGuideProps) {
         </CardDescription>
       </CardHeader>
       
-      <ScrollArea className="flex-1 px-4">
+      <div className="flex-1 overflow-y-auto px-4">
         <div className="space-y-6 pb-6">
           {/* Key Questions */}
           <div className="space-y-3">
@@ -242,7 +242,7 @@ export function NarrativeGuide({ onInsertTemplate }: NarrativeGuideProps) {
             </div>
           </div>
         </div>
-      </ScrollArea>
+      </div>
     </Card>
   );
 }

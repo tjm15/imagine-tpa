@@ -120,13 +120,13 @@ export function SiteAllocationCard({
           <div>
             <div className="text-[11px] font-medium text-neutral-600 mb-2">
               Key Constraints
-              {site.constraints.length > 0 && (
+              {Array.isArray(site.constraints) && site.constraints.length > 0 && (
                 <span className="ml-1 text-[10px] font-normal text-neutral-400">
                   — click to view implications & mitigation
                 </span>
               )}
             </div>
-            <ConstraintChipList constraints={site.constraints} />
+            <ConstraintChipList constraints={Array.isArray(site.constraints) ? site.constraints : []} />
           </div>
           
           {/* Actions */}

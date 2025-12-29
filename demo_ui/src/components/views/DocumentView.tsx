@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { FileText, HelpCircle, BookOpenCheck } from 'lucide-react';
+import { FileText, HelpCircle, BookOpenCheck, Camera, Map as MapIcon } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
@@ -8,7 +8,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/
 import { DocumentEditor } from '../editor/DocumentEditor';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
 import { NarrativeGuide } from '../NarrativeGuide';
-import { ReasoningTray } from '../ReasoningTray';
+import { MapViewInteractive } from './MapViewInteractive';
+import { mockPhotos } from '../../fixtures/extendedMockData';
 import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
@@ -23,16 +24,35 @@ interface DocumentViewProps {
   workspace: WorkspaceMode;
   explainabilityMode?: ExplainabilityMode;
   onOpenTrace?: (target?: TraceTarget) => void;
+  onToggleMap?: () => void;
 }
 
 const initialBaselineText = `<h1>Place Portrait: Baseline Evidence</h1>
 <h2>Introduction</h2>
 <p>This place portrait provides the baseline evidence for Cambridge's local plan review under the new plan process. It establishes the current context against which spatial strategy options will be assessed.</p>
 <p>The portrait draws on multiple evidence sources including Census 2021, local monitoring data, and commissioned technical studies. All limitations are explicitly noted.</p>
+
+<div class="figure-embed">
+  <div class="figure-placeholder">
+    <strong>Figure 1:</strong> Cambridge Authority Area and Key Constraints
+    <p class="text-xs text-slate-600 mt-1">Interactive map showing Green Belt, conservation areas, and transport corridors. Click to expand or cite.</p>
+  </div>
+</div>
+
 <h2>Housing Context</h2>
 <p>Cambridge faces acute housing pressure. The affordability ratio of 12.8x significantly exceeds both the regional average (8.2x) and represents a deterioration from 10.5x in 2015.</p>
+<p>As shown in <strong>Figure 2</strong> (housing trajectory), delivery has averaged 1,200 homes per annum since 2015, but the updated standard method indicates a need for 1,800 dpa to 2041.</p>
+
+<div class="figure-embed">
+  <div class="figure-placeholder">
+    <strong>Figure 2:</strong> Housing Trajectory 2015-2025
+    <p class="text-xs text-slate-600 mt-1">Chart showing completions vs target. Click to cite in reasoning ledger.</p>
+  </div>
+</div>
+
 <h2>Transport & Connectivity</h2>
-<p>Cambridge benefits from strong rail connectivity to London (50 mins) and excellent local cycling infrastructure. However, strategic road capacity remains constrained, particularly on the A14 corridor.</p>`;
+<p>Cambridge benefits from strong rail connectivity to London (50 mins) and excellent local cycling infrastructure. However, strategic road capacity remains constrained, particularly on the A14 corridor.</p>
+<p>Spatial options will need to balance brownfield intensification (supporting sustainable modes) against greenfield release (requiring highway mitigation).</p>`;
 
 const initialCaseworkText = `<h1>Officer Report: 24/0456/FUL</h1>
 <h2>01. Site &amp; Proposal</h2>
@@ -62,7 +82,7 @@ const initialCaseworkText = `<h1>Officer Report: 24/0456/FUL</h1>
   <li>Retention of front elevation details</li>
 </ul>`;
 
-export function DocumentView({ workspace, explainabilityMode = 'summary', onOpenTrace }: DocumentViewProps) {
+export function DocumentView({ workspace, explainabilityMode = 'summary', onOpenTrace, onToggleMap }: DocumentViewProps) {
   const [showGuide, setShowGuide] = useState(true);
   const [templateToInsert, setTemplateToInsert] = useState<{ content: string; id: number } | null>(null);
 
@@ -98,7 +118,7 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
   return (
     <div className="h-full flex flex-col font-sans bg-white overflow-hidden">
       {/* Document Header */}
-      <div className="flex-shrink-0 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-200 group bg-white z-10">
+      <div className="flex-shrink-0 sticky top-0 z-20 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-200 group bg-white shadow-sm">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 text-sm text-blue-600 font-medium mb-2">
@@ -138,22 +158,65 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
             </div>
           </div>
           
-          <Button 
-            variant={showGuide ? "secondary" : "outline"} 
-            size="sm" 
-            onClick={() => setShowGuide(!showGuide)}
-            className="gap-2 ml-4"
-          >
-            <BookOpenCheck className="w-4 h-4" />
-            {showGuide ? 'Hide Guide' : 'Show Guide'}
-          </Button>
+          <div className="flex items-center gap-2 ml-4">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={onToggleMap}
+              className="gap-2"
+            >
+              <MapIcon className="w-4 h-4" />
+              Dock Map
+            </Button>
+            <Button 
+              variant={showGuide ? "secondary" : "outline"} 
+              size="sm" 
+              onClick={() => setShowGuide(!showGuide)}
+              className="gap-2"
+            >
+              <BookOpenCheck className="w-4 h-4" />
+              {showGuide ? 'Hide Guide' : 'Show Guide'}
+            </Button>
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex min-h-0 overflow-hidden">
         {/* Editor Area */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-auto">
           <div className="max-w-3xl mx-0 p-4 sm:p-6">
+            {/* Visual embeds reintroduced from legacy Map/Visuals */}
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 bg-slate-50">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <Camera className="w-4 h-4 text-slate-600" />
+                    Visual evidence
+                  </div>
+                  <Badge variant="outline" className="text-[10px] bg-white">Citable</Badge>
+                </div>
+                <div className="p-3 flex gap-3 overflow-x-auto">
+                  {mockPhotos.slice(0, 3).map((photo) => (
+                    <div key={photo.id} className="flex-shrink-0 w-48 flex gap-3 items-center border rounded-md p-2">
+                      <div className="w-12 h-12 bg-slate-200 rounded-md flex items-center justify-center text-[10px] text-slate-500 flex-shrink-0">
+                        img
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs font-medium text-slate-800 truncate">{photo.caption}</div>
+                        <div className="text-[10px] text-slate-500">{photo.date}</div>
+                        <button
+                          className="text-[10px] text-[color:var(--color-gov-blue)] hover:underline"
+                          onClick={() => onOpenTrace?.({ kind: 'evidence', id: photo.id, label: photo.caption })}
+                        >
+                          Trace
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
             {/* Inline callouts to anchor provenance and state language */}
             <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
               <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">Settled: Intro</Badge>
@@ -180,12 +243,6 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
           </div>
         )}
       </div>
-
-      {/* Reasoning Tray */}
-      <ReasoningTray 
-        runId="run_8a4f2e" 
-        onOpenTrace={onOpenTrace}
-      />
     </div>
   );
 }
