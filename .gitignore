@@ -166,4 +166,5 @@ docker-compose.override.yml
 *.tmp
 *.temp
 .cache/
+local-plan-mode---tpa-demo/.env.local
 .http-8086.pid
