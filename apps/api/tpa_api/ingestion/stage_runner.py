@@ -32,6 +32,24 @@ async def run_stage_for_run(run_id: str, stage: str) -> dict[str, Any]:
     if not ingest_batch_id:
         return {"status": "error", "error": "missing_ingest_batch_id"}
 
+    prior_error = _db_fetch_one(
+        """
+        SELECT step_name, error_text
+        FROM ingest_run_steps
+        WHERE run_id = %s::uuid AND status = 'error'
+        ORDER BY started_at DESC
+        LIMIT 1
+        """,
+        (str(run_id),),
+    )
+    if prior_error:
+        return {
+            "status": "error",
+            "error": "prior_stage_failed",
+            "error_step": prior_error.get("step_name"),
+            "error_text": prior_error.get("error_text"),
+        }
+
     docs = _clean_db_rows(
         _db_fetch_all(
             """

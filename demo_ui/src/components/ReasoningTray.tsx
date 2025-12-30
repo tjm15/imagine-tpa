@@ -161,7 +161,7 @@ export function ReasoningTray({ runId, onOpenTrace, onSelectConsideration }: Rea
           </div>
 
           {/* Tab Content */}
-          <div className="h-48">
+          <div style={{ height: 260 }}>
             {activeTab === 'progress' && (
               <ReasoningProgress moveStatus={moveStatus} currentMove={currentMove} />
             )}

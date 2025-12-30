@@ -144,8 +144,8 @@ def vectorize_segmentation_masks(
                     None,
                     path_id,
                     path_type,
-                    json.dumps(geometry, ensure_ascii=False),
-                    json.dumps(bbox, ensure_ascii=False) if bbox else None,
+                    json.dumps(geometry, ensure_ascii=False, default=str),
+                    json.dumps(bbox, ensure_ascii=False, default=str) if bbox else None,
                     bbox_quality,
                     json.dumps(
                         {
@@ -156,6 +156,7 @@ def vectorize_segmentation_masks(
                             "mask_label": mask.get("label"),
                         },
                         ensure_ascii=False,
+                        default=str,
                     ),
                 ),
             )

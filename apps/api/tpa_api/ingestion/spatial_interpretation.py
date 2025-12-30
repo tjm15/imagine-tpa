@@ -5,6 +5,8 @@ from typing import Any
 from uuid import uuid4
 
 from tpa_api.db import _db_execute, _db_fetch_all
+import os
+
 from tpa_api.prompting import _llm_structured_sync
 from tpa_api.text_utils import _estimate_tokens
 from tpa_api.time_utils import _utc_now
@@ -86,6 +88,7 @@ def interpret_spatial_features(
         )
         payload = {"features": batch}
 
+        temperature = float(os.environ.get("TPA_LLM_SPATIAL_TEMPERATURE", "0.3"))
         obj, tool_run_id, errs = _llm_structured_sync(
             prompt_id="spatial_features.interpretation",
             prompt_version=1,
@@ -95,6 +98,7 @@ def interpret_spatial_features(
             user_payload=payload,
             output_schema_ref="schemas/SpatialFeatureInterpretation.schema.json",
             run_id=run_id,
+            temperature=temperature,
         )
         if errs:
             errors.extend([f"spatial_feature_interpretation:{e}" for e in errs])

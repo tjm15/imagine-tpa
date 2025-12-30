@@ -214,6 +214,46 @@ export function WorkbenchShell({
     setStoredValue(sidebarKey('right', workspace, 'open'), String(open));
   }, [isOverlay, workspace]);
 
+  const ensureSpaceForLeftPanel = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (isOverlay) return;
+    if (!rightPanelOpen) return;
+
+    const viewportWidth = window.innerWidth;
+    const maxSidebarWidth = Math.max(
+      MIN_PANEL_WIDTH_PX,
+      viewportWidth - ICON_RAIL_WIDTH_PX * 2 - MIN_MAIN_CONTENT_WIDTH_PX,
+    );
+
+    const nextLeftWidth = Math.min(leftPanelWidthPx, maxSidebarWidth);
+    const nextRightWidth = Math.min(rightPanelWidthPx, maxSidebarWidth);
+    const availableWidth = viewportWidth - ICON_RAIL_WIDTH_PX * 2 - nextLeftWidth - nextRightWidth;
+
+    if (availableWidth < MIN_MAIN_CONTENT_WIDTH_PX) {
+      setRightPanelOpen(false);
+    }
+  }, [isOverlay, rightPanelOpen, leftPanelWidthPx, rightPanelWidthPx, setRightPanelOpen]);
+
+  const ensureSpaceForRightPanel = useCallback(() => {
+    if (typeof window === 'undefined') return;
+    if (isOverlay) return;
+    if (!leftPanelOpen) return;
+
+    const viewportWidth = window.innerWidth;
+    const maxSidebarWidth = Math.max(
+      MIN_PANEL_WIDTH_PX,
+      viewportWidth - ICON_RAIL_WIDTH_PX * 2 - MIN_MAIN_CONTENT_WIDTH_PX,
+    );
+
+    const nextLeftWidth = Math.min(leftPanelWidthPx, maxSidebarWidth);
+    const nextRightWidth = Math.min(rightPanelWidthPx, maxSidebarWidth);
+    const availableWidth = viewportWidth - ICON_RAIL_WIDTH_PX * 2 - nextLeftWidth - nextRightWidth;
+
+    if (availableWidth < MIN_MAIN_CONTENT_WIDTH_PX) {
+      setLeftPanelOpen(false);
+    }
+  }, [isOverlay, leftPanelOpen, leftPanelWidthPx, rightPanelWidthPx, setLeftPanelOpen]);
+
   const enforceMainWidthBudget = useCallback(() => {
     if (typeof window === 'undefined') return;
     if (isOverlay) return;
@@ -403,7 +443,11 @@ export function WorkbenchShell({
       onNavigate={onWorkspaceChange} 
       variant="project"
       railExtra={railExtra}
-      onToggleSidebar={() => setLeftPanelOpen(!leftPanelOpen)}
+      onToggleSidebar={() => {
+        const next = !leftPanelOpen;
+        if (next) ensureSpaceForLeftPanel();
+        setLeftPanelOpen(next);
+      }}
       isSidebarOpen={leftPanelOpen}
     >
       <div className="h-full min-h-0 flex flex-col overflow-hidden font-sans" style={{ 
@@ -648,6 +692,7 @@ export function WorkbenchShell({
                   onOpenTrace={openTrace}
                   onToggleMap={() => {
                     setRightSection('map');
+                    if (!rightPanelOpen) ensureSpaceForRightPanel();
                     setRightPanelOpen(true);
                   }}
                 />
@@ -671,7 +716,7 @@ export function WorkbenchShell({
             <div className="h-full flex flex-row-reverse">
               {/* Icon Rail */}
               <div
-                className="h-full flex flex-col items-center py-2 px-1 gap-1 border-l"
+                className="h-full flex flex-col items-center py-2 px-1 gap-1 border-l relative z-50"
                 style={{ width: ICON_RAIL_WIDTH_PX, borderColor: 'var(--color-neutral-300)' }}
               >
                 <TooltipProvider>
@@ -680,7 +725,15 @@ export function WorkbenchShell({
                       <button
                         className="h-10 w-10 rounded-md flex items-center justify-center hover:bg-slate-100 transition-colors"
                         aria-label={rightPanelOpen ? 'Collapse right panel' : 'Expand right panel'}
-                        onClick={() => setRightPanelOpen(!rightPanelOpen)}
+                        onClick={() => {
+                          if (rightPanelOpen) {
+                            setRightPanelOpen(false);
+                            return;
+                          }
+
+                          ensureSpaceForRightPanel();
+                          setRightPanelOpen(true);
+                        }}
                       >
                         {rightPanelOpen ? (
                           <PanelRightClose className="w-5 h-5" style={{ color: 'var(--color-text)' }} />
@@ -718,6 +771,7 @@ export function WorkbenchShell({
                             aria-label={item.label}
                             onClick={() => {
                               setRightSection(item.id);
+                              if (!rightPanelOpen) ensureSpaceForRightPanel();
                               setRightPanelOpen(true);
                             }}
                           >
@@ -754,8 +808,8 @@ export function WorkbenchShell({
             {/* Overlay Panel */}
             {isOverlay && rightPanelOpen && (
               <div
-                className="absolute top-0 bottom-0 right-[56px] bg-white shadow-xl z-40 overflow-hidden border-l"
-                style={{ width: rightPanelWidthPx, borderColor: 'var(--color-neutral-300)' }}
+                className="absolute top-0 bottom-0 bg-white shadow-xl z-40 overflow-hidden border-l"
+                style={{ width: rightPanelWidthPx, right: ICON_RAIL_WIDTH_PX, borderColor: 'var(--color-neutral-300)' }}
               >
                 <ContextMarginInteractive
                   section={rightSection}

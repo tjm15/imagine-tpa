@@ -6,6 +6,8 @@ from typing import Any
 from uuid import uuid4
 
 from tpa_api.db import _db_execute
+import os
+
 from tpa_api.prompting import _llm_structured_sync
 from tpa_api.time_utils import _utc_now, _utc_now_iso
 
@@ -333,6 +335,7 @@ def _extract_document_identity_status(
         "source_kind_hint": source_kind,
         "evidence_options": evidence_options,
     }
+    temperature = float(os.environ.get("TPA_LLM_IDENTITY_TEMPERATURE", "0.2"))
     obj, tool_run_id, errs = _llm_structured_sync(
         prompt_id="document_identity_status_v1",
         prompt_version=1,
@@ -343,6 +346,7 @@ def _extract_document_identity_status(
         output_schema_ref="schemas/DocumentIdentityStatusBundle.schema.json",
         ingest_batch_id=ingest_batch_id,
         run_id=run_id,
+        temperature=temperature,
     )
     if not isinstance(obj, dict):
         return None, tool_run_id, errs

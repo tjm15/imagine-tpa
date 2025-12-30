@@ -718,7 +718,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
             )
             _db_execute(
                 "UPDATE visual_assets SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb WHERE id = %s::uuid",
-                (json.dumps({"rich_enrichment": rich_meta}, ensure_ascii=False), visual_asset_id),
+                (json.dumps({"rich_enrichment": rich_meta}, ensure_ascii=False, default=str), visual_asset_id),
             )
 
         visual_facts_count = extract_visual_asset_facts(
@@ -1139,7 +1139,7 @@ def node_imagination(state: IngestionState) -> IngestionState:
         synthesis = imagination_synthesis(state["document_id"], policy_briefs, visual_briefs, state.get("run_id"))
         _db_execute(
             "UPDATE documents SET metadata = metadata || %s::jsonb WHERE id = %s::uuid",
-            (json.dumps({"imagination_synthesis": synthesis}, ensure_ascii=False), state["document_id"]),
+            (json.dumps({"imagination_synthesis": synthesis}, ensure_ascii=False, default=str), state["document_id"]),
         )
         _mark_step(state, "imagination_synthesis")
         _progress(state, "imagination_synthesis", {"linked": len(synthesis.get("cross_modal_links", []))})

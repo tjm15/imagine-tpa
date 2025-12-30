@@ -1042,6 +1042,7 @@ def reset_ingest_state(
         job_clauses.append("plan_cycle_id = %s::uuid")
         job_params.append(plan_cycle_val)
     job_where = " AND ".join(job_clauses) if job_clauses else "TRUE"
+    update_jobs = bool(job_id or batch_id or authority_id or plan_cycle_val)
 
     run_clauses: list[str] = []
     run_params: list[Any] = []
@@ -1091,18 +1092,21 @@ def reset_ingest_state(
         batch_clauses.append("plan_cycle_id = %s::uuid")
         batch_params.append(plan_cycle_val)
     batch_where = " AND ".join(batch_clauses) if batch_clauses else "TRUE"
+    update_batches = bool(batch_id or authority_id or plan_cycle_val)
 
-    jobs_updated = _db_fetch_all(
-        f"""
-        UPDATE ingest_jobs
-        SET status = 'error',
-            error_text = COALESCE(error_text, %s),
-            completed_at = NOW()
-        WHERE {job_where}
-        RETURNING id
-        """,
-        tuple([note_text] + job_params),
-    )
+    jobs_updated: list[dict[str, Any]] = []
+    if update_jobs:
+        jobs_updated = _db_fetch_all(
+            f"""
+            UPDATE ingest_jobs
+            SET status = 'error',
+                error_text = COALESCE(error_text, %s),
+                completed_at = NOW()
+            WHERE {job_where}
+            RETURNING id
+            """,
+            tuple([note_text] + job_params),
+        )
 
     runs_updated = _db_fetch_all(
         f"""
@@ -1130,17 +1134,19 @@ def reset_ingest_state(
         tuple([note_text] + step_params),
     )
 
-    batches_updated = _db_fetch_all(
-        f"""
-        UPDATE ingest_batches
-        SET status = 'error',
-            notes = COALESCE(notes, %s),
-            completed_at = NOW()
-        WHERE {batch_where}
-        RETURNING id
-        """,
-        tuple([note_text] + batch_params),
-    )
+    batches_updated: list[dict[str, Any]] = []
+    if update_batches:
+        batches_updated = _db_fetch_all(
+            f"""
+            UPDATE ingest_batches
+            SET status = 'error',
+                notes = COALESCE(notes, %s),
+                completed_at = NOW()
+            WHERE {batch_where}
+            RETURNING id
+            """,
+            tuple([note_text] + batch_params),
+        )
 
     return JSONResponse(
         content=jsonable_encoder(

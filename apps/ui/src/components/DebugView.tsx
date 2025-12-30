@@ -504,6 +504,10 @@ export function DebugView() {
     count: Array.isArray(items) ? items.length : 0,
   }));
   const isTextRetrievalMode = retrievalMode === 'chunks' || retrievalMode === 'policy-clauses';
+  const selectedRunErrors = useMemo(
+    () => ingestRunSteps.filter((step) => step.status === 'error' || step.error_text),
+    [ingestRunSteps],
+  );
 
   useEffect(() => {
     if (selectedToolRunId && !toolRunById.has(selectedToolRunId)) {
@@ -1538,6 +1542,27 @@ export function DebugView() {
               <CardDescription>Most recent background jobs from the ingest worker.</CardDescription>
             </CardHeader>
             <CardContent>
+              {selectedRunErrors.length > 0 && (
+                <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-900">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-red-700">
+                    <AlertTriangle className="h-4 w-4" />
+                    Run errors detected ({selectedRunErrors.length})
+                  </div>
+                  <ul className="mt-2 space-y-1">
+                    {selectedRunErrors.slice(0, 6).map((step) => (
+                      <li key={step.id}>
+                        <span className="font-semibold">{step.step_name || 'unknown step'}:</span>{' '}
+                        {step.error_text || step.status || 'error'}
+                      </li>
+                    ))}
+                  </ul>
+                  {selectedRunErrors.length > 6 && (
+                    <div className="mt-2 text-[11px] text-red-700">
+                      +{selectedRunErrors.length - 6} more errors in this run.
+                    </div>
+                  )}
+                </div>
+              )}
               <Table>
                 <TableHeader>
                   <TableRow>

@@ -3,10 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from tpa_api.db import _db_execute
-from tpa_api.evidence import _parse_evidence_ref
+from tpa_api.evidence import _ensure_evidence_ref_row, _parse_evidence_ref
 from tpa_api.policy_utils import _normalize_policy_speech_act
 from tpa_api.time_utils import _utc_now
 from tpa_api.ingestion.kg_ops import _ensure_kg_node, _insert_kg_edge
@@ -23,6 +23,39 @@ def _normalize_text_list(values: Any) -> list[str]:
         if cleaned:
             out.append(cleaned)
     return out
+
+
+def _normalize_uuid(value: str | None) -> str | None:
+    if not isinstance(value, str) or not value:
+        return None
+    try:
+        return str(UUID(value))
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _resolve_evidence_ref_id(
+    *,
+    evidence_ref_id: str | None,
+    evidence_ref: str | None,
+    run_id: str | None,
+) -> str | None:
+    if isinstance(evidence_ref_id, str) and evidence_ref_id:
+        normalized = _normalize_uuid(evidence_ref_id)
+        if normalized:
+            return normalized
+        if "::" in evidence_ref_id:
+            ensured = _ensure_evidence_ref_row(evidence_ref_id, run_id=run_id)
+            if ensured:
+                return ensured
+        raise RuntimeError(f"invalid_evidence_ref_id:{evidence_ref_id}")
+    if isinstance(evidence_ref, str) and evidence_ref:
+        if "::" in evidence_ref:
+            ensured = _ensure_evidence_ref_row(evidence_ref, run_id=run_id)
+            if ensured:
+                return ensured
+        raise RuntimeError(f"invalid_evidence_ref:{evidence_ref}")
+    return None
 
 
 def _merge_matrix_fields(primary: dict[str, Any], secondary: dict[str, Any]) -> dict[str, Any]:
@@ -355,7 +388,10 @@ def _persist_policy_logic_assets(
     for matrix in standard_matrices or []:
         if not isinstance(matrix, dict):
             continue
-        policy_section_id = matrix.get("policy_section_id")
+        policy_section_id_raw = matrix.get("policy_section_id")
+        policy_section_id = _normalize_uuid(policy_section_id_raw)
+        if policy_section_id_raw and not policy_section_id:
+            raise RuntimeError(f"invalid_policy_section_id:{policy_section_id_raw}")
         evidence_ref = matrix.get("evidence_ref")
         evidence_block_id = matrix.get("evidence_block_id")
         section_ref = None
@@ -376,6 +412,13 @@ def _persist_policy_logic_assets(
             block = block_lookup.get(evidence_block_id)
             if block and isinstance(block.get("evidence_ref"), str):
                 evidence_ref_id = evidence_ref_map.get(block.get("evidence_ref"))
+        evidence_ref_id = _resolve_evidence_ref_id(
+            evidence_ref_id=evidence_ref_id,
+            evidence_ref=evidence_ref,
+            run_id=run_id,
+        )
+        if evidence_ref_id and not _normalize_uuid(evidence_ref_id):
+            raise RuntimeError(f"invalid_evidence_ref_id:{evidence_ref_id}")
         matrix_id = str(uuid4())
         matrix_jsonb = {
             "matrix_id": matrix.get("matrix_id"),
@@ -443,7 +486,10 @@ def _persist_policy_logic_assets(
     for scope in scope_candidates or []:
         if not isinstance(scope, dict):
             continue
-        policy_section_id = scope.get("policy_section_id")
+        policy_section_id_raw = scope.get("policy_section_id")
+        policy_section_id = _normalize_uuid(policy_section_id_raw)
+        if policy_section_id_raw and not policy_section_id:
+            raise RuntimeError(f"invalid_policy_section_id:{policy_section_id_raw}")
         evidence_ref = scope.get("evidence_ref")
         evidence_block_id = scope.get("evidence_block_id")
         section_ref = None
@@ -464,6 +510,13 @@ def _persist_policy_logic_assets(
             block = block_lookup.get(evidence_block_id)
             if block and isinstance(block.get("evidence_ref"), str):
                 evidence_ref_id = evidence_ref_map.get(block.get("evidence_ref"))
+        evidence_ref_id = _resolve_evidence_ref_id(
+            evidence_ref_id=evidence_ref_id,
+            evidence_ref=evidence_ref,
+            run_id=run_id,
+        )
+        if evidence_ref_id and not _normalize_uuid(evidence_ref_id):
+            raise RuntimeError(f"invalid_evidence_ref_id:{evidence_ref_id}")
         scope_id = str(uuid4())
         scope_jsonb = {
             "scope_id": scope.get("id"),

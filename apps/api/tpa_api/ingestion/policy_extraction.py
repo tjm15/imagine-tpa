@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from uuid import uuid4
 from typing import Any
 
@@ -76,12 +77,13 @@ def run_llm_prompt(
     ]
     
     try:
+        temperature = float(os.environ.get("TPA_LLM_EXTRACTION_TEMPERATURE", "0.3"))
         result = provider.generate_structured(
             messages=messages,
             options={
                 "run_id": run_id,
                 "ingest_batch_id": ingest_batch_id,
-                "temperature": 0.0 # Deterministic-ish for extraction
+                "temperature": temperature,
             }
         )
         return result.get("json"), None, [] # tool_run_id is inside provider logs, we might need to fetch it if we want to link explicitly here?

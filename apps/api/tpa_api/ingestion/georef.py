@@ -90,7 +90,7 @@ def _create_image_frame(*, visual_asset_id: str, blob_path: str, page_number: in
             "image",
             None,
             f"visual_asset::{visual_asset_id}",
-            json.dumps(metadata, ensure_ascii=False),
+            json.dumps(metadata, ensure_ascii=False, default=str),
             _utc_now(),
         ),
     )

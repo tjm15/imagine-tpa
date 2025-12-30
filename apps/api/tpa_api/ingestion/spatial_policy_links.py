@@ -5,6 +5,8 @@ from typing import Any
 from uuid import uuid4
 
 from tpa_api.db import _db_execute, _db_fetch_all
+import os
+
 from tpa_api.prompting import _llm_structured_sync
 from tpa_api.time_utils import _utc_now
 
@@ -125,6 +127,7 @@ def link_policy_clauses_to_spatial_layers(
             "- Only emit links that are clearly supported by the clause text.\n"
             "- Relation should be a short verb phrase (e.g. 'applies_in', 'constrains', 'requires_consideration_of').\n"
         )
+        temperature = float(os.environ.get("TPA_LLM_SPATIAL_LINK_TEMPERATURE", "0.3"))
         obj, tool_run_id, errs = _llm_structured_sync(
             prompt_id="spatial_policy_links.v1",
             prompt_version=1,
@@ -134,6 +137,7 @@ def link_policy_clauses_to_spatial_layers(
             user_payload=payload,
             output_schema_ref="schemas/SpatialPolicyLinks.schema.json",
             run_id=run_id,
+            temperature=temperature,
         )
         if errs:
             errors.extend(errs)

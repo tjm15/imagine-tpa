@@ -5,6 +5,8 @@ from typing import Any
 from uuid import uuid4
 
 from tpa_api.db import _db_execute, _db_fetch_all, _db_fetch_one
+import os
+
 from tpa_api.prompting import _llm_structured_sync
 from tpa_api.time_utils import _utc_now
 
@@ -52,7 +54,7 @@ def _persist_visual_rich_enrichment(
             float(legibility_score) if isinstance(legibility_score, (int, float)) else None,
             interpretation_notes,
             tool_run_id,
-            json.dumps(enrichment, ensure_ascii=False),
+            json.dumps(enrichment, ensure_ascii=False, default=str),
             _utc_now(),
         ),
     )
@@ -81,7 +83,7 @@ def _persist_visual_rich_enrichment(
                 layer.get("color_hex_guess"),
                 bool(layer.get("is_legend_item")),
                 tool_run_id,
-                json.dumps(layer, ensure_ascii=False),
+                json.dumps(layer, ensure_ascii=False, default=str),
                 _utc_now(),
             ),
         )
@@ -224,6 +226,7 @@ def _propose_visual_policy_links(
         )
         text_snippets = [r.get("caption_text") for r in text_rows if isinstance(r.get("caption_text"), str)]
 
+        temperature = float(os.environ.get("TPA_LLM_VISUAL_LINK_TEMPERATURE", "0.3"))
         obj, tool_run_id, errs = _llm_structured_sync(
             prompt_id="visual_policy_link_v1",
             prompt_version=1,
@@ -244,6 +247,7 @@ def _propose_visual_policy_links(
             output_schema_ref=None,
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
+            temperature=temperature,
         )
         if errs or not isinstance(obj, dict):
             raise RuntimeError(f"visual_link_failed:{errs or 'invalid_response'}")
@@ -340,6 +344,7 @@ def _persist_visual_policy_links_from_proposals(
                             "page_number": link.get("page_number"),
                         },
                         ensure_ascii=False,
+                        default=str,
                     ),
                     _utc_now(),
                 ),

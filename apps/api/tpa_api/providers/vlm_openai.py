@@ -150,8 +150,11 @@ class OpenAIVLMProvider(VLMProvider):
             "model": model_id,
             "messages": final_messages,
             "temperature": options.get("temperature", 0.0),
-            "max_tokens": options.get("max_tokens", 4000)
+            "max_tokens": options.get("max_tokens", 4000),
         }
+        response_format = options.get("response_format")
+        if response_format:
+            payload["response_format"] = response_format
 
         # Logging inputs (don't log full base64 images!)
         inputs_logged = {
@@ -159,7 +162,8 @@ class OpenAIVLMProvider(VLMProvider):
             "messages": messages, # Log the original text-only messages struct
             "image_count": len(images),
             "image_sizes_bytes": [len(b) for b in images],
-            "options": options
+            "options": options,
+            "response_format": response_format,
         }
 
         try:
