@@ -10,6 +10,7 @@ from uuid import uuid4
 import httpx
 
 from tpa_api.db import _db_execute
+from tpa_api.model_clients import _resolve_model_base_url_sync, _vlm_model_id
 from tpa_api.providers.vlm import VLMProvider
 from tpa_api.time_utils import _utc_now
 from tpa_api.text_utils import _extract_json_object
@@ -39,6 +40,8 @@ class OpenAIVLMProvider(VLMProvider):
         ingest_batch_id: str | None = None,
     ) -> str:
         tool_run_id = str(uuid4())
+        inputs_json = json.dumps(inputs, ensure_ascii=False, default=str)
+        outputs_json = json.dumps(outputs, ensure_ascii=False, default=str)
         _db_execute(
             """
             INSERT INTO tool_runs (
@@ -50,8 +53,8 @@ class OpenAIVLMProvider(VLMProvider):
             (
                 tool_run_id,
                 tool_name,
-                inputs,
-                outputs,
+                inputs_json,
+                outputs_json,
                 status,
                 started_at,
                 _utc_now(),
@@ -75,9 +78,9 @@ class OpenAIVLMProvider(VLMProvider):
         run_id = options.get("run_id")
         ingest_batch_id = options.get("ingest_batch_id")
         
-        base_url = os.environ.get("TPA_VLM_BASE_URL") or os.environ.get("TPA_LLM_BASE_URL")
+        base_url = _resolve_model_base_url_sync(role="vlm", env_key="TPA_VLM_BASE_URL", timeout_seconds=300.0)
         if not base_url:
-            err = "TPA_VLM_BASE_URL not configured"
+            err = "model_supervisor_unavailable:vlm" if os.environ.get("TPA_MODEL_SUPERVISOR_URL") else "TPA_VLM_BASE_URL not configured"
             self._log_tool_run(
                 "vlm.generate_structured",
                 {"message_count": len(messages), "image_count": len(images)},
@@ -90,7 +93,7 @@ class OpenAIVLMProvider(VLMProvider):
             )
             raise RuntimeError(err)
 
-        model_id = options.get("model_id") or os.environ.get("TPA_VLM_MODEL_ID") or "gpt-4o"
+        model_id = options.get("model_id") or _vlm_model_id()
         url = base_url.rstrip("/") + "/chat/completions"
         
         # Prepare content list for the user message

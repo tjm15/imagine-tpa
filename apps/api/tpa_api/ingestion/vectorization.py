@@ -81,39 +81,46 @@ def vectorize_segmentation_masks(
         mask_id = str(mask.get("id"))
         visual_asset_id = mask.get("visual_asset_id")
         if not visual_asset_id:
-            continue
+            raise RuntimeError(f"vectorization_missing_visual_asset_id:{mask_id}")
             
         mask_path = mask.get("mask_artifact_path")
         if not isinstance(mask_path, str):
-            continue
+            raise RuntimeError(f"vectorization_missing_mask_path:{mask_id}")
 
         # 1. Get Mask Blob
         try:
             blob_data = blob_provider.get_blob(mask_path, run_id=run_id, ingest_batch_id=ingest_batch_id)
             mask_bytes = blob_data["bytes"]
-        except Exception:
-            continue
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"vectorization_blob_read_failed:{mask_path}:{exc}") from exc
+        if not mask_bytes:
+            raise RuntimeError(f"vectorization_blob_empty:{mask_path}")
 
         # 2. Vectorize
         try:
             result = vec_provider.vectorize(
                 image=mask_bytes,
-                options={"run_id": run_id, "ingest_batch_id": ingest_batch_id}
+                options={"run_id": run_id, "ingest_batch_id": ingest_batch_id},
             )
-        except Exception:
-            continue
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"vectorization_provider_failed:{mask_id}:{exc}") from exc
+
+        if not isinstance(result, dict):
+            raise RuntimeError(f"vectorization_invalid_result:{mask_id}")
 
         features = result.get("features_geojson", {}).get("features", [])
+        if not isinstance(features, list):
+            raise RuntimeError(f"vectorization_invalid_features:{mask_id}")
         
         # 3. Store Vector Paths
         insert_count = 0
         for idx, feature in enumerate(features, start=1):
             if not isinstance(feature, dict):
-                continue
+                raise RuntimeError(f"vectorization_invalid_feature:{mask_id}:{idx}")
             
             geometry = feature.get("geometry")
             if not geometry:
-                continue
+                raise RuntimeError(f"vectorization_missing_geometry:{mask_id}:{idx}")
                 
             bbox = _bbox_from_geometry(geometry) or mask.get("bbox")
             bbox_quality = "exact" if bbox else "none"

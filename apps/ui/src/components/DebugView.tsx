@@ -157,6 +157,73 @@ type VisualAssetDetail = {
   projection_artifacts?: Array<Record<string, any>>;
 };
 
+type RetrievalFrame = {
+  retrieval_frame_id: string;
+  run_id: string;
+  move_type?: string | null;
+  version?: number | null;
+  is_current?: boolean | null;
+  superseded_by_retrieval_frame_id?: string | null;
+  tool_run_id?: string | null;
+  frame?: Record<string, any>;
+  created_at?: string | null;
+};
+
+type RetrievalResult = {
+  evidence_ref?: string | null;
+  document_title?: string | null;
+  page_number?: number | null;
+  section_path?: string | null;
+  snippet?: string | null;
+  scores?: Record<string, any> | null;
+  policy_ref?: string | null;
+  policy_title?: string | null;
+  clause_ref?: string | null;
+  asset_type?: string | null;
+  spatial_feature_id?: string | null;
+  feature_type?: string | null;
+  summary?: string | null;
+};
+
+type ContextPack = {
+  context_pack_id: string;
+  run_id: string;
+  move_type?: string | null;
+  work_mode?: string | null;
+  authority_id?: string | null;
+  plan_cycle_id?: string | null;
+  plan_project_id?: string | null;
+  scenario_id?: string | null;
+  application_id?: string | null;
+  selector_id?: string | null;
+  created_at?: string | null;
+  slices: Record<string, any[]>;
+};
+
+type ContextPackResponse = {
+  context_pack: ContextPack;
+  tool_run_id?: string | null;
+  tool_run?: ToolRun | null;
+};
+
+type PoliticalFramingPreset = {
+  political_framing_id: string;
+  title?: string | null;
+  description?: string | null;
+  default_goals?: string[] | null;
+  default_constraints?: string[] | null;
+  non_goals?: string[] | null;
+};
+
+type RunLatestMoves = {
+  run_id: string;
+  framing?: Record<string, any> | null;
+  issues?: Array<Record<string, any>> | null;
+  issue_map?: Record<string, any> | null;
+  framing_move_id?: string | null;
+  issue_move_id?: string | null;
+};
+
 const API_PREFIX = '/api';
 
 type EndpointError = {
@@ -321,6 +388,54 @@ export function DebugView() {
   const [selectedVisualAssetId, setSelectedVisualAssetId] = useState<string | null>(null);
   const [visualAssetDetail, setVisualAssetDetail] = useState<VisualAssetDetail | null>(null);
   const [visualAssetError, setVisualAssetError] = useState<EndpointError | null>(null);
+  const [retrievalFrames, setRetrievalFrames] = useState<RetrievalFrame[]>([]);
+  const [selectedRetrievalFrameId, setSelectedRetrievalFrameId] = useState<string | null>(null);
+  const [selectedRetrievalRunId, setSelectedRetrievalRunId] = useState<string | null>(null);
+  const [retrievalFrameError, setRetrievalFrameError] = useState<EndpointError | null>(null);
+  const [retrievalFrameLoading, setRetrievalFrameLoading] = useState(false);
+  const [retrievalToolRuns, setRetrievalToolRuns] = useState<ToolRun[]>([]);
+  const [selectedRetrievalToolRunId, setSelectedRetrievalToolRunId] = useState<string | null>(null);
+  const [retrievalToolRunDetail, setRetrievalToolRunDetail] = useState<ToolRun | null>(null);
+  const [retrievalToolRunError, setRetrievalToolRunError] = useState<EndpointError | null>(null);
+  const [retrievalQuery, setRetrievalQuery] = useState('');
+  const [retrievalMode, setRetrievalMode] = useState<'chunks' | 'policy-clauses' | 'visual-assets' | 'spatial-features'>(
+    'chunks',
+  );
+  const [retrievalAuthorityId, setRetrievalAuthorityId] = useState('');
+  const [retrievalPlanCycleId, setRetrievalPlanCycleId] = useState('');
+  const [retrievalLimit, setRetrievalLimit] = useState('12');
+  const [retrievalUseVector, setRetrievalUseVector] = useState(true);
+  const [retrievalUseFts, setRetrievalUseFts] = useState(true);
+  const [retrievalRerank, setRetrievalRerank] = useState(true);
+  const [retrievalResults, setRetrievalResults] = useState<RetrievalResult[]>([]);
+  const [retrievalMeta, setRetrievalMeta] = useState<{ tool_run_id?: string; rerank_tool_run_id?: string } | null>(null);
+  const [retrievalRunning, setRetrievalRunning] = useState(false);
+  const [retrievalError, setRetrievalError] = useState<EndpointError | null>(null);
+  const [contextPackRunId, setContextPackRunId] = useState('');
+  const [contextPackMoveType, setContextPackMoveType] = useState('framing');
+  const [contextPackWorkMode, setContextPackWorkMode] = useState('plan_studio');
+  const [contextPackAuthorityId, setContextPackAuthorityId] = useState('');
+  const [contextPackPlanCycleId, setContextPackPlanCycleId] = useState('');
+  const [contextPackPlanProjectId, setContextPackPlanProjectId] = useState('');
+  const [contextPackScenarioId, setContextPackScenarioId] = useState('');
+  const [contextPackApplicationId, setContextPackApplicationId] = useState('');
+  const [contextPackTokenBudget, setContextPackTokenBudget] = useState('');
+  const [contextPackFramingSource, setContextPackFramingSource] = useState<'preset' | 'run'>('preset');
+  const [contextPackFramingPresetId, setContextPackFramingPresetId] = useState('');
+  const [contextPackFrameTitle, setContextPackFrameTitle] = useState('');
+  const [contextPackFramePurpose, setContextPackFramePurpose] = useState('');
+  const [contextPackFrameGoals, setContextPackFrameGoals] = useState('');
+  const [contextPackFrameConstraints, setContextPackFrameConstraints] = useState('');
+  const [contextPackFrameNonGoals, setContextPackFrameNonGoals] = useState('');
+  const [contextPackIssueSource, setContextPackIssueSource] = useState<'run' | 'manual' | 'none'>('run');
+  const [contextPackManualIssues, setContextPackManualIssues] = useState<Array<{ title: string; why_material: string }>>(
+    [],
+  );
+  const [contextPackRunSnapshot, setContextPackRunSnapshot] = useState<RunLatestMoves | null>(null);
+  const [contextPackRunSnapshotError, setContextPackRunSnapshotError] = useState<EndpointError | null>(null);
+  const [contextPackResult, setContextPackResult] = useState<ContextPackResponse | null>(null);
+  const [contextPackError, setContextPackError] = useState<EndpointError | null>(null);
+  const [contextPackRunning, setContextPackRunning] = useState(false);
   const [selectedRunStepId, setSelectedRunStepId] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
 
@@ -330,8 +445,26 @@ export function DebugView() {
   const [inspectDocId, setInspectDocId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUpload] = useState(false);
+  const [politicalFramings, setPoliticalFramings] = useState<PoliticalFramingPreset[]>([]);
 
   const envLabel = useMemo(() => (import.meta.env.DEV ? 'dev' : 'prod'), []);
+  const contextPackFramingPreset = useMemo(
+    () => politicalFramings.find((preset) => preset.political_framing_id === contextPackFramingPresetId) || null,
+    [contextPackFramingPresetId, politicalFramings],
+  );
+  const moveTypeOptions = useMemo(
+    () => [
+      'framing',
+      'issue_surfacing',
+      'evidence_curation',
+      'evidence_interpretation',
+      'considerations_formation',
+      'weighing_and_balance',
+      'negotiation_and_alteration',
+      'positioning_and_narration',
+    ],
+    [],
+  );
 
   const latestPromptVersion = useMemo(() => {
     const map = new Map<string, number>();
@@ -356,12 +489,131 @@ export function DebugView() {
   const selectedRunStep = selectedRunStepId
     ? ingestRunSteps.find((step) => step.id === selectedRunStepId) || null
     : null;
+  const selectedRetrievalFrame = selectedRetrievalFrameId
+    ? retrievalFrames.find((frame) => frame.retrieval_frame_id === selectedRetrievalFrameId) || null
+    : null;
+  const selectedRetrievalToolRun = selectedRetrievalToolRunId
+    ? retrievalToolRuns.find((run) => run.id === selectedRetrievalToolRunId) || null
+    : null;
+  const selectedIngestRun = selectedIngestRunId
+    ? ingestRuns.find((run) => run.id === selectedIngestRunId) || null
+    : null;
+  const contextPackSlices = contextPackResult?.context_pack?.slices || {};
+  const contextPackSliceCounts = Object.entries(contextPackSlices).map(([sliceType, items]) => ({
+    sliceType,
+    count: Array.isArray(items) ? items.length : 0,
+  }));
+  const isTextRetrievalMode = retrievalMode === 'chunks' || retrievalMode === 'policy-clauses';
 
   useEffect(() => {
     if (selectedToolRunId && !toolRunById.has(selectedToolRunId)) {
       setSelectedToolRunId(null);
     }
   }, [selectedToolRunId, toolRunById]);
+
+  useEffect(() => {
+    if (
+      selectedRetrievalToolRunId &&
+      !retrievalToolRuns.find((run) => run.id === selectedRetrievalToolRunId)
+    ) {
+      setSelectedRetrievalToolRunId(null);
+    }
+  }, [selectedRetrievalToolRunId, retrievalToolRuns]);
+
+  useEffect(() => {
+    if (!retrievalAuthorityId && selectedIngestRun?.authority_id) {
+      setRetrievalAuthorityId(selectedIngestRun.authority_id);
+    }
+    if (!retrievalPlanCycleId && selectedIngestRun?.plan_cycle_id) {
+      setRetrievalPlanCycleId(selectedIngestRun.plan_cycle_id);
+    }
+  }, [retrievalAuthorityId, retrievalPlanCycleId, selectedIngestRun]);
+
+  useEffect(() => {
+    if (!selectedRetrievalRunId && traceRuns.length > 0) {
+      setSelectedRetrievalRunId(traceRuns[0].id);
+    }
+  }, [selectedRetrievalRunId, traceRuns]);
+
+  useEffect(() => {
+    if (!contextPackRunId && selectedTraceRunId) {
+      setContextPackRunId(selectedTraceRunId);
+    }
+  }, [contextPackRunId, selectedTraceRunId]);
+
+  useEffect(() => {
+    if (!contextPackFramingPresetId && politicalFramings.length > 0) {
+      setContextPackFramingPresetId(politicalFramings[0].political_framing_id);
+    }
+  }, [contextPackFramingPresetId, politicalFramings]);
+
+  useEffect(() => {
+    if (contextPackFramingSource !== 'preset') {
+      return;
+    }
+    if (!contextPackFramingPreset) {
+      return;
+    }
+    setContextPackFrameTitle(contextPackFramingPreset.title || '');
+    setContextPackFramePurpose(contextPackFramingPreset.description || '');
+    setContextPackFrameGoals((contextPackFramingPreset.default_goals || []).join('\n'));
+    setContextPackFrameConstraints((contextPackFramingPreset.default_constraints || []).join('\n'));
+    setContextPackFrameNonGoals((contextPackFramingPreset.non_goals || []).join('\n'));
+  }, [contextPackFramingPreset, contextPackFramingPresetId, contextPackFramingSource]);
+
+  useEffect(() => {
+    if (!contextPackAuthorityId && selectedIngestRun?.authority_id) {
+      setContextPackAuthorityId(selectedIngestRun.authority_id);
+    }
+    if (!contextPackPlanCycleId && selectedIngestRun?.plan_cycle_id) {
+      setContextPackPlanCycleId(selectedIngestRun.plan_cycle_id);
+    }
+  }, [contextPackAuthorityId, contextPackPlanCycleId, selectedIngestRun]);
+
+  useEffect(() => {
+    if (!contextPackRunId) {
+      setContextPackRunSnapshot(null);
+      setContextPackRunSnapshotError(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<RunLatestMoves>(`/debug/runs/${contextPackRunId}/latest-moves`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setContextPackRunSnapshot(res.data || null);
+          setContextPackRunSnapshotError(null);
+        } else {
+          setContextPackRunSnapshot(null);
+          setContextPackRunSnapshotError({
+            label: 'run snapshot',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
+        }
+      })
+      .catch((err) => {
+        setContextPackRunSnapshot(null);
+        setContextPackRunSnapshotError({
+          label: 'run snapshot',
+          status: 0,
+          error: String((err as Error).message || err),
+        });
+      });
+    return () => controller.abort();
+  }, [contextPackRunId]);
+
+  useEffect(() => {
+    if (contextPackIssueSource === 'manual' && contextPackManualIssues.length === 0) {
+      setContextPackManualIssues([{ title: '', why_material: '' }]);
+    }
+  }, [contextPackIssueSource, contextPackManualIssues.length]);
+
+  useEffect(() => {
+    if (!selectedRetrievalToolRunId && retrievalToolRuns.length > 0) {
+      setSelectedRetrievalToolRunId(retrievalToolRuns[0].id);
+    }
+  }, [retrievalToolRuns, selectedRetrievalToolRunId]);
 
   const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -405,7 +657,14 @@ export function DebugView() {
       documentsRes,
       toolRunsRes,
       georefRunsRes,
+      retrievalChunksRes,
+      retrievalPolicyRes,
+      retrievalVisualRes,
+      retrievalSpatialRes,
+      rerankChunksRes,
+      rerankPolicyRes,
       promptsRes,
+      framingsRes,
       traceRunsRes,
       visualAssetsRes,
     ] = await Promise.all([
@@ -419,7 +678,14 @@ export function DebugView() {
       fetchJson<{ documents: DebugDocument[] }>('/debug/documents?limit=25', signal),
       fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?limit=30', signal),
       fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=auto_georef&limit=50', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=retrieve_chunks_hybrid&limit=40', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=retrieve_policy_clauses_hybrid&limit=40', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=retrieve_visual_assets&limit=40', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=retrieve_spatial_features&limit=40', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=rerank_chunks&limit=40', signal),
+      fetchJson<{ tool_runs: ToolRun[] }>('/debug/tool-runs?tool_name=rerank_policy_clauses&limit=40', signal),
       fetchJson<{ prompts: PromptRow[]; prompt_versions: PromptVersion[] }>('/debug/prompts', signal),
+      fetchJson<{ political_framings: PoliticalFramingPreset[] }>('/spec/framing/political-framings', signal),
       fetchJson<{ runs: RunSummary[] }>('/debug/runs?limit=20', signal),
       fetchJson<{ visual_assets: VisualAssetSummary[] }>('/debug/visual-assets?limit=40', signal),
     ]);
@@ -475,8 +741,48 @@ export function DebugView() {
         error: georefRunsRes.error || 'unavailable',
         rawText: georefRunsRes.rawText,
       });
+    if (
+      !retrievalChunksRes.ok ||
+      !retrievalPolicyRes.ok ||
+      !retrievalVisualRes.ok ||
+      !retrievalSpatialRes.ok ||
+      !rerankChunksRes.ok ||
+      !rerankPolicyRes.ok
+    )
+      nextErrors.push({
+        label: 'retrieval tool runs',
+        status:
+          retrievalChunksRes.status ||
+          retrievalPolicyRes.status ||
+          retrievalVisualRes.status ||
+          retrievalSpatialRes.status ||
+          rerankChunksRes.status ||
+          rerankPolicyRes.status,
+        error:
+          retrievalChunksRes.error ||
+          retrievalPolicyRes.error ||
+          retrievalVisualRes.error ||
+          retrievalSpatialRes.error ||
+          rerankChunksRes.error ||
+          rerankPolicyRes.error ||
+          'unavailable',
+        rawText:
+          retrievalChunksRes.rawText ||
+          retrievalPolicyRes.rawText ||
+          retrievalVisualRes.rawText ||
+          retrievalSpatialRes.rawText ||
+          rerankChunksRes.rawText ||
+          rerankPolicyRes.rawText,
+      });
     if (!promptsRes.ok)
       nextErrors.push({ label: 'prompts', status: promptsRes.status, error: promptsRes.error || 'unavailable', rawText: promptsRes.rawText });
+    if (!framingsRes.ok)
+      nextErrors.push({
+        label: 'political framings',
+        status: framingsRes.status,
+        error: framingsRes.error || 'unavailable',
+        rawText: framingsRes.rawText,
+      });
     if (!traceRunsRes.ok)
       nextErrors.push({ label: 'runs', status: traceRunsRes.status, error: traceRunsRes.error || 'unavailable', rawText: traceRunsRes.rawText });
     if (!visualAssetsRes.ok)
@@ -497,8 +803,23 @@ export function DebugView() {
     setDocuments(documentsRes.data?.documents || []);
     setToolRuns(toolRunsRes.data?.tool_runs || []);
     setGeorefRuns(georefRunsRes.data?.tool_runs || []);
+    const retrievalCombined = [
+      ...(retrievalChunksRes.data?.tool_runs || []),
+      ...(retrievalPolicyRes.data?.tool_runs || []),
+      ...(retrievalVisualRes.data?.tool_runs || []),
+      ...(retrievalSpatialRes.data?.tool_runs || []),
+      ...(rerankChunksRes.data?.tool_runs || []),
+      ...(rerankPolicyRes.data?.tool_runs || []),
+    ];
+    retrievalCombined.sort((a, b) => {
+      const aTime = a.started_at ? new Date(a.started_at).getTime() : 0;
+      const bTime = b.started_at ? new Date(b.started_at).getTime() : 0;
+      return bTime - aTime;
+    });
+    setRetrievalToolRuns(retrievalCombined);
     setPrompts(promptsRes.data?.prompts || []);
     setPromptVersions(promptsRes.data?.prompt_versions || []);
+    setPoliticalFramings(framingsRes.data?.political_framings || []);
     setTraceRuns(traceRunsRes.data?.runs || []);
     setVisualAssets(visualAssetsRes.data?.visual_assets || []);
     setEndpointErrors(nextErrors);
@@ -519,6 +840,192 @@ export function DebugView() {
       setActionMessage(`Reset failed: ${res.error || 'unknown error'}`);
     }
   }, [load]);
+
+  const handleRunRetrieval = useCallback(async () => {
+    const query = retrievalQuery.trim();
+    if (!query) {
+      setRetrievalError({ label: 'retrieval', status: 400, error: 'Query is required' });
+      return;
+    }
+    setRetrievalRunning(true);
+    setRetrievalError(null);
+    const limitValue = Number.parseInt(retrievalLimit, 10);
+    const limit = Number.isFinite(limitValue) ? Math.min(Math.max(limitValue, 1), 50) : 12;
+    const isTextRetrieval = retrievalMode === 'chunks' || retrievalMode === 'policy-clauses';
+    const body: Record<string, any> = {
+      query,
+      limit,
+    };
+    if (isTextRetrieval) {
+      body.use_vector = retrievalUseVector;
+      body.use_fts = retrievalUseFts;
+      body.rerank = retrievalRerank;
+    }
+    if (retrievalAuthorityId.trim()) body.authority_id = retrievalAuthorityId.trim();
+    if (retrievalPlanCycleId.trim()) body.plan_cycle_id = retrievalPlanCycleId.trim();
+    let endpoint = '/retrieval/chunks';
+    if (retrievalMode === 'policy-clauses') {
+      endpoint = '/retrieval/policy-clauses';
+    } else if (retrievalMode === 'visual-assets') {
+      endpoint = '/debug/retrieval/visual-assets';
+    } else if (retrievalMode === 'spatial-features') {
+      endpoint = '/debug/retrieval/spatial-features';
+    }
+    const res = await postJson<{ results: RetrievalResult[]; tool_run_id?: string; rerank_tool_run_id?: string }>(
+      endpoint,
+      body,
+    );
+    if (res.ok) {
+      setRetrievalResults(res.data?.results || []);
+      setRetrievalMeta({
+        tool_run_id: res.data?.tool_run_id,
+        rerank_tool_run_id: res.data?.rerank_tool_run_id,
+      });
+      load();
+    } else {
+      setRetrievalError({
+        label: 'retrieval',
+        status: res.status,
+        error: res.error || 'unavailable',
+        rawText: res.rawText,
+      });
+    }
+    setRetrievalRunning(false);
+  }, [
+    load,
+    retrievalAuthorityId,
+    retrievalLimit,
+    retrievalMode,
+    retrievalPlanCycleId,
+    retrievalQuery,
+    retrievalRerank,
+    retrievalUseFts,
+    retrievalUseVector,
+  ]);
+
+  const handleAssembleContextPack = useCallback(async () => {
+    const runId = contextPackRunId.trim();
+    if (!runId) {
+      setContextPackError({ label: 'context pack', status: 400, error: 'run_id is required' });
+      return;
+    }
+    let framingPayload: Record<string, any> | null = null;
+    let issuesPayload: Array<Record<string, any>> = [];
+
+    if (contextPackFramingSource === 'run') {
+      const runFraming = contextPackRunSnapshot?.framing;
+      if (runFraming && typeof runFraming === 'object') {
+        framingPayload = runFraming;
+      } else {
+        setContextPackError({ label: 'context pack', status: 400, error: 'No framing found for this run.' });
+        return;
+      }
+    } else if (contextPackFramingPreset) {
+      const parseList = (text: string, fallback: string[]) => {
+        const items = text
+          .split('\n')
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+        return items.length > 0 ? items : fallback;
+      };
+      framingPayload = {
+        frame_title: contextPackFrameTitle.trim() || contextPackFramingPreset.title,
+        political_framing_id: contextPackFramingPreset.political_framing_id,
+        purpose: contextPackFramePurpose.trim() || contextPackFramingPreset.description,
+        explicit_goals: parseList(contextPackFrameGoals, contextPackFramingPreset.default_goals || []),
+        explicit_constraints: parseList(
+          contextPackFrameConstraints,
+          contextPackFramingPreset.default_constraints || [],
+        ),
+        non_goals: parseList(contextPackFrameNonGoals, contextPackFramingPreset.non_goals || []),
+      };
+    }
+
+    if (contextPackIssueSource === 'run') {
+      const runIssues = contextPackRunSnapshot?.issues;
+      if (Array.isArray(runIssues)) {
+        issuesPayload = runIssues;
+      } else {
+        setContextPackError({ label: 'context pack', status: 400, error: 'No issues found for this run.' });
+        return;
+      }
+    } else if (contextPackIssueSource === 'manual') {
+      issuesPayload = contextPackManualIssues
+        .filter((issue) => issue.title.trim())
+        .map((issue) => ({
+          title: issue.title.trim(),
+          why_material: issue.why_material.trim() || 'Material to the framing.',
+        }));
+    } else {
+      issuesPayload = [];
+    }
+
+    const tokenBudgetValue = Number.parseInt(contextPackTokenBudget, 10);
+    const body: Record<string, any> = {
+      run_id: runId,
+      move_type: contextPackMoveType,
+      work_mode: contextPackWorkMode,
+      issues: issuesPayload,
+    };
+    if (framingPayload) body.framing = framingPayload;
+    if (contextPackAuthorityId.trim()) body.authority_id = contextPackAuthorityId.trim();
+    if (contextPackPlanCycleId.trim()) body.plan_cycle_id = contextPackPlanCycleId.trim();
+    if (contextPackPlanProjectId.trim()) body.plan_project_id = contextPackPlanProjectId.trim();
+    if (contextPackScenarioId.trim()) body.scenario_id = contextPackScenarioId.trim();
+    if (contextPackApplicationId.trim()) body.application_id = contextPackApplicationId.trim();
+    if (Number.isFinite(tokenBudgetValue)) body.token_budget = tokenBudgetValue;
+
+    setContextPackRunning(true);
+    setContextPackError(null);
+    const res = await postJson<ContextPackResponse>('/debug/context-packs/assemble', body);
+    if (res.ok) {
+      setContextPackResult(res.data || null);
+      load();
+    } else {
+      setContextPackError({
+        label: 'context pack',
+        status: res.status,
+        error: res.error || 'unavailable',
+        rawText: res.rawText,
+      });
+    }
+    setContextPackRunning(false);
+  }, [
+    contextPackApplicationId,
+    contextPackAuthorityId,
+    contextPackFrameConstraints,
+    contextPackFrameGoals,
+    contextPackFrameNonGoals,
+    contextPackFramePurpose,
+    contextPackFrameTitle,
+    contextPackFramingPreset,
+    contextPackFramingSource,
+    contextPackIssueSource,
+    contextPackManualIssues,
+    contextPackMoveType,
+    contextPackPlanCycleId,
+    contextPackPlanProjectId,
+    contextPackRunId,
+    contextPackRunSnapshot,
+    contextPackScenarioId,
+    contextPackTokenBudget,
+    contextPackWorkMode,
+    load,
+  ]);
+
+  const handleAddManualIssue = useCallback(() => {
+    setContextPackManualIssues((prev) => [...prev, { title: '', why_material: '' }]);
+  }, []);
+
+  const handleUpdateManualIssue = useCallback((index: number, field: 'title' | 'why_material', value: string) => {
+    setContextPackManualIssues((prev) =>
+      prev.map((issue, idx) => (idx === index ? { ...issue, [field]: value } : issue)),
+    );
+  }, []);
+
+  const handleRemoveManualIssue = useCallback((index: number) => {
+    setContextPackManualIssues((prev) => prev.filter((_, idx) => idx !== index));
+  }, []);
 
   const handleRequeueJob = useCallback(async (ingestJobId: string) => {
     const res = await postJson<{ ingest_job_id: string; enqueued: boolean }>('/debug/ingest/requeue', {
@@ -573,6 +1080,10 @@ export function DebugView() {
       setSelectedTraceRunId(traceRuns[0].id);
     }
   }, [traceRuns, selectedTraceRunId]);
+
+  useEffect(() => {
+    setSelectedRetrievalFrameId(null);
+  }, [selectedRetrievalRunId]);
 
   useEffect(() => {
     if (!selectedIngestRunId) {
@@ -659,6 +1170,69 @@ export function DebugView() {
       .catch(() => undefined);
     return () => controller.abort();
   }, [selectedVisualAssetId]);
+
+  useEffect(() => {
+    if (!selectedRetrievalRunId) {
+      setRetrievalFrames([]);
+      setSelectedRetrievalFrameId(null);
+      setRetrievalFrameError(null);
+      return;
+    }
+    const controller = new AbortController();
+    const query = new URLSearchParams({ limit: '60' });
+    setRetrievalFrameLoading(true);
+    fetchJson<{ retrieval_frames: RetrievalFrame[] }>(
+      `/runs/${selectedRetrievalRunId}/retrieval-frames?${query.toString()}`,
+      controller.signal,
+    )
+      .then((res) => {
+        if (res.ok) {
+          const frames = res.data?.retrieval_frames || [];
+          setRetrievalFrames(frames);
+          setRetrievalFrameError(null);
+          if (!selectedRetrievalFrameId && frames.length > 0) {
+            setSelectedRetrievalFrameId(frames[0].retrieval_frame_id);
+          }
+        } else {
+          setRetrievalFrameError({
+            label: 'retrieval frames',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setRetrievalFrameLoading(false));
+    return () => controller.abort();
+  }, [selectedRetrievalRunId, selectedRetrievalFrameId]);
+
+  useEffect(() => {
+    const toolRunId = selectedRetrievalFrame?.tool_run_id;
+    if (!toolRunId) {
+      setRetrievalToolRunDetail(null);
+      setRetrievalToolRunError(null);
+      return;
+    }
+    const controller = new AbortController();
+    fetchJson<{ tool_run: ToolRun }>(`/debug/tool-runs/${toolRunId}`, controller.signal)
+      .then((res) => {
+        if (res.ok) {
+          setRetrievalToolRunDetail(res.data?.tool_run || null);
+          setRetrievalToolRunError(null);
+        } else {
+          setRetrievalToolRunDetail(null);
+          setRetrievalToolRunError({
+            label: 'retrieval frame tool run',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedRetrievalFrame?.tool_run_id]);
 
   useEffect(() => {
     if (!selectedTraceRunId) {
@@ -1443,6 +2017,637 @@ export function DebugView() {
                   )}
                 </TableBody>
               </Table>
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Retrieval frames</CardTitle>
+              <CardDescription>Targeted retrieval plans and constraints (by reasoning run).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                <select
+                  value={selectedRetrievalRunId || ''}
+                  onChange={(e) => setSelectedRetrievalRunId(e.target.value || null)}
+                  className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                >
+                  <option value="">Select a run...</option>
+                  {traceRuns.map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {run.id.slice(0, 8)} · {run.culp_stage_id || run.profile || 'run'}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              {retrievalFrameError && (
+                <div
+                  className="rounded-lg border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {retrievalFrameError.label} {retrievalFrameError.status ? `(${retrievalFrameError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {retrievalFrameError.error}
+                  </div>
+                  {retrievalFrameError.rawText && retrievalFrameError.rawText !== retrievalFrameError.error && (
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">{retrievalFrameError.rawText}</pre>
+                  )}
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Move</TableHead>
+                    <TableHead>Version</TableHead>
+                    <TableHead>Current</TableHead>
+                    <TableHead>Created</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {retrievalFrames.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>
+                        {retrievalFrameLoading ? 'Loading frames...' : 'No retrieval frames yet.'}
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    retrievalFrames.map((frame) => (
+                      <TableRow
+                        key={frame.retrieval_frame_id}
+                        className={selectedRetrievalFrameId === frame.retrieval_frame_id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedRetrievalFrameId(frame.retrieval_frame_id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="text-xs">{frame.move_type || 'unknown'}</TableCell>
+                        <TableCell className="text-xs">{frame.version ?? '--'}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={frame.is_current ? 'current' : 'superseded'} />
+                        </TableCell>
+                        <TableCell>{formatDate(frame.created_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+
+              {selectedRetrievalFrame && (
+                <div className="space-y-3 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                    Frame detail
+                  </div>
+                  <div className="space-y-2">
+                    {(Array.isArray(selectedRetrievalFrame.frame?.queries) ? selectedRetrievalFrame.frame?.queries : []).length ===
+                    0 ? (
+                      <div className="text-slate-500">No explicit queries in this frame.</div>
+                    ) : (
+                      (selectedRetrievalFrame.frame?.queries as Array<Record<string, any>>).map((query, idx) => (
+                        <div key={`${selectedRetrievalFrame.retrieval_frame_id}-q-${idx}`} className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                          <div className="text-xs font-semibold">{query.query || 'Query'}</div>
+                          <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                            {[
+                              query.modality ? `modality: ${query.modality}` : null,
+                              query.purpose ? `purpose: ${query.purpose}` : null,
+                              query.top_k ? `top_k: ${query.top_k}` : null,
+                              query.issue_id ? `issue_id: ${query.issue_id.slice(0, 8)}` : null,
+                            ]
+                              .filter(Boolean)
+                              .join(' • ')}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(selectedRetrievalFrame.frame || {}, null, 2)}
+                  </pre>
+                  {retrievalToolRunError && (
+                    <div
+                      className="rounded border px-3 py-2 text-xs"
+                      style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                    >
+                      <div className="font-semibold">
+                        {retrievalToolRunError.label} {retrievalToolRunError.status ? `(${retrievalToolRunError.status})` : ''}
+                      </div>
+                      <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                        {retrievalToolRunError.error}
+                      </div>
+                    </div>
+                  )}
+                  {retrievalToolRunDetail && (
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                        Frame tool run
+                      </div>
+                      <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                        {JSON.stringify(
+                          {
+                            tool_name: retrievalToolRunDetail.tool_name,
+                            status: retrievalToolRunDetail.status,
+                            inputs: retrievalToolRunDetail.inputs_logged,
+                            outputs: retrievalToolRunDetail.outputs_logged,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Targeted retrieval attempts</CardTitle>
+              <CardDescription>Recent retrieval and rerank tool runs.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-3 rounded-lg border px-3 py-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                  Run retrieval query
+                </div>
+                <div className="grid gap-2 md:grid-cols-[1fr_auto]">
+                  <Input
+                    value={retrievalQuery}
+                    onChange={(e) => setRetrievalQuery(e.target.value)}
+                    placeholder="Ask for a policy clause or chunk..."
+                  />
+                  <Button
+                    onClick={handleRunRetrieval}
+                    disabled={retrievalRunning}
+                    style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+                  >
+                    {retrievalRunning ? 'Running…' : 'Run'}
+                  </Button>
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <select
+                    value={retrievalMode}
+                    onChange={(e) =>
+                      setRetrievalMode(
+                        e.target.value as 'chunks' | 'policy-clauses' | 'visual-assets' | 'spatial-features',
+                      )
+                    }
+                    className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="chunks">chunks</option>
+                    <option value="policy-clauses">policy clauses</option>
+                    <option value="visual-assets">visual assets (LLM)</option>
+                    <option value="spatial-features">spatial features (LLM)</option>
+                  </select>
+                  <Input
+                    value={retrievalLimit}
+                    onChange={(e) => setRetrievalLimit(e.target.value)}
+                    placeholder="Limit"
+                  />
+                  <Input
+                    value={retrievalAuthorityId}
+                    onChange={(e) => setRetrievalAuthorityId(e.target.value)}
+                    placeholder="authority_id (optional)"
+                  />
+                  <Input
+                    value={retrievalPlanCycleId}
+                    onChange={(e) => setRetrievalPlanCycleId(e.target.value)}
+                    placeholder="plan_cycle_id (optional)"
+                  />
+                </div>
+                {isTextRetrievalMode ? (
+                  <div className="flex flex-wrap gap-3 text-xs">
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={retrievalUseVector}
+                        onChange={(e) => setRetrievalUseVector(e.target.checked)}
+                      />
+                      vector
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input type="checkbox" checked={retrievalUseFts} onChange={(e) => setRetrievalUseFts(e.target.checked)} />
+                      keyword
+                    </label>
+                    <label className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={retrievalRerank}
+                        onChange={(e) => setRetrievalRerank(e.target.checked)}
+                      />
+                      rerank
+                    </label>
+                  </div>
+                ) : (
+                  <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                    Multimodal retrieval uses LLM selection over stored visual/spatial assets.
+                  </div>
+                )}
+                {retrievalError && (
+                  <div
+                    className="rounded border px-3 py-2 text-xs"
+                    style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                  >
+                    <div className="font-semibold">
+                      {retrievalError.label} {retrievalError.status ? `(${retrievalError.status})` : ''}
+                    </div>
+                    <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                      {retrievalError.error}
+                    </div>
+                  </div>
+                )}
+                {retrievalMeta?.tool_run_id && (
+                  <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                    tool_run_id: <span className="font-mono">{retrievalMeta.tool_run_id.slice(0, 8)}</span>
+                  </div>
+                )}
+                {retrievalResults.length > 0 && (
+                  <div className="space-y-2">
+                    {retrievalResults.slice(0, 8).map((item, idx) => (
+                      <div key={`${item.evidence_ref}-${idx}`} className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                        <div className="text-xs font-semibold">{item.policy_ref || item.document_title || item.evidence_ref || 'Result'}</div>
+                        <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                          {item.section_path || item.clause_ref || item.asset_type || item.feature_type || item.evidence_ref}
+                        </div>
+                        {(item.snippet || item.summary) && <div className="mt-1 text-[11px]">{item.snippet || item.summary}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tool</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Query</TableHead>
+                    <TableHead>Started</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {retrievalToolRuns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4}>No retrieval tool runs found.</TableCell>
+                    </TableRow>
+                  ) : (
+                    retrievalToolRuns.map((run) => (
+                      <TableRow
+                        key={run.id}
+                        className={selectedRetrievalToolRunId === run.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedRetrievalToolRunId(run.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="text-xs">{run.tool_name}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={run.status || 'unknown'} />
+                        </TableCell>
+                        <TableCell className="max-w-[220px] truncate text-xs" title={run.inputs_logged?.query || ''}>
+                          {run.inputs_logged?.query || '--'}
+                        </TableCell>
+                        <TableCell>{formatDate(run.started_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+              {selectedRetrievalToolRun && (
+                <div className="mt-4 rounded-lg border p-3 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                    Retrieval run detail
+                  </div>
+                  <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                    {JSON.stringify(
+                      {
+                        tool_name: selectedRetrievalToolRun.tool_name,
+                        status: selectedRetrievalToolRun.status,
+                        inputs: selectedRetrievalToolRun.inputs_logged,
+                        outputs: selectedRetrievalToolRun.outputs_logged,
+                      },
+                      null,
+                      2,
+                    )}
+                  </pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Context pack builder</CardTitle>
+              <CardDescription>Assemble a context pack with adjustable parameters.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2">
+                <Input
+                  value={contextPackRunId}
+                  onChange={(e) => setContextPackRunId(e.target.value)}
+                  placeholder="run_id (required)"
+                  list="trace-run-ids"
+                />
+                <datalist id="trace-run-ids">
+                  {traceRuns.map((run) => (
+                    <option key={run.id} value={run.id}>
+                      {run.id.slice(0, 8)}
+                    </option>
+                  ))}
+                </datalist>
+              </div>
+              {contextPackRunSnapshotError && (
+                <div
+                  className="rounded border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {contextPackRunSnapshotError.label}{' '}
+                    {contextPackRunSnapshotError.status ? `(${contextPackRunSnapshotError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {contextPackRunSnapshotError.error}
+                  </div>
+                </div>
+              )}
+              <div className="grid gap-2 md:grid-cols-2">
+                <select
+                  value={contextPackMoveType}
+                  onChange={(e) => setContextPackMoveType(e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                >
+                  {moveTypeOptions.map((moveType) => (
+                    <option key={moveType} value={moveType}>
+                      {moveType}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  value={contextPackWorkMode}
+                  onChange={(e) => setContextPackWorkMode(e.target.value)}
+                  placeholder="work_mode"
+                />
+              </div>
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={contextPackAuthorityId}
+                  onChange={(e) => setContextPackAuthorityId(e.target.value)}
+                  placeholder="authority_id (optional)"
+                />
+                <Input
+                  value={contextPackPlanCycleId}
+                  onChange={(e) => setContextPackPlanCycleId(e.target.value)}
+                  placeholder="plan_cycle_id (optional)"
+                />
+                <Input
+                  value={contextPackPlanProjectId}
+                  onChange={(e) => setContextPackPlanProjectId(e.target.value)}
+                  placeholder="plan_project_id (optional)"
+                />
+                <Input
+                  value={contextPackScenarioId}
+                  onChange={(e) => setContextPackScenarioId(e.target.value)}
+                  placeholder="scenario_id (optional)"
+                />
+                <Input
+                  value={contextPackApplicationId}
+                  onChange={(e) => setContextPackApplicationId(e.target.value)}
+                  placeholder="application_id (optional)"
+                />
+                <Input
+                  value={contextPackTokenBudget}
+                  onChange={(e) => setContextPackTokenBudget(e.target.value)}
+                  placeholder="token_budget (optional)"
+                />
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                  Framing preset
+                </div>
+                <div className="grid gap-2 md:grid-cols-2">
+                  <select
+                    value={contextPackFramingSource}
+                    onChange={(e) => setContextPackFramingSource(e.target.value as 'preset' | 'run')}
+                    className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                  >
+                    <option value="preset">Preset</option>
+                    <option value="run">From run</option>
+                  </select>
+                  {contextPackFramingSource === 'preset' ? (
+                    <select
+                      value={contextPackFramingPresetId}
+                      onChange={(e) => setContextPackFramingPresetId(e.target.value)}
+                      className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                    >
+                      {politicalFramings.length === 0 ? (
+                        <option value="">No presets loaded</option>
+                      ) : (
+                        politicalFramings.map((preset) => (
+                          <option key={preset.political_framing_id} value={preset.political_framing_id}>
+                            {preset.title || preset.political_framing_id}
+                          </option>
+                        ))
+                      )}
+                    </select>
+                  ) : (
+                    <div className="flex items-center text-xs" style={{ color: 'var(--color-text-light)' }}>
+                      {contextPackRunSnapshot?.framing?.frame_title ||
+                        contextPackRunSnapshot?.framing?.title ||
+                        'No run framing loaded'}
+                    </div>
+                  )}
+                </div>
+                {contextPackFramingSource === 'preset' && contextPackFramingPreset && (
+                  <div className="space-y-2 rounded border px-3 py-2 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                      Preset description
+                    </div>
+                    <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                      {contextPackFramingPreset.description}
+                    </div>
+                    <Input
+                      value={contextPackFrameTitle}
+                      onChange={(e) => setContextPackFrameTitle(e.target.value)}
+                      placeholder="Frame title"
+                    />
+                    <textarea
+                      value={contextPackFramePurpose}
+                      onChange={(e) => setContextPackFramePurpose(e.target.value)}
+                      placeholder="Purpose / rationale"
+                      className="min-h-[72px] w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                    />
+                    <div className="grid gap-2 md:grid-cols-3">
+                      <textarea
+                        value={contextPackFrameGoals}
+                        onChange={(e) => setContextPackFrameGoals(e.target.value)}
+                        placeholder="Goals (one per line)"
+                        className="min-h-[72px] w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                      />
+                      <textarea
+                        value={contextPackFrameConstraints}
+                        onChange={(e) => setContextPackFrameConstraints(e.target.value)}
+                        placeholder="Constraints (one per line)"
+                        className="min-h-[72px] w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                      />
+                      <textarea
+                        value={contextPackFrameNonGoals}
+                        onChange={(e) => setContextPackFrameNonGoals(e.target.value)}
+                        placeholder="Non-goals (one per line)"
+                        className="min-h-[72px] w-full rounded-md border border-input bg-white px-3 py-2 text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div className="space-y-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                  Issues source
+                </div>
+                <select
+                  value={contextPackIssueSource}
+                  onChange={(e) => setContextPackIssueSource(e.target.value as 'run' | 'manual' | 'none')}
+                  className="flex h-10 w-full rounded-md border border-input bg-white px-3 py-2 text-sm"
+                >
+                  <option value="run">From run</option>
+                  <option value="manual">Manual</option>
+                  <option value="none">None</option>
+                </select>
+                {contextPackIssueSource === 'run' && (
+                  <div className="rounded border px-3 py-2 text-xs" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    {contextPackRunSnapshot?.issues && contextPackRunSnapshot.issues.length > 0 ? (
+                      <div>{contextPackRunSnapshot.issues.length} issues loaded from the run.</div>
+                    ) : (
+                      <div style={{ color: 'var(--color-text-light)' }}>No issues found for this run.</div>
+                    )}
+                  </div>
+                )}
+                {contextPackIssueSource === 'manual' && (
+                  <div className="space-y-2">
+                    {contextPackManualIssues.length === 0 && (
+                      <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                        No manual issues yet.
+                      </div>
+                    )}
+                    {contextPackManualIssues.map((issue, idx) => (
+                      <div key={`manual-issue-${idx}`} className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                        <Input
+                          value={issue.title}
+                          onChange={(e) => handleUpdateManualIssue(idx, 'title', e.target.value)}
+                          placeholder="Issue title"
+                          className="mb-2"
+                        />
+                        <Input
+                          value={issue.why_material}
+                          onChange={(e) => handleUpdateManualIssue(idx, 'why_material', e.target.value)}
+                          placeholder="Why material (optional)"
+                        />
+                        <div className="mt-2 flex justify-end">
+                          <Button variant="ghost" size="sm" onClick={() => handleRemoveManualIssue(idx)}>
+                            Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                    <Button variant="outline" size="sm" onClick={handleAddManualIssue}>
+                      Add issue
+                    </Button>
+                  </div>
+                )}
+              </div>
+              <Button
+                onClick={handleAssembleContextPack}
+                disabled={contextPackRunning}
+                style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+              >
+                {contextPackRunning ? 'Assembling...' : 'Assemble context pack'}
+              </Button>
+              {contextPackError && (
+                <div
+                  className="rounded border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {contextPackError.label} {contextPackError.status ? `(${contextPackError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {contextPackError.error}
+                  </div>
+                  {contextPackError.rawText && contextPackError.rawText !== contextPackError.error && (
+                    <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap text-[11px]">
+                      {contextPackError.rawText}
+                    </pre>
+                  )}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Assembled context</CardTitle>
+              <CardDescription>Latest context pack payload and tool run detail.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              {!contextPackResult ? (
+                <div>Assemble a context pack to inspect slices.</div>
+              ) : (
+                <>
+                  <div className="grid gap-2 md:grid-cols-2">
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                        context_pack_id
+                      </div>
+                      <div className="font-mono text-xs">{contextPackResult.context_pack.context_pack_id.slice(0, 12)}</div>
+                    </div>
+                    <div className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <div className="text-[11px]" style={{ color: 'var(--color-text-light)' }}>
+                        tool_run_id
+                      </div>
+                      <div className="font-mono text-xs">
+                        {contextPackResult.tool_run_id ? contextPackResult.tool_run_id.slice(0, 12) : '--'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 md:grid-cols-3">
+                    {contextPackSliceCounts.map((entry) => (
+                      <div key={entry.sliceType} className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                        <div className="text-[11px] uppercase tracking-[0.12em]" style={{ color: 'var(--color-text-light)' }}>
+                          {entry.sliceType}
+                        </div>
+                        <div className="text-sm font-semibold">{entry.count}</div>
+                      </div>
+                    ))}
+                  </div>
+                  <details className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <summary className="cursor-pointer text-xs font-semibold">Context pack JSON</summary>
+                    <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed">
+                      {JSON.stringify(contextPackResult.context_pack, null, 2)}
+                    </pre>
+                  </details>
+                  {contextPackResult.tool_run && (
+                    <details className="rounded border px-3 py-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <summary className="cursor-pointer text-xs font-semibold">Context pack tool run</summary>
+                      <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed">
+                        {JSON.stringify(
+                          {
+                            tool_name: contextPackResult.tool_run.tool_name,
+                            status: contextPackResult.tool_run.status,
+                            inputs: contextPackResult.tool_run.inputs_logged,
+                            outputs: contextPackResult.tool_run.outputs_logged,
+                            uncertainty_note: contextPackResult.tool_run.uncertainty_note,
+                          },
+                          null,
+                          2,
+                        )}
+                      </pre>
+                    </details>
+                  )}
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

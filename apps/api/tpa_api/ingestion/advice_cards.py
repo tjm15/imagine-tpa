@@ -55,7 +55,7 @@ def _document_identity_status(document_id: str) -> dict[str, Any] | None:
         SELECT identity_jsonb, status_jsonb, weight_jsonb
         FROM document_identity_status
         WHERE document_id = %s::uuid
-        ORDER BY checked_at DESC NULLS LAST, created_at DESC
+        ORDER BY created_at DESC
         LIMIT 1
         """,
         (document_id,),

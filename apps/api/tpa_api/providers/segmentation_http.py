@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import json
 import os
+import threading
+import time
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -10,6 +12,7 @@ from uuid import uuid4
 import httpx
 
 from tpa_api.db import _db_execute
+from tpa_api.model_clients import _resolve_model_base_url_sync
 from tpa_api.providers.segmentation import SegmentationProvider
 from tpa_api.time_utils import _utc_now
 
@@ -48,8 +51,8 @@ class HttpSegmentationProvider(SegmentationProvider):
             (
                 tool_run_id,
                 tool_name,
-                inputs,
-                outputs,
+                json.dumps(inputs, default=str),
+                json.dumps(outputs, default=str),
                 status,
                 started_at,
                 _utc_now(),
@@ -68,16 +71,23 @@ class HttpSegmentationProvider(SegmentationProvider):
         options: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         started_at = _utc_now()
+        started_monotonic = time.monotonic()
         options = options or {}
         run_id = options.get("run_id")
         ingest_batch_id = options.get("ingest_batch_id")
 
-        base_url = (
-            os.environ.get("TPA_SAM2_BASE_URL")
-            or os.environ.get("TPA_SEGMENTATION_BASE_URL")
+        base_url = _resolve_model_base_url_sync(
+            role="sam2",
+            env_key="TPA_SAM2_BASE_URL",
+            timeout_seconds=180.0,
         )
+        if not base_url and not os.environ.get("TPA_MODEL_SUPERVISOR_URL"):
+            base_url = os.environ.get("TPA_SEGMENTATION_BASE_URL")
         if not base_url:
-            err = "TPA_SEGMENTATION_BASE_URL not configured"
+            if os.environ.get("TPA_MODEL_SUPERVISOR_URL"):
+                err = "model_supervisor_unavailable:sam2"
+            else:
+                err = "TPA_SEGMENTATION_BASE_URL not configured"
             self._log_tool_run(
                 "segmentation.segment",
                 {"prompts": prompts},
@@ -104,7 +114,61 @@ class HttpSegmentationProvider(SegmentationProvider):
                 "prompts": prompts
             }
             
-            with httpx.Client(timeout=180.0) as client:
+            tool_run_id = str(uuid4())
+            tool_run_inserted = False
+            try:
+                _db_execute(
+                    """
+                    INSERT INTO tool_runs (
+                      id, tool_name, inputs_logged, outputs_logged, status,
+                      started_at, ended_at, confidence_hint, uncertainty_note, run_id, ingest_batch_id
+                    )
+                    VALUES (%s, %s, %s::jsonb, %s::jsonb, %s, %s, NULL, %s, %s, %s::uuid, %s::uuid)
+                    """,
+                    (
+                        tool_run_id,
+                        "segmentation.segment",
+                        json.dumps(inputs_logged, default=str),
+                        json.dumps({}, default=str),
+                        "running",
+                        started_at,
+                        "low",
+                        "Segmentation request in progress.",
+                        run_id,
+                        ingest_batch_id,
+                    ),
+                )
+                tool_run_inserted = True
+            except Exception:  # noqa: BLE001
+                tool_run_inserted = False
+
+            stop_event = threading.Event()
+
+            def _heartbeat() -> None:
+                while not stop_event.wait(30.0):
+                    elapsed = int(time.monotonic() - started_monotonic)
+                    payload = {"progress": "running", "elapsed_seconds": elapsed}
+                    try:
+                        _db_execute(
+                            """
+                            UPDATE tool_runs
+                            SET outputs_logged = outputs_logged || %s::jsonb,
+                                ended_at = %s
+                            WHERE id = %s::uuid
+                            """,
+                            (
+                                json.dumps(payload, default=str),
+                                _utc_now(),
+                                tool_run_id,
+                            ),
+                        )
+                    except Exception:  # noqa: BLE001
+                        pass
+
+            if tool_run_inserted:
+                threading.Thread(target=_heartbeat, daemon=True).start()
+
+            with httpx.Client(timeout=None) as client:
                 resp = client.post(url, json=payload)
                 resp.raise_for_status()
                 data = resp.json()
@@ -114,21 +178,59 @@ class HttpSegmentationProvider(SegmentationProvider):
                 "limitations_text": data.get("limitations_text")
             }
 
-            self._log_tool_run(
-                "segmentation.segment",
-                inputs_logged,
-                outputs_logged,
-                "success",
-                started_at,
-                confidence_hint="medium",
-                uncertainty_note=data.get("limitations_text") or "Segmentation successful.",
-                run_id=run_id,
-                ingest_batch_id=ingest_batch_id
-            )
+            if tool_run_inserted:
+                stop_event.set()
+                _db_execute(
+                    """
+                    UPDATE tool_runs
+                    SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                        confidence_hint = %s, uncertainty_note = %s
+                    WHERE id = %s::uuid
+                    """,
+                    (
+                        "success",
+                        json.dumps(outputs_logged, default=str),
+                        _utc_now(),
+                        "medium",
+                        data.get("limitations_text") or "Segmentation successful.",
+                        tool_run_id,
+                    ),
+                )
+            else:
+                self._log_tool_run(
+                    "segmentation.segment",
+                    inputs_logged,
+                    outputs_logged,
+                    "success",
+                    started_at,
+                    confidence_hint="medium",
+                    uncertainty_note=data.get("limitations_text") or "Segmentation successful.",
+                    run_id=run_id,
+                    ingest_batch_id=ingest_batch_id
+                )
             return data
 
         except Exception as exc:
             err = str(exc)
+            if "tool_run_inserted" in locals() and tool_run_inserted:
+                stop_event.set()
+                _db_execute(
+                    """
+                    UPDATE tool_runs
+                    SET status = %s, outputs_logged = %s::jsonb, ended_at = %s,
+                        confidence_hint = %s, uncertainty_note = %s
+                    WHERE id = %s::uuid
+                    """,
+                    (
+                        "error",
+                        json.dumps({"error": err}, default=str),
+                        _utc_now(),
+                        "low",
+                        f"Segmentation failed: {err}",
+                        tool_run_id,
+                    ),
+                )
+                raise RuntimeError(f"Segmentation failed: {err}") from exc
             self._log_tool_run(
                 "segmentation.segment",
                 inputs_logged,

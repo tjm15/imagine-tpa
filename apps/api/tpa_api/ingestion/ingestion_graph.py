@@ -268,6 +268,12 @@ def node_docparse(state: IngestionState) -> IngestionState:
                     return {**state, "bundle_path": bundle_path}
 
             provider = get_docparse_provider()
+            _progress(
+                state,
+                "docling_parse",
+                {"status": "running", "documents": state["counts"].get("documents_seen", 0)},
+                status="running",
+            )
             result = provider.parse_document(
                 blob_path=state.get("raw_blob_path") or "",
                 file_bytes=state["file_bytes"],
@@ -821,6 +827,7 @@ def node_document_identity(state: IngestionState) -> IngestionState:
         return state
     try:
         log("--- Node: Document Identity ---")
+        counts = state.setdefault("counts", {})
         block_rows = state.get("block_rows") or []
         evidence_ref_map = state.get("evidence_ref_map") or {}
         identity_bundle, _, identity_errors = _extract_document_identity_status(
@@ -837,9 +844,10 @@ def node_document_identity(state: IngestionState) -> IngestionState:
             _bump(state, "document_identity_status", 1)
             _mark_step(state, "document_identity_status")
         if identity_errors:
-            errors = state.setdefault("errors", [])
-            errors.extend([f"document_identity:{err}" for err in identity_errors])
-        _progress(state, "document_identity_status", {"documents": state["counts"].get("document_identity_status", 0)})
+            raise RuntimeError(f"document_identity_failed:{';'.join(identity_errors)}")
+        if not identity_bundle:
+            raise RuntimeError("document_identity_failed:empty_response")
+        _progress(state, "document_identity_status", {"documents": counts.get("document_identity_status", 0)})
         return state
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Document Identity Failed: {exc}")

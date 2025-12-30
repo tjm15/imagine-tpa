@@ -89,11 +89,15 @@ async def run_stage_for_run(run_id: str, stage: str) -> dict[str, Any]:
             "filename": filename,
             "content_type": doc.get("raw_content_type"),
             "raw_artifact_id": doc.get("raw_artifact_id"),
+            "counts": {},
+            "steps_completed": [],
+            "errors": [],
         }
         try:
             config = {"configurable": {"thread_id": str(doc_id)}}
-            async for _event in graph.astream(initial_state, config):
-                pass
+            final_state = await graph.ainvoke(initial_state, config)
+            if isinstance(final_state, dict) and final_state.get("error"):
+                raise RuntimeError(str(final_state.get("error")))
             processed += 1
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{doc_id}: {exc}")

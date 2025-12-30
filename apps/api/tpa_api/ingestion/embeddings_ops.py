@@ -163,11 +163,6 @@ def _embed_visual_assertions(*, ingest_batch_id: str, run_id: str | None) -> int
     if not candidates:
         return 0
 
-    texts = [text for _, text in candidates]
-    embeddings = _embed_texts_sync(texts=texts, model_id=os.environ.get("TPA_EMBEDDINGS_MODEL_ID"))
-    if not embeddings:
-        return 0
-
     tool_run_id = str(uuid4())
     _db_execute(
         """
@@ -182,7 +177,7 @@ def _embed_visual_assertions(*, ingest_batch_id: str, run_id: str | None) -> int
             ingest_batch_id,
             run_id,
             "embed_visual_assertions",
-            json.dumps({"assertion_count": len(embeddings)}, ensure_ascii=False),
+            json.dumps({"assertion_count": len(candidates)}, ensure_ascii=False),
             json.dumps({}, ensure_ascii=False),
             "running",
             _utc_now(),
@@ -191,6 +186,46 @@ def _embed_visual_assertions(*, ingest_batch_id: str, run_id: str | None) -> int
             "Embedding visual assertions for retrieval.",
         ),
     )
+
+    texts = [text for _, text in candidates]
+    embeddings = _embed_texts_sync(texts=texts, model_id=os.environ.get("TPA_EMBEDDINGS_MODEL_ID"))
+    if not embeddings:
+        _db_execute(
+            """
+            UPDATE tool_runs
+            SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+            WHERE id = %s::uuid
+            """,
+            (
+                "error",
+                json.dumps({"error": "visual_assertion_embeddings_failed"}, ensure_ascii=False),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        raise RuntimeError("visual_assertion_embeddings_failed")
+    if len(embeddings) != len(candidates):
+        _db_execute(
+            """
+            UPDATE tool_runs
+            SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+            WHERE id = %s::uuid
+            """,
+            (
+                "error",
+                json.dumps(
+                    {
+                        "error": "visual_assertion_embeddings_mismatch",
+                        "expected": len(candidates),
+                        "received": len(embeddings),
+                    },
+                    ensure_ascii=False,
+                ),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        raise RuntimeError("visual_assertion_embeddings_mismatch")
 
     inserted = 0
     for (assertion_id, _), vec in zip(candidates, embeddings, strict=True):
@@ -248,10 +283,6 @@ def _embed_units(
     ]
     if not candidates:
         return 0
-    texts = [text for _, text in candidates]
-    embeddings = _embed_texts_sync(texts=texts, model_id=os.environ.get("TPA_EMBEDDINGS_MODEL_ID"))
-    if not embeddings:
-        return 0
     tool_run_id = str(uuid4())
     _db_execute(
         """
@@ -266,7 +297,7 @@ def _embed_units(
             ingest_batch_id,
             run_id,
             "embed_units",
-            json.dumps({"unit_type": unit_type, "unit_count": len(embeddings)}, ensure_ascii=False),
+            json.dumps({"unit_type": unit_type, "unit_count": len(candidates)}, ensure_ascii=False),
             json.dumps({}, ensure_ascii=False),
             "running",
             _utc_now(),
@@ -275,6 +306,49 @@ def _embed_units(
             "Embedding units for retrieval.",
         ),
     )
+    texts = [text for _, text in candidates]
+    embeddings = _embed_texts_sync(texts=texts, model_id=os.environ.get("TPA_EMBEDDINGS_MODEL_ID"))
+    if not embeddings:
+        _db_execute(
+            """
+            UPDATE tool_runs
+            SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+            WHERE id = %s::uuid
+            """,
+            (
+                "error",
+                json.dumps(
+                    {"error": "unit_embeddings_failed", "unit_type": unit_type},
+                    ensure_ascii=False,
+                ),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        raise RuntimeError("unit_embeddings_failed")
+    if len(embeddings) != len(candidates):
+        _db_execute(
+            """
+            UPDATE tool_runs
+            SET status = %s, outputs_logged = %s::jsonb, ended_at = %s
+            WHERE id = %s::uuid
+            """,
+            (
+                "error",
+                json.dumps(
+                    {
+                        "error": "unit_embeddings_mismatch",
+                        "unit_type": unit_type,
+                        "expected": len(candidates),
+                        "received": len(embeddings),
+                    },
+                    ensure_ascii=False,
+                ),
+                _utc_now(),
+                tool_run_id,
+            ),
+        )
+        raise RuntimeError("unit_embeddings_mismatch")
     inserted = 0
     for (unit_id, _), vec in zip(candidates, embeddings, strict=True):
         _db_execute(

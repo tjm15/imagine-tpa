@@ -4,7 +4,7 @@ import json
 from uuid import uuid4
 from typing import Any
 
-from tpa_api.db import _db_execute
+from tpa_api.db import _db_execute, _db_execute_returning
 from tpa_api.time_utils import _utc_now
 from tpa_api.evidence import _ensure_evidence_ref_row, _parse_evidence_ref
 
@@ -173,7 +173,7 @@ def _persist_layout_blocks(
         if "text_source_reason" in block:
             metadata.setdefault("text_source_reason", block.get("text_source_reason"))
 
-        _db_execute(
+        row = _db_execute_returning(
             """
             INSERT INTO layout_blocks (
               id, document_id, page_number, ingest_batch_id, run_id, source_artifact_id,
@@ -181,6 +181,22 @@ def _persist_layout_blocks(
               span_start, span_end, span_quality, evidence_ref_id, metadata_jsonb
             )
             VALUES (%s, %s::uuid, %s, %s::uuid, %s::uuid, %s::uuid, %s, %s, %s, %s::jsonb, %s, %s, %s, %s, %s, %s::uuid, %s::jsonb)
+            ON CONFLICT (document_id, block_id) DO UPDATE
+            SET page_number = EXCLUDED.page_number,
+                ingest_batch_id = COALESCE(layout_blocks.ingest_batch_id, EXCLUDED.ingest_batch_id),
+                run_id = COALESCE(layout_blocks.run_id, EXCLUDED.run_id),
+                source_artifact_id = COALESCE(layout_blocks.source_artifact_id, EXCLUDED.source_artifact_id),
+                block_type = EXCLUDED.block_type,
+                text = EXCLUDED.text,
+                bbox = EXCLUDED.bbox,
+                bbox_quality = EXCLUDED.bbox_quality,
+                section_path = EXCLUDED.section_path,
+                span_start = EXCLUDED.span_start,
+                span_end = EXCLUDED.span_end,
+                span_quality = EXCLUDED.span_quality,
+                evidence_ref_id = COALESCE(layout_blocks.evidence_ref_id, EXCLUDED.evidence_ref_id),
+                metadata_jsonb = EXCLUDED.metadata_jsonb
+            RETURNING id, evidence_ref_id
             """,
             (
                 layout_block_id,
@@ -202,12 +218,22 @@ def _persist_layout_blocks(
                 json.dumps(metadata, ensure_ascii=False),
             ),
         )
+        layout_block_id = str(row.get("id") or layout_block_id)
+        evidence_ref_id = row.get("evidence_ref_id") or evidence_ref_id
+        evidence_ref_str = raw_ref if isinstance(raw_ref, str) else None
         if not used_external_ref:
-            _db_execute(
-                "INSERT INTO evidence_refs (id, source_type, source_id, fragment_id, run_id) VALUES (%s, %s, %s, %s, %s::uuid)",
-                (evidence_ref_id, "layout_block", layout_block_id, block_id, run_id),
-            )
-        evidence_ref_str = raw_ref if isinstance(raw_ref, str) else f"layout_block::{layout_block_id}::{block_id}"
+            evidence_ref_str = f"layout_block::{layout_block_id}::{block_id}"
+            ensured_ref_id = _ensure_evidence_ref_row(evidence_ref_str, run_id=run_id)
+            if ensured_ref_id:
+                evidence_ref_id = ensured_ref_id
+                _db_execute(
+                    """
+                    UPDATE layout_blocks
+                    SET evidence_ref_id = COALESCE(evidence_ref_id, %s::uuid)
+                    WHERE id = %s::uuid
+                    """,
+                    (ensured_ref_id, layout_block_id),
+                )
         rows.append(
             {
                 "layout_block_id": layout_block_id,

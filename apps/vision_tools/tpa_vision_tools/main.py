@@ -4,6 +4,7 @@ import base64
 import os
 from contextlib import asynccontextmanager
 from io import BytesIO
+from threading import Semaphore
 from typing import Any
 
 import cv2  # type: ignore
@@ -27,6 +28,15 @@ except ImportError:
 
 # Global model state
 models = {}
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, str(default)))
+    except ValueError:
+        return default
+
+# Limit concurrent SAM2 requests to avoid GPU OOM.
+_SAM2_MAX_INFLIGHT = max(1, _int_env("TPA_SAM2_MAX_INFLIGHT", 1))
+_SAM2_SEMAPHORE = Semaphore(_SAM2_MAX_INFLIGHT)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -165,6 +175,7 @@ def segment(req: SegmentRequest) -> SegmentResponse:
     
     if models.get("predictor") or models.get("generator"):
         # SAM2 Inference
+        _SAM2_SEMAPHORE.acquire()
         try:
             if req.prompts and (req.prompts.get("box") or req.prompts.get("point_coords")):
                 # Prompted segmentation
@@ -214,6 +225,8 @@ def segment(req: SegmentRequest) -> SegmentResponse:
             print(f"SAM2 inference failed: {e}")
             # Fall through to heuristic if SAM2 crashes on an edge case
             pass
+        finally:
+            _SAM2_SEMAPHORE.release()
 
     # Fallback if SAM2 failed or not loaded
     if not masks_out:

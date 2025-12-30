@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import json
 import mimetypes
 import os
 from datetime import datetime
@@ -42,6 +43,7 @@ class MinIOBlobStoreProvider(BlobStoreProvider):
         ingest_batch_id: str | None = None,
     ) -> str:
         tool_run_id = str(uuid4())
+        inputs_payload = inputs if os.environ.get("TPA_LOG_S3_INPUTS") == "true" else {}
         _db_execute(
             """
             INSERT INTO tool_runs (
@@ -53,8 +55,8 @@ class MinIOBlobStoreProvider(BlobStoreProvider):
             (
                 tool_run_id,
                 tool_name,
-                os.environ.get("TPA_LOG_S3_INPUTS") == "true" and inputs or {},
-                outputs,
+                json.dumps(inputs_payload, default=str),
+                json.dumps(outputs, default=str),
                 status,
                 started_at,
                 _utc_now(),

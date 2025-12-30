@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from tpa_api.db import _db_execute
 from tpa_api.prompting import _llm_structured_sync
