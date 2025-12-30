@@ -72,40 +72,46 @@ def segment_visual_assets(
         visual_asset_id = asset.get("visual_asset_id")
         blob_path = asset.get("blob_path")
         if not visual_asset_id or not isinstance(blob_path, str):
-            continue
+            raise ValueError("segmentation_missing_visual_asset_id_or_blob_path")
 
         # 1. Get Image
         try:
             blob_data = blob_provider.get_blob(blob_path, run_id=run_id, ingest_batch_id=ingest_batch_id)
             image_bytes = blob_data["bytes"]
-        except Exception:
-            continue # Skip if missing
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"segmentation_blob_read_failed:{blob_path}:{exc}") from exc
+        if not image_bytes:
+            raise RuntimeError(f"segmentation_blob_empty:{blob_path}")
 
         # 2. Call Segmentation Provider
         try:
             result = seg_provider.segment(
                 image=image_bytes,
-                prompts=None, # Auto-segmentation
-                options={"run_id": run_id, "ingest_batch_id": ingest_batch_id}
+                prompts=None,  # Auto-segmentation
+                options={"run_id": run_id, "ingest_batch_id": ingest_batch_id},
             )
-        except Exception:
-            continue
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"segmentation_provider_failed:{visual_asset_id}:{exc}") from exc
 
-        masks = result.get("masks") or []
+        masks = result.get("masks") if isinstance(result, dict) else None
+        if masks is None:
+            raise RuntimeError(f"segmentation_missing_masks:{visual_asset_id}")
+        if not isinstance(masks, list):
+            raise RuntimeError(f"segmentation_invalid_masks:{visual_asset_id}")
         caption = (asset.get("metadata") or {}).get("caption")
         
         for idx, mask in enumerate(masks, start=1):
             if not isinstance(mask, dict):
-                continue
+                raise RuntimeError(f"segmentation_invalid_mask:{visual_asset_id}:{idx}")
             
             mask_b64 = mask.get("mask_png_base64")
             if not mask_b64:
-                continue
+                raise RuntimeError(f"segmentation_missing_mask_png:{visual_asset_id}:{idx}")
                 
             mask_bytes = _decode_base64_payload(mask_b64)
             mask_rle = _mask_png_to_rle(mask_bytes)
             if mask_rle is None:
-                continue
+                raise RuntimeError(f"segmentation_mask_rle_failed:{visual_asset_id}:{idx}")
 
             # 3. Store Mask Blob
             mask_blob_path = f"{prefix}/visual_masks/{visual_asset_id}/mask-{idx:03d}.png"
@@ -168,17 +174,17 @@ def segment_visual_assets(
                             out = io.BytesIO()
                             crop.save(out, format="PNG")
                             region_data = out.getvalue()
-                            
+
                             region_blob_path = f"{prefix}/visual_regions/{visual_asset_id}/region-{idx:03d}.png"
                             blob_provider.put_blob(
                                 region_blob_path,
                                 region_data,
                                 content_type="image/png",
                                 run_id=run_id,
-                                ingest_batch_id=ingest_batch_id
+                                ingest_batch_id=ingest_batch_id,
                             )
-                except Exception:
-                    pass
+                except Exception as exc:  # noqa: BLE001
+                    raise RuntimeError(f"segmentation_region_crop_failed:{visual_asset_id}:{idx}:{exc}") from exc
 
             region_id = str(uuid4())
             region_evidence_ref = f"visual_region::{region_id}::crop"

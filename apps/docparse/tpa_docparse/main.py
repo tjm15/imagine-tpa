@@ -8,6 +8,7 @@ import json
 import os
 import tempfile
 import time
+import logging
 from typing import Any
 from uuid import uuid4
 from urllib.parse import urlparse
@@ -22,7 +23,20 @@ from minio import Minio
 from PIL import Image
 
 
+_LOG_LEVEL = os.environ.get("TPA_DOCPARSE_LOG_LEVEL", "INFO").upper()
+if not logging.getLogger().handlers:
+    logging.basicConfig(level=getattr(logging, _LOG_LEVEL, logging.INFO))
+
 app = FastAPI(title="TPA DocParse (ParseBundle v2)", version="0.2.0")
+logger = logging.getLogger(__name__)
+
+
+def _log_stage(stage: str, *, started_at: float, details: dict[str, Any] | None = None) -> None:
+    elapsed = time.monotonic() - started_at
+    if details:
+        logger.info("%s | elapsed=%.1fs | %s", stage, elapsed, json.dumps(details, default=str))
+        return
+    logger.info("%s | elapsed=%.1fs", stage, elapsed)
 
 
 @app.get("/healthz")
@@ -313,10 +327,13 @@ def _render_page_images(
 
     render_runs: list[dict[str, Any]] = []
     rendered_pages: list[dict[str, Any]] = []
-    for page in pages:
+    total_pages = len(pages)
+    for idx, page in enumerate(pages, start=1):
         page_number = int(page.get("page_number") or 0)
         if page_number <= 0:
             continue
+        if idx == 1 or idx % 25 == 0 or idx == total_pages:
+            logger.info("Rendering page %s/%s", idx, total_pages)
         page_text = page.get("text") if isinstance(page.get("text"), str) else ""
         visual_count = int(visuals_by_page.get(page_number, 0))
         tier, reason = _select_render_tier(
@@ -568,30 +585,47 @@ def _merge_page_texts(
     return merged, sources
 
 
-def _extract_images(reader: PdfReader, *, max_pages: int | None, max_visuals: int | None) -> list[dict[str, Any]]:
+def _extract_images(
+    reader: PdfReader,
+    *,
+    max_pages: int | None,
+    max_visuals: int | None,
+) -> tuple[list[dict[str, Any]], list[str]]:
     visuals: list[dict[str, Any]] = []
+    errors: list[str] = []
     for idx, page in enumerate(reader.pages, start=1):
         if max_pages is not None and idx > max_pages:
             break
         if not getattr(page, "images", None):
             continue
-        for image in page.images:
+        try:
+            images = list(page.images)
+        except Exception as exc:  # noqa: BLE001
+            errors.append(f"page_{idx}: {exc}")
+            logger.warning("Image extraction failed on page %s: %s", idx, exc)
+            continue
+        for image in images:
             if max_visuals is not None and len(visuals) >= max_visuals:
                 break
-            raw = getattr(image, "data", None)
-            if raw is None:
+            try:
+                raw = getattr(image, "data", None)
+                if raw is None:
+                    continue
+                normalized, ext, width, height = _normalize_image_bytes(raw)
+                visuals.append(
+                    {
+                        "page_number": idx,
+                        "bytes": normalized,
+                        "extension": ext,
+                        "width": width,
+                        "height": height,
+                    }
+                )
+            except Exception as exc:  # noqa: BLE001
+                errors.append(f"page_{idx}: {exc}")
+                logger.warning("Image normalization failed on page %s: %s", idx, exc)
                 continue
-            normalized, ext, width, height = _normalize_image_bytes(raw)
-            visuals.append(
-                {
-                    "page_number": idx,
-                    "bytes": normalized,
-                    "extension": ext,
-                    "width": width,
-                    "height": height,
-                }
-            )
-    return visuals
+    return visuals, errors
 
 
 def _lines_to_blocks(page_texts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1013,6 +1047,7 @@ async def parse_bundle(
     except Exception:  # noqa: BLE001
         meta_obj = {}
 
+    overall_start = time.monotonic()
     authority_id = str(meta_obj.get("authority_id") or "unknown")
     plan_cycle_id = meta_obj.get("plan_cycle_id")
     document_id = str(meta_obj.get("document_id") or uuid4())
@@ -1020,24 +1055,55 @@ async def parse_bundle(
     source_url = meta_obj.get("source_url") if isinstance(meta_obj.get("source_url"), str) else None
 
     data = await file.read()
+    logger.info("Docparse start: filename=%s bytes=%s", file.filename, len(data))
 
     reader = PdfReader(io.BytesIO(data))
+    _log_stage("PDF reader ready", started_at=overall_start, details={"pages": len(reader.pages)})
 
+    docling_start = time.monotonic()
     docling_pages, docling_blocks, docling_tables, docling_runs, docling_errors = _docling_parse_pdf(
         file_bytes=data,
         filename=file.filename or "document.pdf",
         max_pages=None,
     )
+    _log_stage(
+        "Docling parse complete",
+        started_at=docling_start,
+        details={
+            "pages": len(docling_pages),
+            "blocks": len(docling_blocks),
+            "tables": len(docling_tables),
+            "errors": len(docling_errors),
+        },
+    )
 
+    fallback_start = time.monotonic()
     fallback_pages = _extract_page_texts(reader, max_pages=None)
+    _log_stage(
+        "Fallback text extracted",
+        started_at=fallback_start,
+        details={"pages": len(fallback_pages)},
+    )
+    merge_start = time.monotonic()
     page_texts, page_sources = _merge_page_texts(
         docling_pages=docling_pages,
         fallback_pages=fallback_pages,
         docling_errors=docling_errors,
     )
     docling_used = any(source == "docling" for source in page_sources.values()) or bool(docling_blocks)
+    _log_stage(
+        "Text merge complete",
+        started_at=merge_start,
+        details={"pages": len(page_texts), "docling_used": docling_used},
+    )
 
-    visuals = _extract_images(reader, max_pages=None, max_visuals=None)
+    visual_start = time.monotonic()
+    visuals, visual_errors = _extract_images(reader, max_pages=None, max_visuals=None)
+    _log_stage(
+        "Visual extraction complete",
+        started_at=visual_start,
+        details={"visuals": len(visuals), "errors": len(visual_errors)},
+    )
     visuals_by_page: dict[int, int] = {}
     for asset in visuals:
         page_number = int(asset.get("page_number") or 0)
@@ -1099,6 +1165,7 @@ async def parse_bundle(
 
     evidence_refs = _make_evidence_refs(document_id, blocks)
     llm_model_id = os.environ.get("TPA_LLM_MODEL_ID")
+    llm_start = time.monotonic()
     (
         blocks,
         policy_headings,
@@ -1106,11 +1173,22 @@ async def parse_bundle(
         scope_candidates,
         llm_runs,
     ) = _annotate_blocks_with_llm(blocks, llm_model_id=llm_model_id)
+    _log_stage(
+        "LLM block annotation complete",
+        started_at=llm_start,
+        details={
+            "blocks": len(blocks),
+            "headings": len(policy_headings),
+            "matrices": len(standard_matrices),
+            "scopes": len(scope_candidates),
+        },
+    )
 
     bucket = os.environ.get("TPA_S3_BUCKET") or "tpa"
     minio_client = _minio_client()
     _ensure_bucket(minio_client, bucket)
 
+    render_start = time.monotonic()
     rendered_pages, render_tool_runs = _render_page_images(
         pdf_bytes=data,
         pages=page_texts,
@@ -1123,6 +1201,11 @@ async def parse_bundle(
         minio_client=minio_client,
         bucket=bucket,
     )
+    _log_stage(
+        "Page render complete",
+        started_at=render_start,
+        details={"rendered_pages": len(rendered_pages)},
+    )
     render_by_page = {p["page_number"]: p for p in rendered_pages}
     for page in page_texts:
         page_number = int(page.get("page_number") or 0)
@@ -1133,6 +1216,7 @@ async def parse_bundle(
     vlm_model_id = os.environ.get("TPA_VLM_MODEL_ID")
     vlm_base_url = os.environ.get("TPA_VLM_BASE_URL")
     vlm_enabled = bool(vlm_model_id and vlm_model_id.strip() and vlm_base_url and vlm_base_url.strip())
+    vlm_start = time.monotonic()
     if vlm_enabled:
         classified_visuals, vlm_runs = await _classify_visuals(visuals, vlm_model_id=vlm_model_id, max_visuals=None)
     else:
@@ -1152,6 +1236,11 @@ async def parse_bundle(
                 "limitations_text": "VLM classification disabled in DocParse; deferred to ingest pipeline.",
             }
         ]
+    _log_stage(
+        "VLM classification complete" if vlm_enabled else "VLM classification skipped",
+        started_at=vlm_start,
+        details={"visuals": len(classified_visuals)},
+    )
 
     vector_paths: list[dict[str, Any]] = []
     vector_tool_runs: list[dict[str, Any]] = []
@@ -1167,6 +1256,7 @@ async def parse_bundle(
             }
         )
 
+    asset_start = time.monotonic()
     asset_items: list[dict[str, Any]] = []
     for idx, asset in enumerate(classified_visuals, start=1):
         data_bytes = asset.get("bytes")
@@ -1205,6 +1295,11 @@ async def parse_bundle(
                 "height": asset.get("height"),
             }
         )
+    _log_stage(
+        "Visual assets stored",
+        started_at=asset_start,
+        details={"assets": len(asset_items)},
+    )
 
     visual_evidence_refs: list[dict[str, Any]] = []
     for asset in asset_items:
@@ -1241,6 +1336,9 @@ async def parse_bundle(
         "BBox coordinates are best-effort and may be null for PDF text/images.",
         "Vector extraction is best-effort; map geometry may require follow-up tools.",
     ]
+    if visual_errors:
+        parse_flags.append("visual_extract_errors")
+        limitations.append(f"Image extraction skipped {len(visual_errors)} assets due to errors.")
     if docling_errors:
         limitations.append("Docling reported errors; affected pages may rely on fallback text.")
 
@@ -1282,6 +1380,16 @@ async def parse_bundle(
         blob_path=bundle_path,
         data=json.dumps(bundle, ensure_ascii=False).encode("utf-8"),
         content_type="application/json",
+    )
+    _log_stage(
+        "Parse bundle ready",
+        started_at=overall_start,
+        details={
+            "pages": len(page_texts),
+            "blocks": len(blocks),
+            "visuals": len(asset_items),
+            "bundle_path": bundle_path,
+        },
     )
 
     return JSONResponse(

@@ -9,6 +9,7 @@ from uuid import uuid4
 import httpx
 
 from tpa_api.db import _db_execute
+from tpa_api.model_clients import _llm_model_id, _resolve_model_base_url_sync
 from tpa_api.providers.llm import LLMProvider
 from tpa_api.time_utils import _utc_now
 from tpa_api.text_utils import _extract_json_object
@@ -37,6 +38,8 @@ class OpenAILLMProvider(LLMProvider):
         ingest_batch_id: str | None = None,
     ) -> str:
         tool_run_id = str(uuid4())
+        inputs_json = json.dumps(inputs, ensure_ascii=False, default=str)
+        outputs_json = json.dumps(outputs, ensure_ascii=False, default=str)
         _db_execute(
             """
             INSERT INTO tool_runs (
@@ -48,8 +51,8 @@ class OpenAILLMProvider(LLMProvider):
             (
                 tool_run_id,
                 tool_name,
-                inputs,
-                outputs,
+                inputs_json,
+                outputs_json,
                 status,
                 started_at,
                 _utc_now(),
@@ -73,9 +76,9 @@ class OpenAILLMProvider(LLMProvider):
         ingest_batch_id = options.get("ingest_batch_id")
         
         # Resolve base URL
-        base_url = os.environ.get("TPA_LLM_BASE_URL")
+        base_url = _resolve_model_base_url_sync(role="llm", env_key="TPA_LLM_BASE_URL", timeout_seconds=180.0)
         if not base_url:
-            err = "TPA_LLM_BASE_URL not configured"
+            err = "model_supervisor_unavailable:llm" if os.environ.get("TPA_MODEL_SUPERVISOR_URL") else "TPA_LLM_BASE_URL not configured"
             self._log_tool_run(
                 "llm.generate_structured",
                 {"messages": messages},
@@ -88,7 +91,7 @@ class OpenAILLMProvider(LLMProvider):
             )
             raise RuntimeError(err)
 
-        model_id = options.get("model_id") or os.environ.get("TPA_LLM_MODEL_ID") or "gpt-4o"
+        model_id = options.get("model_id") or _llm_model_id()
         url = base_url.rstrip("/") + "/chat/completions"
         
         # Prepare payload

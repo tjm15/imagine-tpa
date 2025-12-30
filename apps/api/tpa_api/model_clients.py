@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import time
 from typing import Any
 
 import httpx
@@ -42,6 +43,26 @@ def _ensure_model_role_sync(*, role: str, timeout_seconds: float = 180.0) -> str
     if isinstance(base_url, str) and base_url.startswith("http"):
         return base_url
     return None
+
+
+def _resolve_model_base_url_sync(
+    *,
+    role: str,
+    env_key: str,
+    timeout_seconds: float = 180.0,
+) -> str | None:
+    supervisor = os.environ.get("TPA_MODEL_SUPERVISOR_URL")
+    if supervisor:
+        attempts = int(os.environ.get("TPA_MODEL_SUPERVISOR_RETRIES", "3"))
+        base_delay = float(os.environ.get("TPA_MODEL_SUPERVISOR_RETRY_BASE_SECONDS", "2"))
+        for attempt in range(max(1, attempts)):
+            base_url = _ensure_model_role_sync(role=role, timeout_seconds=timeout_seconds)
+            if base_url:
+                return base_url
+            if attempt < attempts - 1:
+                time.sleep(base_delay * (2**attempt))
+        return None
+    return os.environ.get(env_key)
 
 
 async def _ensure_model_role(*, role: str, timeout_seconds: float = 180.0) -> str | None:
@@ -91,7 +112,7 @@ def _vlm_json_sync(
     image_bytes: bytes,
     model_id: str | None = None,
 ) -> tuple[dict[str, Any] | None, list[str]]:
-    base_url = _ensure_model_role_sync(role="vlm", timeout_seconds=180.0) or os.environ.get("TPA_VLM_BASE_URL")
+    base_url = _resolve_model_base_url_sync(role="vlm", env_key="TPA_VLM_BASE_URL", timeout_seconds=180.0)
     if not base_url:
         return None, ["vlm_unconfigured"]
 
@@ -134,7 +155,7 @@ def _rerank_texts_sync(
     texts: list[str],
     model_id: str | None = None,
 ) -> list[float] | None:
-    base_url = _ensure_model_role_sync(role="reranker", timeout_seconds=180.0) or os.environ.get("TPA_RERANKER_BASE_URL")
+    base_url = _resolve_model_base_url_sync(role="reranker", env_key="TPA_RERANKER_BASE_URL", timeout_seconds=180.0)
     if not base_url:
         return None
 
@@ -261,7 +282,7 @@ def _embed_texts_sync(
     texts: list[str],
     model_id: str | None = None,
 ) -> list[list[float]] | None:
-    base_url = _ensure_model_role_sync(role="embeddings", timeout_seconds=180.0) or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
+    base_url = _resolve_model_base_url_sync(role="embeddings", env_key="TPA_EMBEDDINGS_BASE_URL", timeout_seconds=180.0)
     if not base_url:
         return None
 
@@ -327,11 +348,13 @@ def _embed_multimodal_sync(
     text: str,
     model_id: str | None = None,
 ) -> list[float] | None:
-    base_url = (
-        _ensure_model_role_sync(role="embeddings_mm", timeout_seconds=180.0)
-        or os.environ.get("TPA_EMBEDDINGS_MM_BASE_URL")
-        or os.environ.get("TPA_EMBEDDINGS_BASE_URL")
+    base_url = _resolve_model_base_url_sync(
+        role="embeddings_mm",
+        env_key="TPA_EMBEDDINGS_MM_BASE_URL",
+        timeout_seconds=180.0,
     )
+    if not base_url and not os.environ.get("TPA_MODEL_SUPERVISOR_URL"):
+        base_url = os.environ.get("TPA_EMBEDDINGS_BASE_URL")
     if not base_url:
         return None
 
@@ -385,7 +408,7 @@ def _generate_completion_sync(
     max_tokens: int | None = None,
     temperature: float | None = None,
 ) -> str | None:
-    base_url = _ensure_model_role_sync(role="llm", timeout_seconds=180.0) or os.environ.get("TPA_LLM_BASE_URL")
+    base_url = _resolve_model_base_url_sync(role="llm", env_key="TPA_LLM_BASE_URL", timeout_seconds=180.0)
     if not base_url:
         return None
 

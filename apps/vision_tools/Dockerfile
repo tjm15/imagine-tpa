@@ -2,7 +2,7 @@
 ARG PYTHON_IMAGE=pytorch/pytorch:2.4.0-cuda12.1-cudnn9-runtime
 FROM ${PYTHON_IMAGE}
 
-WORKDIR /app
+WORKDIR /srv
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -28,7 +28,7 @@ RUN pip install --no-cache-dir -r /app/requirements.txt
 # Note: In production, pin this to a specific commit.
 RUN git clone https://github.com/facebookresearch/segment-anything-2.git /app/sam2 && \
     cd /app/sam2 && \
-    pip install -e .
+    pip install .
 
 # Create checkpoints directory
 RUN mkdir -p /app/checkpoints
@@ -42,4 +42,4 @@ COPY apps/vision_tools/tpa_vision_tools /app/tpa_vision_tools
 ENV PORT=8086
 EXPOSE 8086
 
-CMD ["sh", "-c", "uvicorn tpa_vision_tools.main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["sh", "-c", "uvicorn tpa_vision_tools.main:app --host 0.0.0.0 --port ${PORT} --app-dir /app"]

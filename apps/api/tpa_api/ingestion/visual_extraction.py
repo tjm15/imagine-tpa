@@ -211,6 +211,13 @@ Rules:
         run_id=run_id,
         ingest_batch_id=ingest_batch_id
     )
+
+    if errs:
+        raise RuntimeError(f"vlm_enrich_visual_asset_failed:{';'.join(errs)}")
+    if not isinstance(obj, dict):
+        raise RuntimeError("vlm_enrich_visual_asset_failed:empty_response")
+
+    return obj, tool_run_id, errs
     
 def _merge_visual_asset_metadata(*, visual_asset_id: str, patch: dict[str, Any]) -> None:
     _db_execute(
@@ -323,7 +330,7 @@ def extract_visual_asset_facts(
             "Emit only the asset_specific_facts block relevant to the asset_type."
         )
 
-        obj, tool_run_id, _ = _run_vlm_prompt(
+        obj, tool_run_id, errs = _run_vlm_prompt(
             prompt_id="visual_asset_facts_v1",
             prompt_version=1,
             prompt_name="Visual asset facts",
@@ -334,9 +341,11 @@ def extract_visual_asset_facts(
             run_id=run_id,
             ingest_batch_id=ingest_batch_id
         )
-        
+
+        if errs:
+            raise RuntimeError(f"visual_asset_facts_failed:{visual_asset_id}:{';'.join(errs)}")
         if not isinstance(obj, dict):
-            continue
+            raise RuntimeError(f"visual_asset_facts_failed:{visual_asset_id}:empty_response")
 
         asset_type = obj.get("asset_type") if isinstance(obj.get("asset_type"), str) else None
         asset_subtype = obj.get("asset_subtype") if isinstance(obj.get("asset_subtype"), str) else None
@@ -377,6 +386,8 @@ def extract_visual_asset_facts(
             asset["asset_type"] = asset_type
         inserted += 1
 
+    return inserted
+
 def extract_visual_text_snippets(
     *,
     ingest_batch_id: str,
@@ -408,8 +419,8 @@ def extract_visual_text_snippets(
         try:
             blob_data = blob_provider.get_blob(blob_path, run_id=run_id, ingest_batch_id=ingest_batch_id)
             image_bytes = blob_data["bytes"]
-        except Exception:
-            continue
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(f"visual_text_snippets_blob_failed:{visual_asset_id}:{exc}") from exc
 
         obj, tool_run_id, errs = _run_vlm_prompt(
             prompt_id="visual_text_snippets_v1",
@@ -423,8 +434,10 @@ def extract_visual_text_snippets(
             ingest_batch_id=ingest_batch_id
         )
         
-        if errs or not isinstance(obj, dict):
-            continue
+        if errs:
+            raise RuntimeError(f"visual_text_snippets_failed:{visual_asset_id}:{';'.join(errs)}")
+        if not isinstance(obj, dict):
+            raise RuntimeError(f"visual_text_snippets_failed:{visual_asset_id}:empty_response")
         snippets = obj.get("snippets")
         if not isinstance(snippets, list):
             continue
@@ -500,6 +513,8 @@ def extract_visual_text_snippets(
             )
             total += snippet_count
 
+    return total
+
 def _build_material_index(assertions: list[dict[str, Any]]) -> dict[str, Any]:
     index: dict[str, dict[str, Any]] = {}
     for assertion in assertions:
@@ -572,8 +587,8 @@ def extract_visual_region_assertions(
             try:
                 blob_data = blob_provider.get_blob(region_blob_path, run_id=run_id, ingest_batch_id=ingest_batch_id)
                 image_bytes = blob_data["bytes"]
-            except Exception:  # noqa: BLE001
-                continue
+            except Exception as exc:  # noqa: BLE001
+                raise RuntimeError(f"visual_region_blob_failed:{region_id}:{exc}") from exc
 
             prompt = (
                 "You are a planning visual assertion instrument. Return ONLY valid JSON.\n"
@@ -633,8 +648,10 @@ def extract_visual_region_assertions(
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
             )
-            if errs or not isinstance(obj, dict):
-                continue
+            if errs:
+                raise RuntimeError(f"visual_region_assertions_failed:{region_id}:{';'.join(errs)}")
+            if not isinstance(obj, dict):
+                raise RuntimeError(f"visual_region_assertions_failed:{region_id}:empty_response")
             region_assertions = obj.get("assertions") if isinstance(obj.get("assertions"), list) else []
             for assertion in region_assertions:
                 if not isinstance(assertion, dict):
@@ -730,7 +747,7 @@ def extract_visual_agent_findings(
         asset_type = semantic_row.get("asset_type") if isinstance(semantic_row.get("asset_type"), str) else None
         asset_subtype = semantic_row.get("asset_subtype") if isinstance(semantic_row.get("asset_subtype"), str) else None
 
-        obj, tool_run_id, _ = run_llm_prompt(
+        obj, tool_run_id, errs = run_llm_prompt(
             prompt_id="visual_agent_findings_v1",
             prompt_version=1,
             prompt_name="Visual agent findings",
@@ -747,9 +764,11 @@ def extract_visual_agent_findings(
             ingest_batch_id=ingest_batch_id,
             run_id=run_id,
         )
-        
+
+        if errs:
+            raise RuntimeError(f"visual_agent_findings_failed:{visual_asset_id}:{';'.join(errs)}")
         if not isinstance(obj, dict) or not isinstance(obj.get("agent_findings"), dict):
-            continue
+            raise RuntimeError(f"visual_agent_findings_failed:{visual_asset_id}:empty_response")
         agent_findings = obj.get("agent_findings") or {}
         if isinstance(agent_findings, dict):
             for agent in agent_findings.values():

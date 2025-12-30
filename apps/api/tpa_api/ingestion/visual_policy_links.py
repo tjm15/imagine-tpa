@@ -95,13 +95,12 @@ def _persist_visual_rich_enrichment(
         _db_execute(
             """
             INSERT INTO visual_rich_toponyms (
-              id, enrichment_id, visual_asset_id, run_id, name, tool_run_id, created_at
+              id, visual_asset_id, run_id, toponym, tool_run_id, created_at
             )
-            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s, %s::uuid, %s)
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::uuid, %s)
             """,
             (
                 str(uuid4()),
-                enrichment_id,
                 visual_asset_id,
                 run_id,
                 name.strip(),
@@ -118,14 +117,13 @@ def _persist_visual_rich_enrichment(
             continue
         _db_execute(
             """
-            INSERT INTO visual_rich_policy_refs (
-              id, enrichment_id, visual_asset_id, run_id, policy_code, tool_run_id, created_at
+            INSERT INTO visual_rich_policy_codes (
+              id, visual_asset_id, run_id, policy_code, tool_run_id, created_at
             )
-            VALUES (%s, %s::uuid, %s::uuid, %s::uuid, %s, %s::uuid, %s)
+            VALUES (%s, %s::uuid, %s::uuid, %s, %s::uuid, %s)
             """,
             (
                 str(uuid4()),
-                enrichment_id,
                 visual_asset_id,
                 run_id,
                 code.strip(),

@@ -68,7 +68,9 @@ def _ensure_document_row(
         _db_execute(
             """
             UPDATE documents
-            SET raw_blob_path = COALESCE(raw_blob_path, %s),
+            SET ingest_batch_id = %s::uuid,
+                plan_cycle_id = COALESCE(plan_cycle_id, %s::uuid),
+                raw_blob_path = COALESCE(raw_blob_path, %s),
                 raw_sha256 = COALESCE(raw_sha256, %s),
                 raw_bytes = COALESCE(raw_bytes, %s),
                 raw_content_type = COALESCE(raw_content_type, %s),
@@ -77,7 +79,18 @@ def _ensure_document_row(
                 run_id = COALESCE(run_id, %s::uuid)
             WHERE id = %s::uuid
             """,
-            (raw_blob_path, raw_sha256, raw_bytes, raw_content_type, raw_source_uri, raw_artifact_id, run_id, doc_id),
+            (
+                ingest_batch_id,
+                plan_cycle_id,
+                raw_blob_path,
+                raw_sha256,
+                raw_bytes,
+                raw_content_type,
+                raw_source_uri,
+                raw_artifact_id,
+                run_id,
+                doc_id,
+            ),
         )
         return doc_id
     doc_id = str(uuid4())

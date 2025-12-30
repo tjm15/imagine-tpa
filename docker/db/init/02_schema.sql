@@ -854,6 +854,26 @@ CREATE INDEX IF NOT EXISTS policy_scopes_section_idx
 CREATE INDEX IF NOT EXISTS policy_scopes_jsonb_idx
   ON policy_scopes USING GIN (scope_jsonb);
 
+CREATE TABLE IF NOT EXISTS advice_card_instances (
+  id uuid PRIMARY KEY,
+  card_id text NOT NULL,
+  card_version text,
+  scope_type text NOT NULL,
+  scope_id uuid NOT NULL,
+  status text NOT NULL,
+  trigger_cues_jsonb jsonb,
+  evidence_refs_jsonb jsonb,
+  tool_run_id uuid REFERENCES tool_runs (id) ON DELETE SET NULL,
+  created_at timestamptz NOT NULL DEFAULT NOW(),
+  notes text
+);
+
+CREATE INDEX IF NOT EXISTS advice_card_instances_scope_idx
+  ON advice_card_instances (scope_type, scope_id);
+
+CREATE INDEX IF NOT EXISTS advice_card_instances_card_idx
+  ON advice_card_instances (card_id);
+
 CREATE TABLE IF NOT EXISTS sites (
   id uuid PRIMARY KEY,
   geometry_polygon geometry,

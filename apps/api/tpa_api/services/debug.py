@@ -2,14 +2,18 @@ from __future__ import annotations
 
 import json
 from typing import Any
+from uuid import uuid4
 
 from fastapi import HTTPException
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from ..api_utils import validate_uuid_or_400 as _validate_uuid_or_400
+from ..context_pack import ContextPackAssemblyDeps, build_context_pack_sync
 from ..db import _db_execute, _db_fetch_all, _db_fetch_one
-from ..time_utils import _utc_now_iso
+from ..evidence import _ensure_evidence_ref_row
+from ..prompting import _llm_structured_sync
+from ..time_utils import _utc_now, _utc_now_iso
 
 
 def _count(sql: str, params: tuple[Any, ...] = ()) -> int:
@@ -17,6 +21,57 @@ def _count(sql: str, params: tuple[Any, ...] = ()) -> int:
     if not row:
         return 0
     return int(row.get("count") or 0)
+
+
+def _select_candidates_with_llm(
+    *,
+    query: str,
+    candidates: list[dict[str, Any]],
+    limit: int,
+    modality: str,
+) -> tuple[list[str], str | None, list[dict[str, Any]], list[str]]:
+    if not candidates:
+        return [], None, [], []
+
+    payload = {
+        "query": query,
+        "limit": limit,
+        "modality": modality,
+        "candidates": [
+            {
+                "candidate_id": c.get("candidate_id"),
+                "title": c.get("title"),
+                "summary": c.get("summary"),
+            }
+            for c in candidates
+            if isinstance(c, dict)
+        ],
+    }
+    sys = (
+        "You are a retrieval scout for The Planner's Assistant.\n"
+        "Select the most relevant candidate_id values for the query and modality.\n"
+        "Return only JSON compatible with schemas/ContextPackSelection.schema.json.\n"
+        "Rules:\n"
+        f"- Select up to {limit} items.\n"
+        "- Do not fabricate candidates.\n"
+        "- Prefer diverse, planner-legible coverage when ties exist.\n"
+    )
+    obj, tool_run_id, errs = _llm_structured_sync(
+        prompt_id=f"debug.retrieve_{modality}_assets",
+        prompt_version=1,
+        prompt_name=f"Debug retrieval: {modality} assets",
+        purpose=f"Select relevant {modality} assets for a debug retrieval query.",
+        system_template=sys,
+        user_payload=payload,
+        output_schema_ref="schemas/ContextPackSelection.schema.json",
+    )
+    errs = errs if isinstance(errs, list) else []
+    if not isinstance(obj, dict):
+        return [], tool_run_id, [], errs or ["llm_selection_failed"]
+    selected_ids = obj.get("selected_candidate_ids") if isinstance(obj.get("selected_candidate_ids"), list) else []
+    selected_ids = [cid for cid in selected_ids if isinstance(cid, str)]
+    omissions = obj.get("deliberate_omissions") if isinstance(obj.get("deliberate_omissions"), list) else []
+    return selected_ids[:limit], tool_run_id, omissions, errs
 
 
 def debug_overview() -> JSONResponse:
@@ -120,6 +175,308 @@ def list_documents(
         tuple(params),
     )
     return JSONResponse(content=jsonable_encoder({"documents": rows}))
+
+
+def retrieve_visual_assets(
+    *,
+    query: str,
+    authority_id: str | None = None,
+    plan_cycle_id: str | None = None,
+    limit: int = 12,
+) -> JSONResponse:
+    query = query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query must not be empty")
+    limit = max(1, min(int(limit), 50))
+    pool_limit = max(40, min(200, limit * 10))
+    params: list[Any] = []
+    clauses: list[str] = ["d.is_active = true"]
+    if authority_id:
+        clauses.append("d.authority_id = %s")
+        params.append(authority_id)
+    if plan_cycle_id:
+        clauses.append("d.plan_cycle_id = %s::uuid")
+        params.append(_validate_uuid_or_400(plan_cycle_id, field_name="plan_cycle_id"))
+    params.append(pool_limit)
+    rows = _db_fetch_all(
+        f"""
+        SELECT
+          va.id AS visual_asset_id,
+          va.asset_type,
+          va.page_number,
+          va.blob_path,
+          va.metadata AS asset_metadata,
+          d.id AS document_id,
+          d.metadata->>'title' AS document_title,
+          er.source_type,
+          er.source_id,
+          er.fragment_id,
+          vs.agent_findings_jsonb,
+          vs.asset_specific_facts_jsonb,
+          vre.interpretation_notes
+        FROM visual_assets va
+        JOIN documents d ON d.id = va.document_id
+        LEFT JOIN evidence_refs er ON er.id = va.evidence_ref_id
+        LEFT JOIN LATERAL (
+          SELECT agent_findings_jsonb, asset_specific_facts_jsonb
+          FROM visual_semantic_outputs
+          WHERE visual_asset_id = va.id
+          ORDER BY created_at DESC NULLS LAST
+          LIMIT 1
+        ) vs ON TRUE
+        LEFT JOIN LATERAL (
+          SELECT interpretation_notes
+          FROM visual_rich_enrichments
+          WHERE visual_asset_id = va.id
+          ORDER BY created_at DESC NULLS LAST
+          LIMIT 1
+        ) vre ON TRUE
+        WHERE {" AND ".join(clauses)}
+        ORDER BY d.metadata->>'title' ASC NULLS LAST, va.page_number ASC NULLS LAST
+        LIMIT %s
+        """,
+        tuple(params),
+    )
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        asset_id = str(row.get("visual_asset_id") or "")
+        if not asset_id:
+            continue
+        source_type = row.get("source_type")
+        source_id = row.get("source_id")
+        fragment_id = row.get("fragment_id")
+        if source_type and source_id and fragment_id:
+            evidence_ref = f"{source_type}::{source_id}::{fragment_id}"
+        else:
+            evidence_ref = f"visual_asset::{asset_id}::blob"
+            _ensure_evidence_ref_row(evidence_ref)
+        findings = row.get("agent_findings_jsonb") if isinstance(row.get("agent_findings_jsonb"), dict) else {}
+        facts = row.get("asset_specific_facts_jsonb") if isinstance(row.get("asset_specific_facts_jsonb"), dict) else {}
+        notes = row.get("interpretation_notes") if isinstance(row.get("interpretation_notes"), str) else ""
+        summary_bits = []
+        if notes:
+            summary_bits.append(notes)
+        if findings:
+            summary_bits.append(json.dumps(findings, ensure_ascii=False))
+        if facts and not summary_bits:
+            summary_bits.append(json.dumps(facts, ensure_ascii=False))
+        summary = " ".join([b for b in summary_bits if isinstance(b, str) and b.strip()])
+        title_bits = [
+            row.get("document_title") or "Document",
+            f"p{row.get('page_number')}" if row.get("page_number") else None,
+            row.get("asset_type") or "visual",
+        ]
+        title = " · ".join([b for b in title_bits if isinstance(b, str) and b.strip()])
+        candidates.append(
+            {
+                "candidate_id": f"visual_asset::{asset_id}",
+                "title": title,
+                "summary": summary,
+                "evidence_ref": evidence_ref,
+                "payload": {
+                    "visual_asset_id": asset_id,
+                    "document_title": row.get("document_title"),
+                    "document_id": str(row.get("document_id")) if row.get("document_id") else None,
+                    "page_number": row.get("page_number"),
+                    "asset_type": row.get("asset_type"),
+                    "blob_path": row.get("blob_path"),
+                    "asset_metadata": row.get("asset_metadata") if isinstance(row.get("asset_metadata"), dict) else {},
+                },
+            }
+        )
+
+    selected_ids, llm_tool_run_id, omissions, errs = _select_candidates_with_llm(
+        query=query,
+        candidates=candidates,
+        limit=limit,
+        modality="visual",
+    )
+    if errs:
+        raise HTTPException(status_code=500, detail=";".join([str(e) for e in errs[:8]]))
+
+    selected = [c for c in candidates if c.get("candidate_id") in set(selected_ids)]
+    results: list[dict[str, Any]] = []
+    for idx, c in enumerate(selected[:limit]):
+        payload = c.get("payload") if isinstance(c.get("payload"), dict) else {}
+        results.append(
+            {
+                "evidence_ref": c.get("evidence_ref"),
+                "document_title": payload.get("document_title"),
+                "page_number": payload.get("page_number"),
+                "asset_type": payload.get("asset_type"),
+                "snippet": c.get("summary"),
+                "scores": {"modality": "visual", "rank": idx + 1},
+            }
+        )
+
+    tool_run_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+        """,
+        (
+            tool_run_id,
+            "retrieve_visual_assets",
+            json.dumps(
+                {
+                    "query": query,
+                    "authority_id": authority_id,
+                    "plan_cycle_id": plan_cycle_id,
+                    "limit": limit,
+                    "candidate_pool": len(candidates),
+                    "llm_tool_run_id": llm_tool_run_id,
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                {
+                    "selected_candidate_ids": selected_ids,
+                    "omissions": omissions[:20],
+                },
+                ensure_ascii=False,
+            ),
+            "success",
+            _utc_now(),
+            _utc_now(),
+            "medium",
+            "LLM-ranked visual retrieval; verify asset interpretation and provenance.",
+        ),
+    )
+
+    return JSONResponse(content=jsonable_encoder({"results": results, "tool_run_id": tool_run_id}))
+
+
+def retrieve_spatial_features(
+    *,
+    query: str,
+    authority_id: str | None = None,
+    limit: int = 12,
+) -> JSONResponse:
+    query = query.strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="query must not be empty")
+    limit = max(1, min(int(limit), 50))
+    pool_limit = max(40, min(200, limit * 10))
+    params: list[Any] = []
+    clauses: list[str] = ["sf.is_active = true"]
+    if authority_id:
+        clauses.append("sf.authority_id = %s")
+        params.append(authority_id)
+    params.append(pool_limit)
+    rows = _db_fetch_all(
+        f"""
+        SELECT
+          sf.id AS spatial_feature_id,
+          sf.type,
+          sf.spatial_scope,
+          sf.confidence_hint,
+          sf.uncertainty_note,
+          sf.properties
+        FROM spatial_features sf
+        WHERE {" AND ".join(clauses)}
+        ORDER BY sf.type ASC
+        LIMIT %s
+        """,
+        tuple(params),
+    )
+
+    candidates: list[dict[str, Any]] = []
+    for row in rows:
+        feature_id = str(row.get("spatial_feature_id") or "")
+        if not feature_id:
+            continue
+        evidence_ref = f"spatial_feature::{feature_id}::properties"
+        _ensure_evidence_ref_row(evidence_ref)
+        props = row.get("properties") if isinstance(row.get("properties"), dict) else {}
+        summary = (
+            props.get("interpreted_summary")
+            if isinstance(props.get("interpreted_summary"), str)
+            else None
+        )
+        if not summary:
+            label = props.get("name") or props.get("title") or props.get("label")
+            summary = f"{row.get('type')}: {label}" if label else f"{row.get('type')} spatial feature"
+        title = summary
+        candidates.append(
+            {
+                "candidate_id": f"spatial_feature::{feature_id}",
+                "title": title,
+                "summary": summary,
+                "evidence_ref": evidence_ref,
+                "payload": {
+                    "spatial_feature_id": feature_id,
+                    "feature_type": row.get("type"),
+                    "spatial_scope": row.get("spatial_scope"),
+                    "summary": summary,
+                    "properties": props,
+                },
+            }
+        )
+
+    selected_ids, llm_tool_run_id, omissions, errs = _select_candidates_with_llm(
+        query=query,
+        candidates=candidates,
+        limit=limit,
+        modality="spatial",
+    )
+    if errs:
+        raise HTTPException(status_code=500, detail=";".join([str(e) for e in errs[:8]]))
+
+    selected = [c for c in candidates if c.get("candidate_id") in set(selected_ids)]
+    results: list[dict[str, Any]] = []
+    for idx, c in enumerate(selected[:limit]):
+        payload = c.get("payload") if isinstance(c.get("payload"), dict) else {}
+        results.append(
+            {
+                "evidence_ref": c.get("evidence_ref"),
+                "spatial_feature_id": payload.get("spatial_feature_id"),
+                "feature_type": payload.get("feature_type"),
+                "summary": payload.get("summary"),
+                "scores": {"modality": "spatial", "rank": idx + 1},
+            }
+        )
+
+    tool_run_id = str(uuid4())
+    _db_execute(
+        """
+        INSERT INTO tool_runs (
+          id, tool_name, inputs_logged, outputs_logged, status, started_at, ended_at, confidence_hint, uncertainty_note
+        )
+        VALUES (%s, %s, %s::jsonb, %s::jsonb, %s, %s, %s, %s, %s)
+        """,
+        (
+            tool_run_id,
+            "retrieve_spatial_features",
+            json.dumps(
+                {
+                    "query": query,
+                    "authority_id": authority_id,
+                    "limit": limit,
+                    "candidate_pool": len(candidates),
+                    "llm_tool_run_id": llm_tool_run_id,
+                },
+                ensure_ascii=False,
+            ),
+            json.dumps(
+                {
+                    "selected_candidate_ids": selected_ids,
+                    "omissions": omissions[:20],
+                },
+                ensure_ascii=False,
+            ),
+            "success",
+            _utc_now(),
+            _utc_now(),
+            "medium",
+            "LLM-ranked spatial retrieval; verify layer completeness and temporal validity.",
+        ),
+    )
+
+    return JSONResponse(content=jsonable_encoder({"results": results, "tool_run_id": tool_run_id}))
 
 
 def list_visual_assets(
@@ -291,6 +648,22 @@ def list_tool_runs(
     return JSONResponse(content=jsonable_encoder({"tool_runs": rows}))
 
 
+def get_tool_run(tool_run_id: str) -> JSONResponse:
+    tool_run_id = _validate_uuid_or_400(tool_run_id, field_name="tool_run_id")
+    row = _db_fetch_one(
+        """
+        SELECT id, ingest_batch_id, run_id, tool_name, status, started_at, ended_at,
+               confidence_hint, uncertainty_note, inputs_logged, outputs_logged
+        FROM tool_runs
+        WHERE id = %s::uuid
+        """,
+        (tool_run_id,),
+    )
+    if not row:
+        raise HTTPException(status_code=404, detail="Tool run not found")
+    return JSONResponse(content=jsonable_encoder({"tool_run": row}))
+
+
 def list_prompts() -> JSONResponse:
     prompts = _db_fetch_all(
         """
@@ -320,6 +693,54 @@ def list_runs(limit: int = 25) -> JSONResponse:
         (limit,),
     )
     return JSONResponse(content=jsonable_encoder({"runs": rows}))
+
+
+def run_latest_moves(run_id: str) -> JSONResponse:
+    run_uuid = _validate_uuid_or_400(run_id, field_name="run_id")
+    rows = _db_fetch_all(
+        """
+        SELECT DISTINCT ON (move_type)
+          id,
+          move_type,
+          sequence,
+          outputs_jsonb
+        FROM move_events
+        WHERE run_id = %s::uuid
+          AND move_type IN ('framing', 'issue_surfacing')
+        ORDER BY move_type, sequence DESC
+        """,
+        (run_uuid,),
+    )
+    framing = None
+    issues = None
+    issue_map = None
+    framing_move_id = None
+    issue_move_id = None
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        move_type = row.get("move_type")
+        outputs = row.get("outputs_jsonb") if isinstance(row.get("outputs_jsonb"), dict) else {}
+        if move_type == "framing":
+            framing = outputs.get("framing") if isinstance(outputs.get("framing"), dict) else None
+            framing_move_id = str(row.get("id")) if row.get("id") else None
+        elif move_type == "issue_surfacing":
+            issues = outputs.get("issues") if isinstance(outputs.get("issues"), list) else None
+            issue_map = outputs.get("issue_map") if isinstance(outputs.get("issue_map"), dict) else None
+            issue_move_id = str(row.get("id")) if row.get("id") else None
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "run_id": run_uuid,
+                "framing": framing,
+                "issues": issues,
+                "issue_map": issue_map,
+                "framing_move_id": framing_move_id,
+                "issue_move_id": issue_move_id,
+            }
+        )
+    )
 
 
 def kg_snapshot(limit: int = 500, edge_limit: int = 2000, node_type: str | None = None, edge_type: str | None = None) -> JSONResponse:
@@ -799,3 +1220,79 @@ def run_graph_ingest_job(ingest_job_id: str, note: str | None = None) -> JSONRes
             (json.dumps({"debug_note": note}, ensure_ascii=False), job_id),
         )
     return JSONResponse(content=jsonable_encoder({"ingest_job_id": job_id, "enqueued": True, "mode": "graph"}))
+
+
+def assemble_context_pack(
+    *,
+    run_id: str,
+    move_type: str,
+    work_mode: str,
+    authority_id: str | None = None,
+    plan_cycle_id: str | None = None,
+    plan_project_id: str | None = None,
+    scenario_id: str | None = None,
+    application_id: str | None = None,
+    token_budget: int | None = None,
+    framing: dict[str, Any] | None = None,
+    issues: list[dict[str, Any]] | None = None,
+) -> JSONResponse:
+    run_uuid = _validate_uuid_or_400(run_id, field_name="run_id")
+    plan_cycle_uuid = _validate_uuid_or_400(plan_cycle_id, field_name="plan_cycle_id") if plan_cycle_id else None
+    plan_project_uuid = _validate_uuid_or_400(plan_project_id, field_name="plan_project_id") if plan_project_id else None
+    scenario_uuid = _validate_uuid_or_400(scenario_id, field_name="scenario_id") if scenario_id else None
+    application_uuid = _validate_uuid_or_400(application_id, field_name="application_id") if application_id else None
+
+    deps = ContextPackAssemblyDeps(
+        db_fetch_one=_db_fetch_one,
+        db_fetch_all=_db_fetch_all,
+        db_execute=_db_execute,
+        llm_structured_sync=_llm_structured_sync,
+        utc_now_iso=_utc_now_iso,
+        utc_now=_utc_now,
+    )
+
+    pack = build_context_pack_sync(
+        deps=deps,
+        run_id=run_uuid,
+        move_type=move_type,
+        work_mode=work_mode or "plan_studio",
+        authority_id=authority_id,
+        plan_cycle_id=plan_cycle_uuid,
+        plan_project_id=plan_project_uuid,
+        scenario_id=scenario_uuid,
+        application_id=application_uuid,
+        framing=framing if isinstance(framing, dict) else None,
+        issues=issues if isinstance(issues, list) else [],
+        token_budget=token_budget,
+    )
+
+    context_row = _db_fetch_one(
+        """
+        SELECT tool_run_id
+        FROM context_packs
+        WHERE id = %s::uuid
+        """,
+        (pack.get("context_pack_id"),),
+    )
+    tool_run_id = context_row.get("tool_run_id") if isinstance(context_row, dict) else None
+    tool_run = None
+    if tool_run_id:
+        tool_run = _db_fetch_one(
+            """
+            SELECT id, run_id, tool_name, status, started_at, ended_at,
+                   inputs_logged, outputs_logged, confidence_hint, uncertainty_note
+            FROM tool_runs
+            WHERE id = %s::uuid
+            """,
+            (tool_run_id,),
+        )
+
+    return JSONResponse(
+        content=jsonable_encoder(
+            {
+                "context_pack": pack,
+                "tool_run_id": tool_run_id,
+                "tool_run": tool_run,
+            }
+        )
+    )
