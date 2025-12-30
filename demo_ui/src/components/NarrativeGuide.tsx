@@ -1,10 +1,10 @@
 import { useMemo } from 'react';
-import { 
-  Lightbulb, 
-  Copy, 
-  ArrowRight, 
-  HelpCircle, 
-  CheckCircle2, 
+import {
+  Lightbulb,
+  Copy,
+  ArrowRight,
+  HelpCircle,
+  CheckCircle2,
   BookOpen,
   List,
   Scale,
@@ -166,14 +166,14 @@ const GUIDES: Record<ReasoningMove, MoveGuide> = {
 function useCurrentMove(): ReasoningMove {
   const { reasoningMoves } = useAppState();
   const moveOrder: ReasoningMove[] = [
-    'framing', 'issues', 'evidence', 'interpretation', 
+    'framing', 'issues', 'evidence', 'interpretation',
     'considerations', 'balance', 'negotiation', 'positioning'
   ];
-  
+
   // Find first in-progress move, or last completed, or default to framing
   const current = moveOrder.find(m => reasoningMoves[m] === 'in-progress');
   if (current) return current;
-  
+
   const lastCompleted = [...moveOrder].reverse().find(m => reasoningMoves[m] === 'complete');
   return lastCompleted || 'framing';
 }
@@ -198,8 +198,8 @@ export function NarrativeGuide({ onInsertTemplate }: NarrativeGuideProps) {
           {guide.goal}
         </CardDescription>
       </CardHeader>
-      
-      <div className="flex-1 overflow-y-auto px-4">
+
+      <div className="flex-1 min-h-0 bg-slate-50/50 px-4" style={{ overflowY: 'auto' }}>
         <div className="space-y-6 pb-6">
           {/* Key Questions */}
           <div className="space-y-3">

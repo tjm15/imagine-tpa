@@ -60,5 +60,11 @@
     server: {
       port: 3000,
       open: true,
+      // Some environments (e.g. containers/CI) have very low inotify watcher limits.
+      // Polling avoids ENOSPC: System limit for number of file watchers reached.
+      watch: {
+        usePolling: true,
+        interval: 250,
+      },
     },
   });

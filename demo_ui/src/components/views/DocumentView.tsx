@@ -116,7 +116,7 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
   const whyVisibilityClass = explainabilityMode === 'summary' ? 'opacity-0 group-hover:opacity-100' : 'opacity-100';
 
   return (
-    <div className="h-full flex flex-col font-sans bg-white overflow-hidden">
+    <div className="h-full min-h-0 flex flex-col font-sans bg-white overflow-hidden">
       {/* Document Header */}
       <div className="flex-shrink-0 sticky top-0 z-20 px-4 sm:px-6 pt-4 pb-3 border-b border-slate-200 group bg-white shadow-sm">
         <div className="flex items-center justify-between">
@@ -130,7 +130,7 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
               <Badge variant="secondary" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">{EXPLAINABILITY_LABEL[explainabilityMode]} mode</Badge>
               <StatusBadge status="provisional" />
               <div className={`${whyVisibilityClass} transition-opacity`}>
-                <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021','ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
+                <ProvenanceIndicator provenance={{ source: 'ai', confidence: 'medium', status: 'provisional', evidenceIds: ['ev-census-2021', 'ev-affordability'] }} showConfidence onOpenTrace={onOpenTrace} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-3 text-sm text-slate-500 mt-2">
@@ -157,20 +157,20 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
               </TooltipProvider>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-2 ml-4">
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={onToggleMap}
               className="gap-2"
             >
               <MapIcon className="w-4 h-4" />
               Dock Map
             </Button>
-            <Button 
-              variant={showGuide ? "secondary" : "outline"} 
-              size="sm" 
+            <Button
+              variant={showGuide ? "secondary" : "outline"}
+              size="sm"
               onClick={() => setShowGuide(!showGuide)}
               className="gap-2"
             >
@@ -181,67 +181,76 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
         </div>
       </div>
 
-      <div className="flex-1 flex min-h-0 overflow-hidden">
-        {/* Editor Area */}
-        <div className="flex-1 overflow-auto">
-          <div className="max-w-3xl mx-0 p-4 sm:p-6">
-            {/* Visual embeds reintroduced from legacy Map/Visuals */}
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
-              <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
-                <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 bg-slate-50">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                    <Camera className="w-4 h-4 text-slate-600" />
-                    Visual evidence
-                  </div>
-                  <Badge variant="outline" className="text-[10px] bg-white">Citable</Badge>
-                </div>
-                <div className="p-3 flex gap-3 overflow-x-auto">
-                  {mockPhotos.slice(0, 3).map((photo) => (
-                    <div key={photo.id} className="flex-shrink-0 w-48 flex gap-3 items-center border rounded-md p-2">
-                      <div className="w-12 h-12 bg-slate-200 rounded-md flex items-center justify-center text-[10px] text-slate-500 flex-shrink-0">
-                        img
+      {/* Main Content Area - Split Layout */}
+      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-row min-w-0">
+          {/* Editor Area */}
+          <div className="flex-1 min-w-0 flex flex-col min-h-0 overflow-hidden bg-white">
+            <div
+              data-testid="studio-scroll"
+              className="flex-1 min-h-0 overflow-y-auto"
+              style={{ overflowY: 'auto' }}
+            >
+              <div className="max-w-3xl mx-0 p-4 sm:p-6">
+                {/* Visual embeds reintroduced from legacy Map/Visuals */}
+                <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-4">
+                  <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg shadow-sm overflow-hidden">
+                    <div className="px-3 py-2 flex items-center justify-between border-b border-slate-100 bg-slate-50">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+                        <Camera className="w-4 h-4 text-slate-600" />
+                        Visual evidence
                       </div>
-                      <div className="min-w-0">
-                        <div className="text-xs font-medium text-slate-800 truncate">{photo.caption}</div>
-                        <div className="text-[10px] text-slate-500">{photo.date}</div>
-                        <button
-                          className="text-[10px] text-[color:var(--color-gov-blue)] hover:underline"
-                          onClick={() => onOpenTrace?.({ kind: 'evidence', id: photo.id, label: photo.caption })}
-                        >
-                          Trace
-                        </button>
-                      </div>
+                      <Badge variant="outline" className="text-[10px] bg-white">Citable</Badge>
                     </div>
-                  ))}
+                    <div className="p-3 flex gap-3 overflow-x-auto">
+                      {mockPhotos.slice(0, 3).map((photo) => (
+                        <div key={photo.id} className="flex-shrink-0 w-48 flex gap-3 items-center border rounded-md p-2">
+                          <div className="w-12 h-12 bg-slate-200 rounded-md flex items-center justify-center text-[10px] text-slate-500 flex-shrink-0">
+                            img
+                          </div>
+                          <div className="min-w-0">
+                            <div className="text-xs font-medium text-slate-800 truncate">{photo.caption}</div>
+                            <div className="text-[10px] text-slate-500">{photo.date}</div>
+                            <button
+                              className="text-[10px] text-[color:var(--color-gov-blue)] hover:underline"
+                              onClick={() => onOpenTrace?.({ kind: 'evidence', id: photo.id, label: photo.caption })}
+                            >
+                              Trace
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Inline callouts to anchor provenance and state language */}
+                <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
+                  <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">Settled: Intro</Badge>
+                  <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">Provisional: Housing</Badge>
+                  <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200">Draft: Transport</Badge>
+                </div>
+
+                {/* TipTap Editor (fully interactive) */}
+                <DocumentEditor
+                  initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
+                  stageId={workspace === 'plan' ? 'baseline' : 'casework'}
+                  explainabilityMode={explainabilityMode}
+                  onOpenTrace={onOpenTrace}
+                  placeholder="Start drafting your planning document..."
+                  templateToInsert={templateToInsert}
+                />
               </div>
             </div>
+          </div>
 
-            {/* Inline callouts to anchor provenance and state language */}
-            <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
-              <Badge variant="secondary" className="bg-emerald-50 text-emerald-700 border-emerald-200">Settled: Intro</Badge>
-              <Badge variant="secondary" className="bg-amber-50 text-amber-700 border-amber-200">Provisional: Housing</Badge>
-              <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-200">Draft: Transport</Badge>
+          {/* Guide Sidebar */}
+          {showGuide && (
+            <div className="w-80 border-l bg-slate-50 flex-shrink-0 flex flex-col h-full min-h-0 overflow-hidden">
+              <NarrativeGuide onInsertTemplate={(content) => setTemplateToInsert({ content, id: Date.now() })} />
             </div>
-
-            {/* TipTap Editor (fully interactive) */}
-            <DocumentEditor 
-              initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
-              stageId={workspace === 'plan' ? 'baseline' : 'casework'}
-              explainabilityMode={explainabilityMode}
-              onOpenTrace={onOpenTrace}
-              placeholder="Start drafting your planning document..."
-              templateToInsert={templateToInsert}
-            />
-          </div>
+          )}
         </div>
-
-        {/* Guide Sidebar */}
-        {showGuide && (
-          <div className="w-80 border-l bg-slate-50 overflow-hidden flex-shrink-0 flex flex-col">
-            <NarrativeGuide onInsertTemplate={(content) => setTemplateToInsert({ content, id: Date.now() })} />
-          </div>
-        )}
       </div>
     </div>
   );

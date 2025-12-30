@@ -583,7 +583,7 @@ export function WorkbenchShell({
         </header>
 
         {/* Main Content Area */}
-        <div className="flex-1 flex overflow-hidden relative" style={{ backgroundColor: 'var(--color-surface-light)' }}>
+          <div className="flex-1 min-h-0 flex overflow-hidden relative min-w-0" style={{ backgroundColor: 'var(--color-surface-light)' }}>
           {/* Overlay backdrop (session-only) */}
           {!isFullBleedView && isOverlay && (leftPanelOpen || rightPanelOpen) && (
             <button
@@ -638,26 +638,24 @@ export function WorkbenchShell({
           )}
 
           {/* Main Workspace */}
-          <div className="flex-1 flex overflow-hidden relative min-h-0">
-            {/* Main View */}
-            <div className="flex-1 overflow-hidden flex flex-col relative min-h-0">
-              <div className="flex-1 overflow-auto min-h-0">
-                <div className="h-full w-full">
-                  <ActiveViewComponent
-                    workspace={workspace}
-                    explainabilityMode={explainabilityMode}
-                    onOpenTrace={openTrace}
-                    onToggleMap={() => {
-                      setRightSection('map');
-                      setRightPanelOpen(true);
-                    }}
-                  />
-                </div>
+          <div className="flex-1 flex overflow-hidden relative min-h-0 min-w-0">
+            {/* Main View (views manage their own scrolling) */}
+            <div className="flex-1 min-h-0 min-w-0 overflow-hidden flex flex-col">
+              <div className="flex-1 min-h-0 min-w-0 overflow-hidden">
+                <ActiveViewComponent
+                  workspace={workspace}
+                  explainabilityMode={explainabilityMode}
+                  onOpenTrace={openTrace}
+                  onToggleMap={() => {
+                    setRightSection('map');
+                    setRightPanelOpen(true);
+                  }}
+                />
               </div>
 
               {/* Reasoning Tray - Hidden in full-bleed views */}
               {!isFullBleedView && (
-                <div className="sticky bottom-0 z-40">
+                <div className="flex-shrink-0">
                   <ReasoningTray runId={currentRunId || 'run_8a4f2e'} onOpenTrace={openTrace} />
                 </div>
               )}

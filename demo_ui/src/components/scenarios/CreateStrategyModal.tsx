@@ -4,9 +4,10 @@
  * Modal wizard for creating a new strategic scenario
  */
 
+import { createPortal } from 'react-dom';
 import { useState } from 'react';
-import { 
-  X, MapPin, Home, ChevronRight, ChevronLeft, Check, 
+import {
+  X, MapPin, Home, ChevronRight, ChevronLeft, Check,
   Sparkles, Target, Layers, FileText, AlertCircle
 } from 'lucide-react';
 import { siteAllocations, EnrichedSiteProperties } from '../../fixtures/extendedMockData';
@@ -50,7 +51,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
     .reduce((sum, s) => sum + s.properties.capacity, 0);
 
   const toggleSite = (id: string) => {
-    setSelectedSiteIds(prev => 
+    setSelectedSiteIds(prev =>
       prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
     );
   };
@@ -77,7 +78,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div 
+      <div
         className="absolute inset-0 bg-black/50 backdrop-blur-sm"
         onClick={onClose}
       />
@@ -109,8 +110,8 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
               <div key={s.id} className="flex items-center">
                 <div className={cn(
                   'flex items-center gap-2 px-3 py-1.5 rounded-full text-sm transition-colors',
-                  step === s.id 
-                    ? 'bg-[color:var(--color-gov-blue)] text-white' 
+                  step === s.id
+                    ? 'bg-[color:var(--color-gov-blue)] text-white'
                     : idx < ['basics', 'sites', 'review'].indexOf(step)
                       ? 'bg-emerald-100 text-emerald-700'
                       : 'bg-neutral-200 text-neutral-500'
@@ -127,7 +128,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-6">
+        <div className="flex-1 overflow-y-auto p-6 min-h-0">
           {step === 'basics' && (
             <div className="space-y-6">
               <div>
@@ -170,8 +171,8 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                       className={cn(
                         'w-10 h-10 rounded-full transition-all',
                         c.class,
-                        color === c.id 
-                          ? 'ring-2 ring-offset-2 ring-neutral-900 scale-110' 
+                        color === c.id
+                          ? 'ring-2 ring-offset-2 ring-neutral-900 scale-110'
                           : 'hover:scale-105'
                       )}
                       title={c.label}
@@ -187,7 +188,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                     AI will generate a narrative
                   </p>
                   <p className="text-xs text-blue-700">
-                    Once you select sites, the system will generate a strategic narrative 
+                    Once you select sites, the system will generate a strategic narrative
                     explaining the rationale and trade-offs of your scenario.
                   </p>
                 </div>
@@ -218,14 +219,14 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                 {allSites.map(site => {
                   const s = site.properties;
                   const selected = selectedSiteIds.includes(s.id);
-                  
+
                   return (
                     <button
                       key={s.id}
                       onClick={() => toggleSite(s.id)}
                       className={cn(
                         'w-full p-3 rounded-lg border-2 text-left transition-all',
-                        selected 
+                        selected
                           ? 'border-emerald-500 bg-emerald-50'
                           : 'border-neutral-200 bg-white hover:border-neutral-300'
                       )}
@@ -234,8 +235,8 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                         <div className="flex items-center gap-3">
                           <div className={cn(
                             'w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors',
-                            selected 
-                              ? 'border-emerald-500 bg-emerald-500' 
+                            selected
+                              ? 'border-emerald-500 bg-emerald-500'
                               : 'border-neutral-300'
                           )}>
                             {selected && <Check className="w-3 h-3 text-white" />}
@@ -294,7 +295,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                   {allSites
                     .filter(s => selectedSiteIds.includes(s.properties.id))
                     .map(site => (
-                      <div 
+                      <div
                         key={site.properties.id}
                         className="flex items-center justify-between p-2 bg-white border border-neutral-200 rounded-lg"
                       >
@@ -323,7 +324,7 @@ export function CreateStrategyModal({ isOpen, onClose, onCreateScenario }: Creat
                     Ready to generate
                   </p>
                   <p className="text-xs text-violet-700">
-                    A plan narrative will be generated based on the selected sites, 
+                    A plan narrative will be generated based on the selected sites,
                     their constraints, and sustainability characteristics.
                   </p>
                 </div>

@@ -28,11 +28,14 @@ export function Shell({
   const sidebarWidth = isProject ? 56 : 256; // 56px matches ICON_RAIL_WIDTH_PX
 
   return (
-    <div className="flex min-h-screen w-full bg-slate-50 overflow-hidden">
+    <div
+      className="grid h-screen w-full bg-slate-50"
+      style={{ gridTemplateColumns: `${sidebarWidth}px 1fr` }}
+    >
       {/* Sidebar */}
-      <aside 
-        className="flex-shrink-0 border-r bg-white flex flex-col sticky top-0 h-screen transition-all duration-300 z-40" 
-        style={{ borderColor: 'var(--color-neutral-300)', width: sidebarWidth }}
+      <aside
+        className="border-r bg-white flex flex-col sticky top-0 h-screen transition-all duration-300 z-40"
+        style={{ borderColor: 'var(--color-neutral-300)' }}
       >
         {/* Logo Area */}
         <div className={`h-14 flex items-center ${isProject ? 'justify-center' : 'px-4 gap-3'} border-b`} style={{ borderColor: 'var(--color-neutral-200)' }}>
@@ -129,11 +132,16 @@ export function Shell({
         </div>
       </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col min-w-0">
+      {/* Main Column */}
+      <div
+        className={`grid min-w-0 min-h-0 h-screen ${isProject ? 'grid-rows-[1fr]' : 'grid-rows-[auto_1fr]'}`}
+      >
         {/* Header (Home only - Project has its own header inside children) */}
         {!isProject && (
-          <header className="h-14 border-b bg-white flex items-center justify-between px-6 flex-shrink-0 sticky top-0 z-10" style={{ borderColor: 'var(--color-neutral-200)' }}>
+          <header
+            className="h-14 border-b bg-white flex items-center justify-between px-6 sticky top-0 z-20"
+            style={{ borderColor: 'var(--color-neutral-200)' }}
+          >
             <div className="flex items-center gap-4 text-sm text-slate-500">
               <span className="font-medium text-slate-900">
                 {activeMode === 'plan' ? 'Cambridge Local Plan 2025' : activeMode === 'casework' ? 'Development Management' : 'Monitoring'}
@@ -151,7 +159,9 @@ export function Shell({
         )}
 
         {/* Canvas */}
-        <main className="flex-1 bg-slate-50/50 flex flex-col overflow-hidden">
+        <main
+          className={`bg-slate-50/50 min-h-0 min-w-0 h-full flex flex-col ${isProject ? 'overflow-hidden' : 'overflow-auto'}`}
+        >
           {children}
         </main>
       </div>

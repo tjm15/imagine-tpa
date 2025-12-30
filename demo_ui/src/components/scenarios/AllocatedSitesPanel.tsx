@@ -33,7 +33,7 @@ export function AllocatedSitesPanel({ allocatedSites, omittedSites, onOpenTrace 
   const omittedCapacity = safeOmitted.reduce((sum, s) => sum + (s?.properties?.capacity ?? 0), 0);
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="flex flex-col bg-slate-50">
       {/* Header */}
       <div className="px-4 py-4 bg-white border-b border-slate-200 flex-shrink-0">
         <div className="flex items-center justify-between mb-2">
@@ -56,7 +56,7 @@ export function AllocatedSitesPanel({ allocatedSites, omittedSites, onOpenTrace 
       </div>
       
       {/* Allocated Sites List */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      <div className="p-4 space-y-3">
         {safeAllocated.map(site => (
           <SiteAllocationCard
             key={site.properties.id}

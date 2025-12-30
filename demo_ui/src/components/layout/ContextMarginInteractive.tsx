@@ -517,7 +517,7 @@ export function ContextMarginInteractive({
       </div>
 
       {/* Content */}
-      <ScrollArea className="flex-1 min-h-0">
+      <div className="flex-1 min-h-0 overflow-y-auto">
         <div className="p-3 space-y-4 pb-6">
           {section === 'evidence' && (
             <>
@@ -696,7 +696,7 @@ export function ContextMarginInteractive({
             </div>
           )}
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Lightbox */}
       <Lightbox

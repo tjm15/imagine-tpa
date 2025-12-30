@@ -13,13 +13,13 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { 
+import {
   Layers, MapPin, Plus, Minus, Home, Map as MapIcon, Camera, Eye,
   Download, Maximize2, Circle, Square, AlertTriangle, X
 } from 'lucide-react';
-import Map, { 
-  Source, 
-  Layer, 
+import Map, {
+  Source,
+  Layer,
   NavigationControl,
   ScaleControl,
   Popup,
@@ -27,9 +27,9 @@ import Map, {
 } from 'react-map-gl/maplibre';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { WorkspaceMode } from '../../App';
-import { 
-  strategicScenarios, 
-  getSitesForScenario, 
+import {
+  strategicScenarios,
+  getSitesForScenario,
   StrategicScenario,
   siteAllocations,
   constraintsLayers,
@@ -51,10 +51,10 @@ interface StrategyViewProps {
   onOpenTrace?: (target?: TraceTarget) => void;
 }
 
-export function StrategyView({ 
-  workspace, 
+export function StrategyView({
+  workspace,
   explainabilityMode = 'summary',
-  onOpenTrace 
+  onOpenTrace
 }: StrategyViewProps) {
   const mapRef = useRef<MapRef>(null);
   const [selectedScenarioId, setSelectedScenarioId] = useState(strategicScenarios[0].id);
@@ -98,7 +98,7 @@ export function StrategyView({
         `Review the allocated sites below to understand the spatial implications of this approach.`,
       color: data.color,
     };
-    
+
     setScenarios(prev => [...prev, newScenario]);
     setSelectedScenarioId(newScenario.id);
     setShowCreateModal(false);
@@ -132,7 +132,7 @@ export function StrategyView({
   ] : [];
 
   return (
-    <div className="h-full flex flex-col bg-slate-50">
+    <div className="h-full min-h-0 flex flex-col bg-slate-50 overflow-hidden">
       {/* Scenario Bar */}
       <ScenarioBar
         scenarios={scenarios}
@@ -141,12 +141,12 @@ export function StrategyView({
         onCreateNew={() => setShowCreateModal(true)}
       />
 
-      {/* Main Content - Two Column Layout */}
-      <div className="flex-1 flex overflow-hidden">
-        {/* Left Column: Map + Tools + Narrative */}
-        <div className="flex-1 flex flex-col overflow-hidden min-w-0 bg-white">
-          {/* Map Container */}
-          <div className="flex-1 relative min-h-[300px]">
+      {/* Main Content - Two Column Layout (50/50 Split via Grid) */}
+      <div className="flex-1 min-h-0 w-full grid grid-cols-2 overflow-hidden">
+        {/* Left Column: Map + Narrative */}
+        <div className="flex flex-col min-w-0 min-h-0 bg-white border-r border-slate-200 h-full max-h-full overflow-hidden">
+          {/* Map Container - Fixed height */}
+          <div className="flex-none shrink-0 relative w-full border-b border-slate-200" style={{ height: '500px', minHeight: '500px' }}>
             {/* Map Label */}
             <div className="absolute top-4 left-4 z-10 bg-white rounded-lg shadow-sm border border-slate-200 px-3 py-2 flex items-center gap-2">
               <MapIcon className="w-4 h-4 text-slate-600" />
@@ -285,7 +285,7 @@ export function StrategyView({
                     'line-color': [
                       'case',
                       ['==', ['get', 'allocated'], true],
-                      '#065f46',
+                      selectedScenario.color || '#10b981',
                       '#475569'
                     ],
                     'line-width': ['case', ['==', ['id'], hoveredSite], 3, 1.5],
@@ -320,11 +320,10 @@ export function StrategyView({
                     <p className="text-xs text-slate-600 mb-1">
                       {popupInfo.landType} · {popupInfo.capacity} homes
                     </p>
-                    <div className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
-                      popupInfo.allocated 
-                        ? 'bg-emerald-100 text-emerald-800' 
-                        : 'bg-slate-100 text-slate-600'
-                    }`}>
+                    <div className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${popupInfo.allocated
+                      ? 'bg-emerald-100 text-emerald-800'
+                      : 'bg-slate-100 text-slate-600'
+                      }`}>
                       {popupInfo.allocated ? 'Allocated' : 'Available'}
                     </div>
                   </div>
@@ -333,8 +332,8 @@ export function StrategyView({
             </Map>
           </div>
 
-          {/* Narrative Section */}
-          <div className="flex-shrink-0 border-t border-slate-200 bg-white">
+          {/* Narrative Section - Scrollable independently */}
+          <div className="flex-1 min-h-0 bg-slate-50" style={{ overflowY: 'auto' }}>
             <PlanNarrative
               narrative={selectedScenario.narrative}
               scenarioName={selectedScenario.name}
@@ -343,59 +342,63 @@ export function StrategyView({
           </div>
         </div>
 
-        {/* Right Column: Site Details + Visual Evidence */}
-        <div className="w-96 flex-shrink-0 border-l border-slate-200 bg-white flex flex-col overflow-hidden">
-          {showVisualEvidence && selectedSiteId ? (
-            /* Visual Evidence Panel */
-            <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex-shrink-0 p-4 border-b border-slate-200 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-slate-600" />
-                  <h3 className="text-sm font-semibold">Visual Evidence</h3>
+        {/* Right Column: Site Details + Visual Evidence (50%) */}
+        <div className="flex flex-col min-w-0 min-h-0 bg-white shadow-xl z-20 h-full max-h-full overflow-hidden">
+          <div className="flex-1 min-h-0 overflow-x-hidden" style={{ overflowY: 'auto' }}>
+            {showVisualEvidence && selectedSiteId ? (
+              /* Visual Evidence Panel */
+              <div className="flex flex-col min-h-min">
+                <div className="flex-none p-4 border-b border-slate-200 flex items-center justify-between sticky top-0 bg-white z-10">
+                  <div className="flex items-center gap-2">
+                    <Camera className="w-4 h-4 text-slate-600" />
+                    <h3 className="text-sm font-semibold">Visual Evidence</h3>
+                  </div>
+                  <button
+                    onClick={() => setShowVisualEvidence(false)}
+                    className="p-1 hover:bg-slate-100 rounded transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowVisualEvidence(false)}
-                  className="p-1 hover:bg-slate-100 rounded transition-colors"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
 
-              <div className="flex-1 overflow-auto p-4 space-y-4">
-                {visualEvidence.map((photo) => (
-                  <div key={photo.id} className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
-                    <div className="aspect-video bg-slate-200 relative flex items-center justify-center">
-                      <Eye className="w-8 h-8 text-slate-400" />
+                <div className="p-4 space-y-4">
+                  {visualEvidence.map((photo) => (
+                    <div key={photo.id} className="bg-slate-50 rounded-lg border border-slate-200 overflow-hidden">
+                      <div className="aspect-video bg-slate-200 relative flex items-center justify-center">
+                        <Eye className="w-8 h-8 text-slate-400" />
+                      </div>
+                      <div className="p-3">
+                        <h4 className="text-sm font-medium mb-1">{photo.label}</h4>
+                        <p className="text-xs text-slate-600 mb-2">{photo.note}</p>
+                        <div className="text-xs text-slate-500">Captured: {photo.captured}</div>
+                      </div>
                     </div>
-                    <div className="p-3">
-                      <h4 className="text-sm font-medium mb-1">{photo.label}</h4>
-                      <p className="text-xs text-slate-600 mb-2">{photo.note}</p>
-                      <div className="text-xs text-slate-500">Captured: {photo.captured}</div>
+                  ))}
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+                    <div className="flex items-start gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div className="text-xs">
+                        <span className="text-amber-800 font-medium">Evidence Limitation:</span>
+                        <span className="text-slate-700 ml-1">
+                          Aerial imagery dated 2023. Ground conditions may have changed. Site visit recommended for verification.
+                        </span>
+                      </div>
                     </div>
                   </div>
-                ))}
-
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  <div className="flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
-                    <div className="text-xs">
-                      <span className="text-amber-800 font-medium">Evidence Limitation:</span>
-                      <span className="text-slate-700 ml-1">
-                        Aerial imagery dated 2023. Ground conditions may have changed. Site visit recommended for verification.
-                      </span>
-                    </div>
-                  </div>
                 </div>
               </div>
-            </div>
-          ) : (
-            /* Site Allocations Panel (default) */
-            <AllocatedSitesPanel
-              allocatedSites={allocated}
-              omittedSites={omitted}
-              onOpenTrace={onOpenTrace}
-            />
-          )}
+            ) : (
+              /* Site Allocations Panel (default) */
+              <div className="min-h-min">
+                <AllocatedSitesPanel
+                  allocatedSites={allocated}
+                  omittedSites={omitted}
+                  onOpenTrace={onOpenTrace}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
