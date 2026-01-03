@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -1003,6 +1004,80 @@ def upload_and_ingest_file(file_bytes: bytes, filename: str) -> JSONResponse:
 
     return JSONResponse(content={"ingest_job_id": ingest_job_id, "ingest_batch_id": ingest_batch_id})
 
+
+
+
+def reset_stale_ingest_runs(max_age_hours: float = 2.0, note: str | None = None) -> JSONResponse:
+    """
+    Mark stale running ingest jobs/runs/batches as error to reduce dashboard noise.
+    """
+    cutoff = _utc_now() - timedelta(hours=max_age_hours)
+    note_text = note or f"auto-marked stale > {max_age_hours:.1f}h"
+    jobs_updated = _db_fetch_all(
+        """
+        UPDATE ingest_jobs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            completed_at = COALESCE(completed_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    runs_updated = _db_fetch_all(
+        """
+        UPDATE ingest_runs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = COALESCE(ended_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    steps_updated = _db_fetch_all(
+        """
+        UPDATE ingest_run_steps
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = COALESCE(ended_at, NOW())
+        WHERE run_id IN (
+            SELECT id
+            FROM ingest_runs
+            WHERE status = 'running'
+              AND started_at IS NOT NULL
+              AND started_at < %s
+        )
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    batches_updated = _db_fetch_all(
+        """
+        UPDATE ingest_batches
+        SET status = 'error',
+            notes = COALESCE(notes, %s),
+            completed_at = COALESCE(completed_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    payload = {
+        "jobs_updated": len(jobs_updated),
+        "runs_updated": len(runs_updated),
+        "steps_updated": len(steps_updated),
+        "batches_updated": len(batches_updated),
+        "cutoff": cutoff.isoformat(),
+        "note": note_text,
+    }
+    return JSONResponse(content=jsonable_encoder(payload))
 
 def reset_ingest_state(
     *,

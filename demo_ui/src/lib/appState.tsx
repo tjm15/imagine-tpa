@@ -51,7 +51,8 @@ export interface AIGenerationState {
 }
 
 export interface DocumentState {
-  content: string;
+  html: string;
+  text: string;
   citations: Citation[];
   comments: Comment[];
   isDirty: boolean;
@@ -76,6 +77,10 @@ export interface AppState {
   
   // Document
   document: DocumentState;
+
+  // Map (plan-state overlays)
+  highlightedSiteId: string | null;
+  adjustedSiteIds: Set<string>;
   
   // Evidence & Policy
   citedEvidence: Set<string>;
@@ -119,7 +124,7 @@ export interface AppState {
 type AppAction =
   | { type: 'SET_STAGE'; payload: { stageId: string } }
   | { type: 'SELECT_DELIVERABLE'; payload: { deliverableId: string | null } }
-  | { type: 'UPDATE_DOCUMENT'; payload: { content: string } }
+  | { type: 'UPDATE_DOCUMENT'; payload: { html: string; text: string } }
   | { type: 'ADD_CITATION'; payload: { evidenceId: string; position?: number; text?: string; range?: unknown; citation?: unknown } }
   | { type: 'REMOVE_CITATION'; payload: { citationId: string } }
   | { type: 'ADD_COMMENT'; payload: { text: string; position?: number; range?: unknown; author?: string } }
@@ -150,6 +155,8 @@ type AppAction =
   | { type: 'CLEAR_NOTIFICATIONS' }
   | { type: 'SET_SEARCH_QUERY'; payload: { query: string } }
   | { type: 'SET_FILTER_STATUS'; payload: { status: string | null } }
+  | { type: 'APPLY_PATCH_EFFECTS'; payload: { document?: { html: string; text: string }; adjustedSiteIds?: string[]; highlightedSiteId?: string | null } }
+  | { type: 'RESTORE_PATCH_SNAPSHOT'; payload: { snapshot: { documentHtml: string; documentText: string; adjustedSiteIds: string[]; highlightedSiteId: string | null } } }
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'RESET_DEMO' };
@@ -163,12 +170,16 @@ const initialState: AppState = {
   selectedDeliverableId: null,
   
   document: {
-    content: '',
+    html: '',
+    text: '',
     citations: [],
     comments: [],
     isDirty: false,
     lastSaved: null,
   },
+
+  highlightedSiteId: null,
+  adjustedSiteIds: new Set(),
   
   citedEvidence: new Set(),
   selectedEvidence: null,
@@ -229,7 +240,12 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'UPDATE_DOCUMENT':
       return {
         ...state,
-        document: { ...state.document, content: action.payload.content, isDirty: true },
+        document: {
+          ...state.document,
+          html: action.payload.html,
+          text: action.payload.text,
+          isDirty: true,
+        },
         undoStack: newUndoStack,
         redoStack: [],
       };
@@ -514,6 +530,51 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_FILTER_STATUS':
       return { ...state, filterStatus: action.payload.status };
 
+    case 'APPLY_PATCH_EFFECTS': {
+      const nextDocument = action.payload.document
+        ? {
+            ...state.document,
+            html: action.payload.document.html,
+            text: action.payload.document.text,
+            isDirty: true,
+          }
+        : state.document;
+
+      const nextAdjustedSiteIds = Array.isArray(action.payload.adjustedSiteIds)
+        ? new Set(action.payload.adjustedSiteIds)
+        : state.adjustedSiteIds;
+
+      const nextHighlightedSiteId = action.payload.highlightedSiteId !== undefined
+        ? action.payload.highlightedSiteId
+        : state.highlightedSiteId;
+
+      return {
+        ...state,
+        document: nextDocument,
+        adjustedSiteIds: nextAdjustedSiteIds,
+        highlightedSiteId: nextHighlightedSiteId,
+        undoStack: newUndoStack,
+        redoStack: [],
+      };
+    }
+
+    case 'RESTORE_PATCH_SNAPSHOT': {
+      const { snapshot } = action.payload;
+      return {
+        ...state,
+        document: {
+          ...state.document,
+          html: snapshot.documentHtml,
+          text: snapshot.documentText,
+          isDirty: true,
+        },
+        adjustedSiteIds: new Set(snapshot.adjustedSiteIds),
+        highlightedSiteId: snapshot.highlightedSiteId,
+        undoStack: newUndoStack,
+        redoStack: [],
+      };
+    }
+
     case 'UNDO':
       if (state.undoStack.length === 0) return state;
       const previousState = state.undoStack[state.undoStack.length - 1];
@@ -551,7 +612,7 @@ interface AppContextValue {
   // Convenience actions
   setStage: (stageId: string) => void;
   selectDeliverable: (id: string | null) => void;
-  updateDocument: (content: string) => void;
+  updateDocument: (html: string, text: string) => void;
   addCitation: (evidenceId: string, position: number) => void;
   addComment: (text: string, position: number) => void;
   citeEvidence: (evidenceId: string) => void;
@@ -578,8 +639,8 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     dispatch({ type: 'SELECT_DELIVERABLE', payload: { deliverableId: id } });
   }, []);
 
-  const updateDocument = useCallback((content: string) => {
-    dispatch({ type: 'UPDATE_DOCUMENT', payload: { content } });
+  const updateDocument = useCallback((html: string, text: string) => {
+    dispatch({ type: 'UPDATE_DOCUMENT', payload: { html, text } });
   }, []);
 
   const addCitation = useCallback((evidenceId: string, position: number) => {

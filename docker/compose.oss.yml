@@ -393,7 +393,7 @@ services:
       ${TPA_LLM_MODEL_ID:-openai/gpt-oss-20b}
       --host 0.0.0.0
       --port 8000
-      ${TPA_LLM_VLLM_ARGS:---max-num-seqs 2}
+      ${TPA_LLM_VLLM_ARGS:---max-num-seqs 2 --gpu-memory-utilization 0.8}
     environment:
       HF_HOME: /models/cache
       # Optional: set HF_TOKEN in your `.env` if you need access to gated model repos.
@@ -415,7 +415,7 @@ services:
       --host 0.0.0.0
       --port 8000
       --trust-remote-code
-      ${TPA_VLM_VLLM_ARGS:---max-num-seqs 1}
+      ${TPA_VLM_VLLM_ARGS:---max-num-seqs 1 --gpu-memory-utilization 0.8 --max-model-len 49152}
     environment:
       HF_HOME: /models/cache
       HF_TOKEN: ${HF_TOKEN:-}
@@ -438,6 +438,7 @@ services:
       --port 8080
       --trust-remote-code
       --max-model-len 32768
+      ${TPA_EMBEDDINGS_VLLM_ARGS:---gpu-memory-utilization 0.8}
     environment:
       HF_HOME: /models/cache
       HF_TOKEN: ${HF_TOKEN:-}
@@ -460,6 +461,7 @@ services:
       --port 8080
       --trust-remote-code
       --max-model-len 32768
+      ${TPA_EMBEDDINGS_MM_VLLM_ARGS:---gpu-memory-utilization 0.8}
     environment:
       HF_HOME: /models/cache
       HF_TOKEN: ${HF_TOKEN:-}

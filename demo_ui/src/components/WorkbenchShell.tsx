@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import { 
   ChevronLeft,
   FileText,
@@ -19,8 +19,15 @@ import {
 } from 'lucide-react';
 import { WorkspaceMode, ViewMode } from '../App';
 import { DocumentView } from './views/DocumentView';
-import { StrategyView } from './views/StrategyView';
+import { MapViewInteractive } from './views/MapViewInteractive';
+import { JudgementView } from './views/JudgementView';
 import { MonitoringView } from './views/MonitoringView';
+import { OverviewView } from './views/OverviewView';
+import { RealityView } from './views/RealityView';
+import { CoDrafterDrawer } from './codrafter/CoDrafterDrawer';
+import { PatchBundleReview } from './codrafter/PatchBundleReview';
+import { createDemoPatchBundle } from './codrafter/demoBundles';
+import type { DraftingPhase, PatchBundle, PatchSnapshot } from './codrafter/types';
 import { ContextMarginInteractive } from './layout/ContextMarginInteractive';
 import { ProcessRail } from './layout/ProcessRail';
 import { ReasoningTray } from './ReasoningTray';
@@ -31,13 +38,14 @@ import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { Separator } from "./ui/separator";
 import { useAppState, useAppDispatch } from '../lib/appState';
-import { simulateDraft } from '../lib/aiSimulation';
 import { toast } from 'sonner';
 import type { TraceTarget } from '../lib/trace';
 import { Shell } from './Shell';
+import { planBaselineDeliverableHtml } from '../fixtures/documentTemplates';
+import { culpStageConfigs } from '../fixtures/extendedMockData';
 
 type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
-type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed' | 'map';
+type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed';
 
 const ICON_RAIL_WIDTH_PX = 56;
 const DEFAULT_LEFT_PANEL_WIDTH_PX = 320;
@@ -97,6 +105,30 @@ function sidebarKey(side: 'left' | 'right', workspace: WorkspaceMode, key: 'open
   return `tpa.demo_ui.sidebar.${side}.${workspace}.${key}`;
 }
 
+function stripHtmlToText(html: string) {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function applyBaselineTransportLimitationsPatch(html: string) {
+  if (html.includes('Limitations: DfT connectivity outputs')) return html;
+
+  const insertion =
+    '\n<p><em>Limitations:</em> DfT connectivity outputs do not model capacity constraints or future growth scenarios; treat results as indicative only.</p>\n';
+  const marker = '<h2>Transport & Connectivity</h2>';
+
+  if (!html.includes(marker)) {
+    return `${html}\n<h2>Transport limitations</h2>${insertion}`;
+  }
+
+  const at = html.indexOf(marker) + marker.length;
+  return `${html.slice(0, at)}${insertion}${html.slice(at)}`;
+}
+
 interface WorkbenchShellProps {
   workspace: WorkspaceMode;
   activeView: ViewMode;
@@ -114,8 +146,12 @@ export function WorkbenchShell({
   onBackToHome,
 }: WorkbenchShellProps) {
   const dispatch = useAppDispatch();
-  const { currentStageId, aiState, reasoningMoves } = useAppState();
+  const { currentStageId, document, adjustedSiteIds, highlightedSiteId, reasoningMoves } = useAppState();
   const currentRunId = 'run_8a4f2e';
+  const currentStageName = useMemo(() => {
+    if (workspace !== 'plan') return null;
+    return culpStageConfigs.find((s) => s.id === currentStageId)?.name ?? currentStageId;
+  }, [currentStageId, workspace]);
   const [traceOpen, setTraceOpen] = useState(false);
   const [traceTarget, setTraceTarget] = useState<TraceTarget | null>(null);
   const [explainabilityMode, setExplainabilityMode] = useState<ExplainabilityMode>('summary');
@@ -141,11 +177,24 @@ export function WorkbenchShell({
   const rightPanelOpen = isOverlay ? rightOpenOverlay : rightOpenDesktop;
 
   const [rightSection, setRightSection] = useState<ContextSection>(() => {
-    if (activeView === 'document') return 'policy';
+    if (activeView === 'overview') return 'feed';
+    if (activeView === 'studio') return 'policy';
     if (activeView === 'map') return 'constraints';
+    if (activeView === 'scenarios') return 'feed';
     if (activeView === 'monitoring') return 'feed';
-    return 'evidence';
+    if (activeView === 'visuals') return 'evidence';
+    return 'feed';
   });
+
+  // Co‑drafter state (patch bundles)
+  const [draftingPhase, setDraftingPhase] = useState<DraftingPhase>('controlled');
+  const [coDrafterOpen, setCoDrafterOpen] = useState(false);
+  const [bundleSeq, setBundleSeq] = useState(1);
+  const [proposedBundles, setProposedBundles] = useState<PatchBundle[]>([]);
+  const [appliedBundles, setAppliedBundles] = useState<PatchBundle[]>([]);
+  const [autoAppliedBundles, setAutoAppliedBundles] = useState<PatchBundle[]>([]);
+  const [reviewBundleId, setReviewBundleId] = useState<string | null>(null);
+  const [bundleSnapshots, setBundleSnapshots] = useState<Record<string, PatchSnapshot>>({});
 
   useEffect(() => {
     // Workspace-specific persistence
@@ -172,26 +221,41 @@ export function WorkbenchShell({
 
   useEffect(() => {
     // Default right sidebar section per view
-    if (activeView === 'studio') setRightSection('policy');
-    else if (activeView === 'strategy') setRightSection('constraints');
+    if (activeView === 'overview') setRightSection('feed');
+    else if (activeView === 'studio') setRightSection('policy');
+    else if (activeView === 'map') setRightSection('constraints');
+    else if (activeView === 'scenarios') setRightSection('feed');
+    else if (activeView === 'visuals') setRightSection('evidence');
     else if (activeView === 'monitoring') setRightSection('feed');
-    else setRightSection('evidence');
+    else setRightSection('feed');
   }, [activeView]);
 
   useEffect(() => {
-    if (!isOverlay) return;
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        setLeftOpenOverlay(false);
-        setRightOpenOverlay(false);
-        setTraceOpen(false);
+        // Close the top-most surface first.
+        if (traceOpen) {
+          setTraceOpen(false);
+          return;
+        }
+        if (reviewBundleId) {
+          setReviewBundleId(null);
+          return;
+        }
+        if (coDrafterOpen) {
+          setCoDrafterOpen(false);
+          return;
+        }
+        if (isOverlay && (leftOpenOverlay || rightOpenOverlay)) {
+          setLeftOpenOverlay(false);
+          setRightOpenOverlay(false);
+        }
       }
     };
 
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOverlay]);
+  }, [coDrafterOpen, isOverlay, leftOpenOverlay, reviewBundleId, rightOpenOverlay, traceOpen]);
 
   const leftDockWidthPx = (isOverlay ? 0 : leftPanelOpen ? leftPanelWidthPx : 0);
   const rightDockWidthPx = ICON_RAIL_WIDTH_PX + (isOverlay ? 0 : rightPanelOpen ? rightPanelWidthPx : 0);
@@ -346,21 +410,146 @@ export function WorkbenchShell({
     setTraceOpen(true);
   }, []);
 
-  const handleDraftClick = useCallback(async () => {
-    dispatch({ type: 'START_AI_GENERATION', payload: { task: 'draft' } });
-    toast.info('Generating AI draft...');
-    
-    await simulateDraft(
-      currentStageId,
-      (text, progress) => {
-        dispatch({ type: 'UPDATE_AI_STREAM', payload: { text, progress } });
-      },
-      () => {
-        dispatch({ type: 'COMPLETE_AI_GENERATION' });
-        toast.success('Draft generated! Check the document view.');
+  const allBundles = useMemo(
+    () => [...proposedBundles, ...appliedBundles, ...autoAppliedBundles],
+    [proposedBundles, appliedBundles, autoAppliedBundles],
+  );
+
+  const activeReviewBundle = useMemo(() => {
+    if (!reviewBundleId) return null;
+    return allBundles.find((b) => b.id === reviewBundleId) ?? null;
+  }, [allBundles, reviewBundleId]);
+
+  const canApplyBundles = workspace === 'plan' && explainabilityMode === 'summary' && activeView !== 'overview';
+  const bundleReadOnlyReason =
+    explainabilityMode !== 'summary'
+      ? 'Read-only in Inspect/Forensic.'
+      : activeView === 'overview'
+        ? 'Apply disabled in Overview.'
+        : workspace !== 'plan'
+          ? 'Patch bundles are v1-plan only.'
+          : undefined;
+
+  const showOnMap = useCallback((siteId: string) => {
+    dispatch({ type: 'APPLY_PATCH_EFFECTS', payload: { highlightedSiteId: siteId } });
+    if (activeView !== 'map') {
+      onViewChange('map');
+    }
+    toast.info(`Highlighted on map: ${siteId}`);
+  }, [dispatch, activeView, onViewChange]);
+
+  const captureSnapshot = useCallback((bundleId: string) => {
+    setBundleSnapshots((prev) => {
+      if (prev[bundleId]) return prev;
+      return {
+        ...prev,
+        [bundleId]: {
+          documentHtml: document.html || planBaselineDeliverableHtml,
+          documentText: document.text || stripHtmlToText(document.html || planBaselineDeliverableHtml),
+          adjustedSiteIds: Array.from(adjustedSiteIds),
+          highlightedSiteId,
+        },
+      };
+    });
+  }, [adjustedSiteIds, document.html, document.text, highlightedSiteId]);
+
+  const applyBundle = useCallback(
+    (bundleId: string, itemIds?: string[], appliedBy: 'manual' | 'auto' = 'manual') => {
+      const bundle = proposedBundles.find((b) => b.id === bundleId);
+      if (!bundle) return;
+      if (!canApplyBundles) {
+        toast.error(bundleReadOnlyReason ?? 'Apply disabled');
+        return;
       }
-    );
-  }, [dispatch, currentStageId]);
+
+      captureSnapshot(bundleId);
+
+      const selectedItemIds = itemIds?.length ? new Set(itemIds) : null;
+      const shouldApplyItem = (id: string) => (selectedItemIds ? selectedItemIds.has(id) : true);
+
+      const baseHtml = document.html || planBaselineDeliverableHtml;
+      let nextHtml = baseHtml;
+      let nextHighlighted = highlightedSiteId;
+      const nextAdjusted = new Set(adjustedSiteIds);
+
+      for (const item of bundle.items) {
+        if (!shouldApplyItem(item.id)) continue;
+
+        if (item.type === 'policy_text' || item.type === 'justification') {
+          nextHtml = applyBaselineTransportLimitationsPatch(nextHtml);
+        }
+
+        if (item.type === 'allocation_geometry' && item.siteId) {
+          nextAdjusted.add(item.siteId);
+          nextHighlighted = item.siteId;
+        }
+      }
+
+      dispatch({
+        type: 'APPLY_PATCH_EFFECTS',
+        payload: {
+          document: { html: nextHtml, text: stripHtmlToText(nextHtml) },
+          adjustedSiteIds: Array.from(nextAdjusted),
+          highlightedSiteId: nextHighlighted,
+        },
+      });
+
+      const updatedBundle: PatchBundle = {
+        ...bundle,
+        status: appliedBy === 'auto' ? 'auto-applied' : itemIds?.length ? 'partial' : 'applied',
+        appliedAt: new Date().toISOString(),
+        appliedItemIds: itemIds?.length ? itemIds : bundle.items.map((i) => i.id),
+      };
+
+      setProposedBundles((prev) => prev.filter((b) => b.id !== bundleId));
+      if (appliedBy === 'auto') {
+        setAutoAppliedBundles((prev) => [updatedBundle, ...prev]);
+        toast.success(`AI applied: ${bundle.title}`);
+      } else {
+        setAppliedBundles((prev) => [updatedBundle, ...prev]);
+        toast.success(itemIds?.length ? 'Applied selected changes' : 'Applied bundle');
+      }
+    },
+    [
+      adjustedSiteIds,
+      canApplyBundles,
+      captureSnapshot,
+      dispatch,
+      document.html,
+      highlightedSiteId,
+      proposedBundles,
+      bundleReadOnlyReason,
+    ],
+  );
+
+  const undoBundle = useCallback((bundleId: string) => {
+    const snapshot = bundleSnapshots[bundleId];
+    if (!snapshot) {
+      toast.error('No snapshot recorded for this bundle');
+      return;
+    }
+
+    dispatch({ type: 'RESTORE_PATCH_SNAPSHOT', payload: { snapshot } });
+
+    const markReverted = (bundle: PatchBundle) =>
+      bundle.id === bundleId ? { ...bundle, status: 'reverted' as const } : bundle;
+
+    setAppliedBundles((prev) => prev.map(markReverted));
+    setAutoAppliedBundles((prev) => prev.map(markReverted));
+    toast.success('Reverted bundle');
+  }, [bundleSnapshots, dispatch]);
+
+  const requestProposal = useCallback(() => {
+    const bundle = createDemoPatchBundle({ seq: bundleSeq, stageId: currentStageId });
+    setBundleSeq((n) => n + 1);
+    setProposedBundles((prev) => [bundle, ...prev]);
+    setCoDrafterOpen(true);
+    toast.success(`Proposal added (${bundle.id})`);
+
+    if (draftingPhase === 'free' && canApplyBundles) {
+      setTimeout(() => applyBundle(bundle.id, undefined, 'auto'), 250);
+    }
+  }, [applyBundle, bundleSeq, canApplyBundles, currentStageId, draftingPhase]);
 
   const handleExportClick = useCallback(() => {
     dispatch({ type: 'OPEN_MODAL', payload: { modalId: 'export', data: {} } });
@@ -371,7 +560,7 @@ export function WorkbenchShell({
   }, [dispatch]);
 
   // Determine if the current view should be full-bleed (no sidebars)
-  const isFullBleedView = workspace === 'plan' && activeView === 'strategy';
+  const isFullBleedView = false;
 
   const viewConfig = workspace === 'monitoring'
     ? {
@@ -382,25 +571,65 @@ export function WorkbenchShell({
           description: 'Plan monitoring dashboard',
         },
       }
-    : {
-        studio: {
-          icon: FileText,
-          label: workspace === 'plan' ? 'Studio' : 'Report',
-          component: DocumentView,
-          description: workspace === 'plan' 
-            ? 'Document workspace with embedded figures and evidence' 
-            : 'Officer report drafting with inline citations',
-        },
-        strategy: {
-          icon: Map,
-          label: workspace === 'plan' ? 'Strategy' : 'Assessment',
-          component: StrategyView,
-          description: workspace === 'plan' 
-            ? 'Spatial strategy modelling with scenario comparison' 
-            : 'Site assessment with spatial context and visual evidence',
-          fullBleed: workspace === 'plan', // Strategy view takes full width in plan mode
-        },
-      };
+    : workspace === 'plan'
+      ? {
+          overview: {
+            icon: LayoutGrid,
+            label: 'Overview',
+            component: OverviewView,
+            description: 'CULP stage cockpit and next steps',
+          },
+          studio: {
+            icon: FileText,
+            label: 'Deliverable',
+            component: DocumentView,
+            description: 'HTML-native deliverable drafting with citations and figures',
+          },
+          map: {
+            icon: Map,
+            label: 'Map & Plans',
+            component: MapViewInteractive,
+            description: 'Visuospatial plan state: allocations, constraints, overlays',
+          },
+          scenarios: {
+            icon: Scale,
+            label: 'Scenarios',
+            component: JudgementView,
+            description: 'Scenario × political framing comparison and balance',
+          },
+          visuals: {
+            icon: Camera,
+            label: 'Visuals',
+            component: RealityView,
+            description: 'Plan–reality overlays and visual evidence',
+          },
+          monitoring: {
+            icon: BarChart3,
+            label: 'Monitoring',
+            component: MonitoringView,
+            description: 'CULP governance loop: signals, currency, readiness',
+          },
+        }
+      : {
+          studio: {
+            icon: FileText,
+            label: 'Report',
+            component: DocumentView,
+            description: 'Officer report drafting with inline citations',
+          },
+          map: {
+            icon: Map,
+            label: 'Assessment',
+            component: MapViewInteractive,
+            description: 'Site context map with constraints and evidence',
+          },
+          visuals: {
+            icon: Camera,
+            label: 'Photos',
+            component: RealityView,
+            description: 'Site photos and officer-facing overlays',
+          },
+        };
 
   const resolvedView: ViewMode = Object.prototype.hasOwnProperty.call(viewConfig, activeView)
     ? activeView
@@ -408,41 +637,11 @@ export function WorkbenchShell({
 
   const ActiveViewComponent = (viewConfig as Record<string, any>)[resolvedView].component;
 
-  const railExtra = (
-    <>
-      {/* View navigation */}
-      {(Object.entries(viewConfig) as [ViewMode, any][]).map(([key, config]) => {
-        const Icon = config.icon;
-        const isActive = activeView === key;
-        return (
-          <TooltipProvider key={key}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`h-10 w-10 rounded-md flex items-center justify-center transition-colors ${
-                    isActive ? 'bg-white shadow-sm border' : 'hover:bg-slate-100'
-                  }`}
-                  style={{ borderColor: isActive ? 'var(--color-neutral-300)' : 'transparent' }}
-                  aria-label={config.label}
-                  onClick={() => onViewChange(key)}
-                >
-                  <Icon className="w-5 h-5" style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text)' }} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent side="right">{config.label}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        );
-      })}
-    </>
-  );
-
   return (
     <Shell 
       activeMode={workspace} 
       onNavigate={onWorkspaceChange} 
       variant="project"
-      railExtra={railExtra}
       onToggleSidebar={() => {
         const next = !leftPanelOpen;
         if (next) ensureSpaceForLeftPanel();
@@ -485,8 +684,49 @@ export function WorkbenchShell({
               </div>
             </div>
 
-            {/* Center: Workspace Switcher - REMOVED (Moved to Shell sidebar) */}
-            <div className="hidden" />
+            {/* Center: Workspace Switcher (Plan surfaces) */}
+            {workspace !== 'monitoring' ? (
+              <div className="flex-1 px-2 sm:px-4 md:px-6 flex justify-center min-w-0">
+                <div
+                  className="flex items-center gap-1 p-1 rounded-xl border bg-slate-50/80 shadow-sm overflow-x-auto"
+                  style={{ borderColor: 'var(--color-neutral-300)' }}
+                >
+                  {(Object.entries(viewConfig) as [ViewMode, any][]).map(([key, config]) => {
+                    const Icon = config.icon;
+                    const isActive = resolvedView === key;
+
+                    return (
+                      <TooltipProvider key={key}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className={`h-9 px-2 sm:px-3 rounded-lg flex items-center gap-2 text-sm font-medium transition-colors whitespace-nowrap ${
+                                isActive ? 'bg-white border shadow-sm' : 'text-slate-600 hover:bg-white/70'
+                              }`}
+                              style={{ borderColor: isActive ? 'var(--color-neutral-300)' : 'transparent' }}
+                              aria-current={isActive ? 'page' : undefined}
+                              onClick={() => onViewChange(key)}
+                            >
+                              <Icon className="w-4 h-4" style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text)' }} />
+                              <span
+                                className="hidden sm:inline leading-none"
+                                style={{ color: isActive ? 'var(--color-accent)' : 'var(--color-text)' }}
+                              >
+                                {config.label}
+                              </span>
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="bottom">{config.description}</TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : (
+              <div className="flex-1" />
+            )}
 
             {/* Right: Actions & User */}
             <div className="flex items-center gap-3">
@@ -497,7 +737,7 @@ export function WorkbenchShell({
                     borderColor: 'rgba(245, 195, 21, 0.3)'
                   }}>
                       <AlertCircle className="w-3.5 h-3.5" />
-                      <span>{workspace === 'casework' ? '12 days left' : 'Stage: Baseline'}</span>
+                      <span>{workspace === 'casework' ? '12 days left' : `Stage: ${currentStageName ?? '—'}`}</span>
                   </div>
               </div>
 
@@ -513,14 +753,22 @@ export function WorkbenchShell({
                                   backgroundColor: 'var(--color-brand)',
                                   color: 'var(--color-ink)'
                                 }}
-                                onClick={handleDraftClick}
-                                disabled={aiState.isGenerating}
+                                onClick={() => setCoDrafterOpen(true)}
                               >
-                                  <Sparkles className={`w-4 h-4 ${aiState.isGenerating ? 'animate-spin' : ''}`} />
-                                  <span className="hidden sm:inline">{aiState.isGenerating ? 'Generating...' : 'Draft'}</span>
+                                  <Sparkles className="w-4 h-4" />
+                                  <span className="hidden sm:inline">Co‑drafter</span>
+                                  {proposedBundles.length ? (
+                                    <Badge
+                                      variant="outline"
+                                      className="hidden md:inline-flex ml-1 h-6 text-[10px] bg-white"
+                                      style={{ borderColor: 'rgba(0,0,0,0.12)', color: 'var(--color-text)' }}
+                                    >
+                                      Proposals {proposedBundles.length}
+                                    </Badge>
+                                  ) : null}
                               </Button>
                           </TooltipTrigger>
-                          <TooltipContent>Generate content with AI</TooltipContent>
+                          <TooltipContent>Open Co‑Drafter (patch bundles)</TooltipContent>
                       </Tooltip>
                   </TooltipProvider>
 
@@ -690,10 +938,11 @@ export function WorkbenchShell({
                   workspace={workspace}
                   explainabilityMode={explainabilityMode}
                   onOpenTrace={openTrace}
+                  onViewChange={onViewChange}
+                  onOpenCoDrafter={() => setCoDrafterOpen(true)}
+                  onRequestPatchBundle={requestProposal}
                   onToggleMap={() => {
-                    setRightSection('map');
-                    if (!rightPanelOpen) ensureSpaceForRightPanel();
-                    setRightPanelOpen(true);
+                    onViewChange('map');
                   }}
                 />
               </div>
@@ -754,7 +1003,6 @@ export function WorkbenchShell({
                     { id: 'policy' as const, label: 'Policy', icon: BookOpen },
                     { id: 'constraints' as const, label: 'Constraints', icon: ShieldAlert },
                     { id: 'feed' as const, label: 'Feed', icon: Bell },
-                    { id: 'map' as const, label: 'Map', icon: Map },
                   ] satisfies { id: ContextSection; label: string; icon: typeof FileText }[]
                 ).map((item) => {
                   const Icon = item.icon;
@@ -829,6 +1077,37 @@ export function WorkbenchShell({
           </div>
           )}
         </div>
+
+        <CoDrafterDrawer
+          open={coDrafterOpen}
+          phase={draftingPhase}
+          canApply={canApplyBundles}
+          proposed={proposedBundles}
+          applied={appliedBundles}
+          autoApplied={autoAppliedBundles}
+          onClose={() => setCoDrafterOpen(false)}
+          onPhaseChange={setDraftingPhase}
+          onRequestProposal={requestProposal}
+          onReview={(bundleId) => {
+            setReviewBundleId(bundleId);
+            setCoDrafterOpen(false);
+          }}
+          onApply={(bundleId) => applyBundle(bundleId)}
+          onUndo={undoBundle}
+          onOpenTrace={openTrace}
+        />
+
+        <PatchBundleReview
+          open={activeReviewBundle !== null}
+          bundle={activeReviewBundle}
+          phase={draftingPhase}
+          canApply={canApplyBundles}
+          readOnlyReason={bundleReadOnlyReason}
+          onClose={() => setReviewBundleId(null)}
+          onApply={(bundleId, itemIds) => applyBundle(bundleId, itemIds)}
+          onShowOnMap={showOnMap}
+          onOpenTrace={openTrace}
+        />
 
         <TraceOverlay
           open={traceOpen}

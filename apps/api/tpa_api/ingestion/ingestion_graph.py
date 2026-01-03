@@ -101,11 +101,27 @@ def _mark_step(state: "IngestionState", step_name: str) -> None:
     steps.append(step_name)
 
 
-def _progress(state: "IngestionState", step_name: str, outputs: Dict[str, Any], status: str = "running") -> None:
+def _progress(
+    state: "IngestionState",
+    step_name: str,
+    outputs: Dict[str, Any],
+    status: str = "running",
+    error_text: str | None = None,
+) -> None:
     run_id = state.get("run_id")
     if not run_id:
         return
-    _update_run_step_progress(run_id=run_id, step_name=step_name, outputs=outputs, status=status)
+    if status == "error" and not error_text and isinstance(outputs, dict):
+        candidate = outputs.get("error") or outputs.get("error_text") or outputs.get("exception")
+        if candidate:
+            error_text = str(candidate)
+    _update_run_step_progress(
+        run_id=run_id,
+        step_name=step_name,
+        outputs=outputs,
+        status=status,
+        error_text=error_text,
+    )
 
 
 class IngestionState(TypedDict, total=False):
@@ -235,7 +251,7 @@ def node_anchor_raw(state: IngestionState) -> IngestionState:
             }
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Anchor Raw Failed: {exc}")
-        _progress(state, "anchor_raw", {"error": str(exc)}, status="error")
+        _progress(state, "anchor_raw", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -306,7 +322,7 @@ def node_docparse(state: IngestionState) -> IngestionState:
             return {**state, "bundle_path": bundle_path}
     except Exception as exc:  # noqa: BLE001
         log(f"!!! DocParse Failed: {exc}")
-        _progress(state, "docling_parse", {"error": str(exc)}, status="error")
+        _progress(state, "docling_parse", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -432,7 +448,7 @@ def node_canonical_load(state: IngestionState) -> IngestionState:
         }
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Canonical Load Failed: {exc}")
-        _progress(state, "canonical_load", {"error": str(exc)}, status="error")
+        _progress(state, "canonical_load", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -676,7 +692,7 @@ def node_load_existing(state: IngestionState) -> IngestionState:
         }
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Canonical Load Failed: {exc}")
-        _progress(state, "canonical_load", {"error": str(exc)}, status="error")
+        _progress(state, "canonical_load", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -818,7 +834,7 @@ def node_visual_pipeline(state: IngestionState) -> IngestionState:
         return state
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Visual Pipeline Failed: {exc}")
-        _progress(state, "visual_semantics_asset", {"error": str(exc)}, status="error")
+        _progress(state, "visual_semantics_asset", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -851,7 +867,7 @@ def node_document_identity(state: IngestionState) -> IngestionState:
         return state
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Document Identity Failed: {exc}")
-        _progress(state, "document_identity_status", {"error": str(exc)}, status="error")
+        _progress(state, "document_identity_status", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -1006,7 +1022,7 @@ def node_structural_llm(state: IngestionState) -> IngestionState:
         }
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Structural LLM Failed: {exc}")
-        _progress(state, "structural_llm", {"error": str(exc)}, status="error")
+        _progress(state, "structural_llm", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -1045,7 +1061,7 @@ def node_visual_linking(state: IngestionState) -> IngestionState:
         return {**state, "links_by_asset": links_by_asset}
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Visual Linking Failed: {exc}")
-        _progress(state, "visual_linking", {"error": str(exc)}, status="error")
+        _progress(state, "visual_linking", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -1146,7 +1162,7 @@ def node_imagination(state: IngestionState) -> IngestionState:
         return state
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Imagination Failed: {exc}")
-        _progress(state, "imagination_synthesis", {"error": str(exc)}, status="error")
+        _progress(state, "imagination_synthesis", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 
@@ -1262,7 +1278,7 @@ def node_embeddings(state: IngestionState) -> IngestionState:
         return state
     except Exception as exc:  # noqa: BLE001
         log(f"!!! Embeddings Failed: {exc}")
-        _progress(state, "embeddings", {"error": str(exc)}, status="error")
+        _progress(state, "embeddings", {"error": f"{type(exc).__name__}: {exc}"}, status="error")
         return {**state, "error": str(exc)}
 
 

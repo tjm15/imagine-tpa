@@ -363,7 +363,7 @@ export function TraceOverlay({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50">
+    <div className="fixed inset-0" style={{ zIndex: 2000 }}>
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute inset-y-0 right-0 w-full max-w-5xl bg-white shadow-2xl flex flex-col">

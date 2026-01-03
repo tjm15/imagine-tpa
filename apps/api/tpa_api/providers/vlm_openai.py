@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -153,6 +154,19 @@ class OpenAIVLMProvider(VLMProvider):
             "max_tokens": options.get("max_tokens", 4000),
         }
         response_format = options.get("response_format")
+        if not response_format and isinstance(json_schema, dict):
+            schema_name = json_schema.get("title") or "StructuredOutput"
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(schema_name)).strip("_")
+            if not safe_name:
+                safe_name = "StructuredOutput"
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": safe_name[:64],
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            }
         if response_format:
             payload["response_format"] = response_format
 

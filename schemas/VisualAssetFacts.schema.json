@@ -1,0 +1,17 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualAssetFacts",
+  "type": "object",
+  "properties": {
+    "asset_type": { "type": "string" },
+    "asset_subtype": { "type": ["string", "null"] },
+    "canonical_visual_facts": { "type": "object" },
+    "asset_specific_facts": { "type": "object" }
+  },
+  "required": [
+    "asset_type",
+    "canonical_visual_facts",
+    "asset_specific_facts"
+  ],
+  "additionalProperties": false
+}

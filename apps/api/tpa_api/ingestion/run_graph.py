@@ -208,11 +208,15 @@ async def run_graph_for_job(job_id: str) -> dict[str, object]:
         processed += 1
 
     if queue_mode == "separated" and not failures and not skipped:
+        from celery import chain  # noqa: PLC0415
         from tpa_api.ingestion.tasks import run_vlm_stage, run_llm_stage, run_embeddings_stage  # noqa: PLC0415
 
-        run_vlm_stage.delay(run_id)
-        run_llm_stage.delay(run_id)
-        run_embeddings_stage.delay(run_id)
+        # Serialize GPU-bound stages to avoid VRAM contention across VLM/LLM/embeddings.
+        chain(
+            run_vlm_stage.si(run_id),
+            run_llm_stage.si(run_id),
+            run_embeddings_stage.si(run_id),
+        ).apply_async()
 
     status = "ok"
     if failures or skipped:

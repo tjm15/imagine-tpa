@@ -30,18 +30,19 @@ export function MonitoringView({ explainabilityMode = 'summary' }: MonitoringVie
   ];
 
   return (
-    <div className="max-w-7xl mx-auto p-8 font-sans">
+    <div className="h-full min-h-0 overflow-y-auto">
+      <div className="max-w-7xl mx-auto p-8 font-sans">
       <div className="mb-6 pb-4 border-b border-slate-200">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2 text-sm font-medium mb-2" style={{ color: 'var(--color-accent)' }}>
               <BarChart3 className="w-4 h-4" />
-              <span className="uppercase tracking-wider text-xs">Monitoring Workspace</span>
+              <span className="uppercase tracking-wider text-xs">Monitoring & Governance</span>
             </div>
-            <h1 className="text-3xl font-bold text-slate-900 tracking-tight truncate">Plan Monitoring Dashboard</h1>
+            <h1 className="text-3xl font-bold text-slate-900 tracking-tight truncate">Plan Soundness Monitoring</h1>
             <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 mt-2">
               <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 rounded-sm font-normal">Local Plan 2025</Badge>
-              <span>Baseline stage · weekly refresh</span>
+              <span>CULP statutory loop · evidence currency · gateways · trajectories</span>
               <Separator orientation="vertical" className="h-4" />
               <Badge variant="secondary" className="text-[11px] bg-blue-50 text-blue-700 border-blue-200">{explainabilityMode} mode</Badge>
             </div>
@@ -54,7 +55,7 @@ export function MonitoringView({ explainabilityMode = 'summary' }: MonitoringVie
             </Button>
             <Button size="sm" className="gap-2" style={{ backgroundColor: 'var(--color-accent)', color: 'white' }}>
               <ShieldAlert className="w-4 h-4" />
-              Review Risks
+              Review Signals
             </Button>
           </div>
         </div>
@@ -86,8 +87,8 @@ export function MonitoringView({ explainabilityMode = 'summary' }: MonitoringVie
       <div className="bg-white border border-neutral-200 rounded-xl shadow-sm overflow-hidden">
         <div className="px-4 py-3 border-b border-neutral-200 flex items-center justify-between">
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-slate-900">Monitoring indicators</div>
-            <div className="text-xs text-slate-600">Officer-facing KPIs with provenance gates</div>
+            <div className="text-sm font-semibold text-slate-900">Governance signals</div>
+            <div className="text-xs text-slate-600">Evidence currency, delivery divergence, and gateway readiness (demo)</div>
           </div>
           <Badge variant="outline" className="text-[11px]">Demo</Badge>
         </div>
@@ -135,6 +136,7 @@ export function MonitoringView({ explainabilityMode = 'summary' }: MonitoringVie
           <li>Heritage: town centre sensitivity summary missing from the place portrait.</li>
           <li>Viability: affordable housing threshold needs sensitivity testing against brownfield mix.</li>
         </ul>
+      </div>
       </div>
     </div>
   );

@@ -388,6 +388,20 @@ export function DebugView() {
   const [selectedVisualAssetId, setSelectedVisualAssetId] = useState<string | null>(null);
   const [visualAssetDetail, setVisualAssetDetail] = useState<VisualAssetDetail | null>(null);
   const [visualAssetError, setVisualAssetError] = useState<EndpointError | null>(null);
+  const [visualAssetBlobUrl, setVisualAssetBlobUrl] = useState<string | null>(null);
+  const [visualAssetBlobError, setVisualAssetBlobError] = useState<EndpointError | null>(null);
+  const [visualAssetListError, setVisualAssetListError] = useState<EndpointError | null>(null);
+  const [visualAssetListLoading, setVisualAssetListLoading] = useState(false);
+  const [visualAuditRunId, setVisualAuditRunId] = useState('');
+  const [visualAuditDocumentId, setVisualAuditDocumentId] = useState('');
+  const [visualAuditLimit, setVisualAuditLimit] = useState('40');
+  const [vlmToolRuns, setVlmToolRuns] = useState<ToolRun[]>([]);
+  const [vlmToolRunRunId, setVlmToolRunRunId] = useState('');
+  const [vlmToolRunBatchId, setVlmToolRunBatchId] = useState('');
+  const [vlmToolRunLimit, setVlmToolRunLimit] = useState('30');
+  const [vlmToolRunLoading, setVlmToolRunLoading] = useState(false);
+  const [vlmToolRunError, setVlmToolRunError] = useState<EndpointError | null>(null);
+  const [selectedVlmToolRunId, setSelectedVlmToolRunId] = useState<string | null>(null);
   const [retrievalFrames, setRetrievalFrames] = useState<RetrievalFrame[]>([]);
   const [selectedRetrievalFrameId, setSelectedRetrievalFrameId] = useState<string | null>(null);
   const [selectedRetrievalRunId, setSelectedRetrievalRunId] = useState<string | null>(null);
@@ -486,6 +500,12 @@ export function DebugView() {
   }, [toolRuns, georefRuns]);
 
   const selectedToolRun = selectedToolRunId ? toolRunById.get(selectedToolRunId) || null : null;
+  const vlmToolRunById = useMemo(() => {
+    const map = new Map<string, ToolRun>();
+    vlmToolRuns.forEach((run) => map.set(run.id, run));
+    return map;
+  }, [vlmToolRuns]);
+  const selectedVlmToolRun = selectedVlmToolRunId ? vlmToolRunById.get(selectedVlmToolRunId) || null : null;
   const selectedRunStep = selectedRunStepId
     ? ingestRunSteps.find((step) => step.id === selectedRunStepId) || null
     : null;
@@ -514,6 +534,18 @@ export function DebugView() {
       setSelectedToolRunId(null);
     }
   }, [selectedToolRunId, toolRunById]);
+
+  useEffect(() => {
+    if (selectedVlmToolRunId && !vlmToolRunById.has(selectedVlmToolRunId)) {
+      setSelectedVlmToolRunId(null);
+    }
+  }, [selectedVlmToolRunId, vlmToolRunById]);
+
+  useEffect(() => {
+    if (!selectedVlmToolRunId && vlmToolRuns.length > 0) {
+      setSelectedVlmToolRunId(vlmToolRuns[0].id);
+    }
+  }, [selectedVlmToolRunId, vlmToolRuns]);
 
   useEffect(() => {
     if (
@@ -845,6 +877,23 @@ export function DebugView() {
     }
   }, [load]);
 
+
+  const handleResetStaleRuns = useCallback(async () => {
+    const res = await postJson<{ jobs_updated: number; runs_updated: number; batches_updated: number; cutoff?: string }>(
+      '/debug/ingest/reset-stale?max_age_hours=2',
+      {},
+    );
+    if (res.ok) {
+      const counts = res.data || { jobs_updated: 0, runs_updated: 0, batches_updated: 0 };
+      setActionMessage(
+        `Stale runs cleared: ${counts.jobs_updated} jobs, ${counts.runs_updated} runs, ${counts.batches_updated} batches.`,
+      );
+      load();
+    } else {
+      setActionMessage(`Reset stale runs failed: ${res.error || 'unknown error'}`);
+    }
+  }, [load]);
+
   const handleRunRetrieval = useCallback(async () => {
     const query = retrievalQuery.trim();
     if (!query) {
@@ -906,6 +955,63 @@ export function DebugView() {
     retrievalUseFts,
     retrievalUseVector,
   ]);
+
+  const handleLoadVisualAssets = useCallback(async () => {
+    setVisualAssetListLoading(true);
+    setVisualAssetListError(null);
+    const params = new URLSearchParams();
+    const runId = visualAuditRunId.trim();
+    const documentId = visualAuditDocumentId.trim();
+    const limitValue = Number.parseInt(visualAuditLimit, 10);
+    const limit = Number.isFinite(limitValue) ? Math.min(Math.max(limitValue, 1), 200) : 40;
+    if (runId) params.set('run_id', runId);
+    if (documentId) params.set('document_id', documentId);
+    params.set('limit', String(limit));
+    const res = await fetchJson<{ visual_assets: VisualAssetSummary[] }>(`/debug/visual-assets?${params.toString()}`);
+    if (res.ok) {
+      const assets = res.data?.visual_assets || [];
+      setVisualAssets(assets);
+      setSelectedVisualAssetId(assets[0]?.id ?? null);
+      setVisualAssetListError(null);
+    } else {
+      setVisualAssetListError({
+        label: 'visual assets',
+        status: res.status,
+        error: res.error || 'unavailable',
+        rawText: res.rawText,
+      });
+    }
+    setVisualAssetListLoading(false);
+  }, [visualAuditDocumentId, visualAuditLimit, visualAuditRunId]);
+
+  const handleLoadVlmToolRuns = useCallback(async () => {
+    setVlmToolRunLoading(true);
+    setVlmToolRunError(null);
+    const params = new URLSearchParams();
+    const runId = vlmToolRunRunId.trim();
+    const batchId = vlmToolRunBatchId.trim();
+    const limitValue = Number.parseInt(vlmToolRunLimit, 10);
+    const limit = Number.isFinite(limitValue) ? Math.min(Math.max(limitValue, 1), 200) : 30;
+    params.set('tool_name', 'vlm.generate_structured');
+    if (runId) params.set('run_id', runId);
+    if (batchId) params.set('ingest_batch_id', batchId);
+    params.set('limit', String(limit));
+    const res = await fetchJson<{ tool_runs: ToolRun[] }>(`/debug/tool-runs?${params.toString()}`);
+    if (res.ok) {
+      const runs = res.data?.tool_runs || [];
+      setVlmToolRuns(runs);
+      setSelectedVlmToolRunId(runs[0]?.id ?? null);
+      setVlmToolRunError(null);
+    } else {
+      setVlmToolRunError({
+        label: 'vlm tool runs',
+        status: res.status,
+        error: res.error || 'unavailable',
+        rawText: res.rawText,
+      });
+    }
+    setVlmToolRunLoading(false);
+  }, [vlmToolRunBatchId, vlmToolRunLimit, vlmToolRunRunId]);
 
   const handleAssembleContextPack = useCallback(async () => {
     const runId = contextPackRunId.trim();
@@ -1154,6 +1260,8 @@ export function DebugView() {
     if (!selectedVisualAssetId) {
       setVisualAssetDetail(null);
       setVisualAssetError(null);
+      setVisualAssetBlobUrl(null);
+      setVisualAssetBlobError(null);
       return;
     }
     const controller = new AbortController();
@@ -1165,6 +1273,31 @@ export function DebugView() {
         } else {
           setVisualAssetError({
             label: 'visual asset detail',
+            status: res.status,
+            error: res.error || 'unavailable',
+            rawText: res.rawText,
+          });
+        }
+      })
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [selectedVisualAssetId]);
+
+  useEffect(() => {
+    if (!selectedVisualAssetId) {
+      return;
+    }
+    setVisualAssetBlobUrl(null);
+    const controller = new AbortController();
+    fetchJson<{ data_url: string }>(`/visual-assets/${selectedVisualAssetId}/blob`, controller.signal)
+      .then((res) => {
+        if (res.ok && res.data?.data_url) {
+          setVisualAssetBlobUrl(res.data.data_url);
+          setVisualAssetBlobError(null);
+        } else {
+          setVisualAssetBlobUrl(null);
+          setVisualAssetBlobError({
+            label: 'visual asset blob',
             status: res.status,
             error: res.error || 'unavailable',
             rawText: res.rawText,
@@ -1538,6 +1671,343 @@ export function DebugView() {
         <div className="grid gap-6 lg:grid-cols-2">
           <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
             <CardHeader>
+              <CardTitle>Visual asset audit</CardTitle>
+              <CardDescription>Manually inspect VLM outputs against source images.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={visualAuditRunId}
+                  onChange={(e) => setVisualAuditRunId(e.target.value)}
+                  placeholder="run_id (optional)"
+                />
+                <Input
+                  value={visualAuditDocumentId}
+                  onChange={(e) => setVisualAuditDocumentId(e.target.value)}
+                  placeholder="document_id (optional)"
+                />
+                <Input
+                  value={visualAuditLimit}
+                  onChange={(e) => setVisualAuditLimit(e.target.value)}
+                  placeholder="limit"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleLoadVisualAssets}
+                    disabled={visualAssetListLoading}
+                    style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+                  >
+                    {visualAssetListLoading ? 'Loading…' : 'Load assets'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setVisualAuditRunId(selectedIngestRunId || '')}
+                    disabled={!selectedIngestRunId}
+                  >
+                    Use selected run
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setVisualAuditDocumentId(selectedDocumentId || '')}
+                    disabled={!selectedDocumentId}
+                  >
+                    Use selected document
+                  </Button>
+                </div>
+              </div>
+              {visualAssetListError && (
+                <div
+                  className="rounded border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {visualAssetListError.label} {visualAssetListError.status ? `(${visualAssetListError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {visualAssetListError.error}
+                  </div>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Asset</TableHead>
+                    <TableHead>Page</TableHead>
+                    <TableHead>Type</TableHead>
+                    <TableHead>Sem</TableHead>
+                    <TableHead>Assert</TableHead>
+                    <TableHead>Masks</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {visualAssets.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6}>No visual assets loaded.</TableCell>
+                    </TableRow>
+                  ) : (
+                    visualAssets.map((asset) => (
+                      <TableRow
+                        key={asset.id}
+                        className={selectedVisualAssetId === asset.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedVisualAssetId(asset.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="font-mono text-xs">{asset.id.slice(0, 8)}</TableCell>
+                        <TableCell className="text-xs">{asset.page_number ?? '--'}</TableCell>
+                        <TableCell className="text-xs">{asset.asset_type || '--'}</TableCell>
+                        <TableCell className="text-xs">{asset.semantic_count ?? 0}</TableCell>
+                        <TableCell className="text-xs">{asset.assertion_count ?? 0}</TableCell>
+                        <TableCell className="text-xs">{asset.mask_count ?? 0}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>Visual audit detail</CardTitle>
+              <CardDescription>Review asset, semantics, and region/mask outputs.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              {visualAssetError && (
+                <div
+                  className="rounded border px-3 py-2"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {visualAssetError.label} {visualAssetError.status ? `(${visualAssetError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {visualAssetError.error}
+                  </div>
+                </div>
+              )}
+              {visualAssetBlobError && (
+                <div
+                  className="rounded border px-3 py-2"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {visualAssetBlobError.label} {visualAssetBlobError.status ? `(${visualAssetBlobError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {visualAssetBlobError.error}
+                  </div>
+                </div>
+              )}
+              {!selectedVisualAssetId ? (
+                <div>Select a visual asset to inspect.</div>
+              ) : (
+                <>
+                  {visualAssetBlobUrl && (
+                    <div className="rounded border p-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                      <img src={visualAssetBlobUrl} alt="Visual asset preview" className="w-full rounded" />
+                    </div>
+                  )}
+                  <div className="rounded border p-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Asset summary
+                    </div>
+                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                      {JSON.stringify(
+                        {
+                          visual_asset: visualAssetDetail?.visual_asset,
+                          region_count: visualAssetDetail?.regions?.length ?? 0,
+                          mask_count: visualAssetDetail?.masks?.length ?? 0,
+                          semantic_count: visualAssetDetail?.semantic_outputs?.length ?? 0,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                  <div className="space-y-2">
+                    {(visualAssetDetail?.semantic_outputs || []).length === 0 ? (
+                      <div className="text-slate-500">No semantic outputs recorded for this asset.</div>
+                    ) : (
+                      (visualAssetDetail?.semantic_outputs || []).map((output, idx) => (
+                        <div
+                          key={`semantic-${idx}`}
+                          className="rounded border px-3 py-2"
+                          style={{ borderColor: 'var(--color-neutral-300)' }}
+                        >
+                          <div className="text-[11px] font-semibold">
+                            Output {idx + 1} · {output.output_kind || 'unknown'} · {output.created_at || '--'}
+                          </div>
+                          <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                            {JSON.stringify(output, null, 2)}
+                          </pre>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>VLM run audit</CardTitle>
+              <CardDescription>Inspect structured output quality from visual model calls.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 md:grid-cols-2">
+                <Input
+                  value={vlmToolRunRunId}
+                  onChange={(e) => setVlmToolRunRunId(e.target.value)}
+                  placeholder="run_id (optional)"
+                />
+                <Input
+                  value={vlmToolRunBatchId}
+                  onChange={(e) => setVlmToolRunBatchId(e.target.value)}
+                  placeholder="ingest_batch_id (optional)"
+                />
+                <Input
+                  value={vlmToolRunLimit}
+                  onChange={(e) => setVlmToolRunLimit(e.target.value)}
+                  placeholder="limit"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    onClick={handleLoadVlmToolRuns}
+                    disabled={vlmToolRunLoading}
+                    style={{ backgroundColor: 'var(--color-brand)', color: 'var(--color-ink)' }}
+                  >
+                    {vlmToolRunLoading ? 'Loading…' : 'Load VLM runs'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setVlmToolRunRunId(selectedIngestRunId || '')}
+                    disabled={!selectedIngestRunId}
+                  >
+                    Use selected run
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setVlmToolRunBatchId(selectedIngestRun?.ingest_batch_id || '')}
+                    disabled={!selectedIngestRun?.ingest_batch_id}
+                  >
+                    Use selected batch
+                  </Button>
+                </div>
+              </div>
+              {vlmToolRunError && (
+                <div
+                  className="rounded border px-3 py-2 text-xs"
+                  style={{ borderColor: 'rgba(234, 88, 12, 0.35)', backgroundColor: 'rgba(234, 88, 12, 0.08)' }}
+                >
+                  <div className="font-semibold">
+                    {vlmToolRunError.label} {vlmToolRunError.status ? `(${vlmToolRunError.status})` : ''}
+                  </div>
+                  <div className="text-xs" style={{ color: 'var(--color-text-light)' }}>
+                    {vlmToolRunError.error}
+                  </div>
+                </div>
+              )}
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Run</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Started</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {vlmToolRuns.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={3}>No VLM tool runs loaded.</TableCell>
+                    </TableRow>
+                  ) : (
+                    vlmToolRuns.map((run) => (
+                      <TableRow
+                        key={run.id}
+                        className={selectedVlmToolRunId === run.id ? 'bg-slate-50' : undefined}
+                        onClick={() => setSelectedVlmToolRunId(run.id)}
+                        style={{ cursor: 'pointer' }}
+                      >
+                        <TableCell className="font-mono text-xs">{run.id.slice(0, 8)}</TableCell>
+                        <TableCell>
+                          <StatusBadge label={run.status || 'unknown'} />
+                        </TableCell>
+                        <TableCell>{formatDate(run.started_at)}</TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
+              <CardTitle>VLM output detail</CardTitle>
+              <CardDescription>Review raw preview + schema response metadata.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-xs">
+              {!selectedVlmToolRun ? (
+                <div>Select a VLM tool run to inspect.</div>
+              ) : (
+                <>
+                  <div className="rounded border p-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Run metadata
+                    </div>
+                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                      {JSON.stringify(
+                        {
+                          status: selectedVlmToolRun.status,
+                          confidence_hint: selectedVlmToolRun.confidence_hint,
+                          error: selectedVlmToolRun.outputs_logged?.error,
+                          response_format: selectedVlmToolRun.inputs_logged?.response_format,
+                          model_id: selectedVlmToolRun.inputs_logged?.model_id,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                  <div className="rounded border p-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Raw preview
+                    </div>
+                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                      {selectedVlmToolRun.outputs_logged?.raw_text_preview || 'No raw preview logged.'}
+                    </pre>
+                  </div>
+                  <div className="rounded border p-2" style={{ borderColor: 'var(--color-neutral-300)' }}>
+                    <div className="text-xs font-semibold uppercase tracking-[0.2em]" style={{ color: 'var(--color-text-light)' }}>
+                      Inputs + outputs
+                    </div>
+                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed">
+                      {JSON.stringify(
+                        {
+                          inputs: selectedVlmToolRun.inputs_logged,
+                          outputs: selectedVlmToolRun.outputs_logged,
+                        },
+                        null,
+                        2,
+                      )}
+                    </pre>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+
+        <Separator className="my-8" style={{ backgroundColor: 'var(--color-neutral-300)' }} />
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card className="border" style={{ borderColor: 'var(--color-neutral-300)' }}>
+            <CardHeader>
               <CardTitle>Latest ingest jobs</CardTitle>
               <CardDescription>Most recent background jobs from the ingest worker.</CardDescription>
             </CardHeader>
@@ -1600,6 +2070,10 @@ export function DebugView() {
                             >
                               Reset
                             </Button>
+                            <Button variant="outline" size="sm" onClick={handleResetStaleRuns}>
+                              Reset stale
+                            </Button>
+
                             <Button variant="outline" size="sm" onClick={() => handleRunGraphJob(job.ingest_job_id)}>
                               Run graph
                             </Button>

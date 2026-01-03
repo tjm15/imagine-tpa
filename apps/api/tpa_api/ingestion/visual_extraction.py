@@ -5,6 +5,7 @@ import logging
 import os
 import random
 import time
+from pathlib import Path
 from uuid import uuid4, UUID
 from typing import Any
 
@@ -16,8 +17,33 @@ from tpa_api.evidence import _ensure_evidence_ref_row
 from tpa_api.ingestion.vectorization import _bbox_from_geometry
 from tpa_api.ingestion.policy_extraction import run_llm_prompt # Reusing helper logic or duplication? Duplication is safer for decoupling.
 from tpa_api.text_utils import _extract_json_object
+from jsonschema import validate as _validate_schema
+from jsonschema import ValidationError
 
 logger = logging.getLogger(__name__)
+
+
+def _load_schema_ref(schema_ref: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    if not schema_ref:
+        return None
+    if isinstance(schema_ref, dict):
+        return schema_ref
+    base = Path(__file__).resolve()
+    root = None
+    for parent in base.parents:
+        if (parent / "schemas").is_dir() or (parent / "spec" / "schemas").is_dir():
+            root = parent
+            break
+    if root is None:
+        root = base.parent
+    schema_path = root / schema_ref
+    if not schema_path.is_file():
+        schema_path = root / "schemas" / schema_ref
+    if not schema_path.is_file():
+        schema_path = root / "spec" / schema_ref
+    if not schema_path.is_file():
+        raise FileNotFoundError(f"Schema not found: {schema_ref}")
+    return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
 def _run_vlm_prompt(
@@ -60,6 +86,7 @@ def _run_vlm_prompt(
     last_tool_run_id: str | None = None
     use_response_format = True
     temperature = float(os.environ.get("TPA_VLM_TEMPERATURE", "0.3"))
+    schema_obj = _load_schema_ref(output_schema)
     for attempt in range(1, max_attempts + 1):
         try:
             options = {
@@ -70,10 +97,22 @@ def _run_vlm_prompt(
                 "max_attempts": max_attempts,
             }
             if use_response_format:
-                options["response_format"] = {"type": "json_object"}
+                if schema_obj:
+                    schema_name = schema_obj.get("title") or "StructuredOutput"
+                    options["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": schema_name,
+                            "schema": schema_obj,
+                            "strict": True,
+                        },
+                    }
+                else:
+                    options["response_format"] = {"type": "json_object"}
             result = provider.generate_structured(
                 messages=messages,
                 images=[image_bytes],
+                json_schema=schema_obj,
                 options=options,
             )
             last_tool_run_id = result.get("tool_run_id")
@@ -83,7 +122,14 @@ def _run_vlm_prompt(
                 if isinstance(raw_text, str) and raw_text.strip():
                     payload = _extract_json_object(raw_text)
             if isinstance(payload, dict):
-                return payload, last_tool_run_id, []
+                if schema_obj:
+                    try:
+                        _validate_schema(payload, schema_obj)
+                        return payload, last_tool_run_id, []
+                    except ValidationError as exc:
+                        errors.append(f"vlm_schema_validation_failed:attempt={attempt}:{exc.message}")
+                else:
+                    return payload, last_tool_run_id, []
             errors.append(f"vlm_json_parse_failed:attempt={attempt}")
         except Exception as exc:
             err_text = str(exc)
@@ -245,6 +291,7 @@ Rules:
         system_template=None,
         user_text=prompt,
         image_bytes=file_bytes,
+        output_schema="schemas/VisualAssetEnrichment.schema.json",
         run_id=run_id,
         ingest_batch_id=ingest_batch_id
     )
@@ -375,6 +422,7 @@ def extract_visual_asset_facts(
             system_template=None,
             user_text=prompt,
             image_bytes=image_bytes,
+            output_schema="schemas/VisualAssetFacts.schema.json",
             run_id=run_id,
             ingest_batch_id=ingest_batch_id
         )
@@ -467,6 +515,7 @@ def extract_visual_text_snippets(
             system_template=None,
             user_text=prompt,
             image_bytes=image_bytes,
+            output_schema="schemas/VisualTextSnippets.schema.json",
             run_id=run_id,
             ingest_batch_id=ingest_batch_id
         )
@@ -682,7 +731,7 @@ def extract_visual_region_assertions(
                 system_template=None,
                 user_text=prompt,
                 image_bytes=image_bytes,
-                output_schema=None,
+                output_schema="schemas/VisualRegionAssertions.schema.json",
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
             )
@@ -908,6 +957,7 @@ def detect_redline_boundary_mask(
         system_template=None,
         user_text=prompt,
         image_bytes=image_bytes,
+        output_schema="schemas/VisualRedlineDetection.schema.json",
         run_id=run_id,
         ingest_batch_id=ingest_batch_id
     )

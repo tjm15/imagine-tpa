@@ -1,15 +1,13 @@
-import { useState } from 'react';
 import { WorkspaceMode } from '../../App';
-import { FileText, HelpCircle, BookOpenCheck, Camera, Map as MapIcon } from 'lucide-react';
+import { FileText, HelpCircle, Camera, Map as MapIcon } from 'lucide-react';
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "../ui/tooltip";
 import { DocumentEditor } from '../editor/DocumentEditor';
 import { ProvenanceIndicator, StatusBadge } from '../ProvenanceIndicator';
-import { NarrativeGuide } from '../NarrativeGuide';
-import { MapViewInteractive } from './MapViewInteractive';
 import { mockPhotos } from '../../fixtures/extendedMockData';
+import { caseworkOfficerReportHtml, planBaselineDeliverableHtml } from '../../fixtures/documentTemplates';
 import type { TraceTarget } from '../../lib/trace';
 
 export type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
@@ -25,67 +23,18 @@ interface DocumentViewProps {
   explainabilityMode?: ExplainabilityMode;
   onOpenTrace?: (target?: TraceTarget) => void;
   onToggleMap?: () => void;
+  onOpenCoDrafter?: () => void;
+  onRequestPatchBundle?: () => void;
 }
 
-const initialBaselineText = `<h1>Place Portrait: Baseline Evidence</h1>
-<h2>Introduction</h2>
-<p>This place portrait provides the baseline evidence for Cambridge's local plan review under the new plan process. It establishes the current context against which spatial strategy options will be assessed.</p>
-<p>The portrait draws on multiple evidence sources including Census 2021, local monitoring data, and commissioned technical studies. All limitations are explicitly noted.</p>
-
-<div class="figure-embed">
-  <div class="figure-placeholder">
-    <strong>Figure 1:</strong> Cambridge Authority Area and Key Constraints
-    <p class="text-xs text-slate-600 mt-1">Interactive map showing Green Belt, conservation areas, and transport corridors. Click to expand or cite.</p>
-  </div>
-</div>
-
-<h2>Housing Context</h2>
-<p>Cambridge faces acute housing pressure. The affordability ratio of 12.8x significantly exceeds both the regional average (8.2x) and represents a deterioration from 10.5x in 2015.</p>
-<p>As shown in <strong>Figure 2</strong> (housing trajectory), delivery has averaged 1,200 homes per annum since 2015, but the updated standard method indicates a need for 1,800 dpa to 2041.</p>
-
-<div class="figure-embed">
-  <div class="figure-placeholder">
-    <strong>Figure 2:</strong> Housing Trajectory 2015-2025
-    <p class="text-xs text-slate-600 mt-1">Chart showing completions vs target. Click to cite in reasoning ledger.</p>
-  </div>
-</div>
-
-<h2>Transport & Connectivity</h2>
-<p>Cambridge benefits from strong rail connectivity to London (50 mins) and excellent local cycling infrastructure. However, strategic road capacity remains constrained, particularly on the A14 corridor.</p>
-<p>Spatial options will need to balance brownfield intensification (supporting sustainable modes) against greenfield release (requiring highway mitigation).</p>`;
-
-const initialCaseworkText = `<h1>Officer Report: 24/0456/FUL</h1>
-<h2>01. Site &amp; Proposal</h2>
-<ul>
-  <li>Address: 45 Mill Road, Cambridge CB1 2AD</li>
-  <li>Ward: Petersfield</li>
-  <li>Applicant: Mill Road Developments Ltd</li>
-  <li>Agent: Smith Planning Associates</li>
-</ul>
-<p>The application site comprises a ground floor retail unit (Use Class E) within a two-storey building in the Mill Road District Centre. The proposal seeks to change the use to residential (2 x 1-bed flats), with internal alterations but no external changes.</p>
-<h2>02. Planning Assessment</h2>
-<h3>Principle of Development</h3>
-<p>Policy DM12 requires retention of ground floor retail uses in District Centres unless the unit has been actively marketed for 12 months. Marketing evidence shows 15 months of offers at market rates with no uptake.</p>
-<h3>Residential Amenity</h3>
-<p>The proposed flats meet minimum space standards (Policy H9) and benefit from rear courtyard access. Natural light to habitable rooms is adequate based on the site inspection.</p>
-<h3>Comments and Conditions</h3>
-<ul>
-  <li>Highways: No objection; requires secure cycle storage.</li>
-  <li>Conservation: Satisfied with internal conversion approach.</li>
-  <li>Evidence source: Site visit 12 Dec.</li>
-</ul>
-<h2>03. Recommendation</h2>
-<p><strong>APPROVE</strong>, subject to conditions:</p>
-<ul>
-  <li>Secure cycle storage (2 spaces)</li>
-  <li>Removal of permitted development rights</li>
-  <li>Retention of front elevation details</li>
-</ul>`;
-
-export function DocumentView({ workspace, explainabilityMode = 'summary', onOpenTrace, onToggleMap }: DocumentViewProps) {
-  const [showGuide, setShowGuide] = useState(true);
-  const [templateToInsert, setTemplateToInsert] = useState<{ content: string; id: number } | null>(null);
-
+export function DocumentView({
+  workspace,
+  explainabilityMode = 'summary',
+  onOpenTrace,
+  onToggleMap,
+  onOpenCoDrafter,
+  onRequestPatchBundle,
+}: DocumentViewProps) {
   const title = workspace === 'plan'
     ? 'Place Portrait: Baseline Evidence'
     : 'Officer Report: 24/0456/FUL';
@@ -166,16 +115,7 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
               className="gap-2"
             >
               <MapIcon className="w-4 h-4" />
-              Dock Map
-            </Button>
-            <Button
-              variant={showGuide ? "secondary" : "outline"}
-              size="sm"
-              onClick={() => setShowGuide(!showGuide)}
-              className="gap-2"
-            >
-              <BookOpenCheck className="w-4 h-4" />
-              {showGuide ? 'Hide Guide' : 'Show Guide'}
+              Map & Plans
             </Button>
           </div>
         </div>
@@ -205,9 +145,12 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
                     <div className="p-3 flex gap-3 overflow-x-auto">
                       {mockPhotos.slice(0, 3).map((photo) => (
                         <div key={photo.id} className="flex-shrink-0 w-48 flex gap-3 items-center border rounded-md p-2">
-                          <div className="w-12 h-12 bg-slate-200 rounded-md flex items-center justify-center text-[10px] text-slate-500 flex-shrink-0">
-                            img
-                          </div>
+                          <img
+                            src={photo.url}
+                            alt={photo.caption}
+                            className="w-12 h-12 rounded-md border border-slate-200 bg-slate-50 object-cover flex-shrink-0"
+                            loading="lazy"
+                          />
                           <div className="min-w-0">
                             <div className="text-xs font-medium text-slate-800 truncate">{photo.caption}</div>
                             <div className="text-[10px] text-slate-500">{photo.date}</div>
@@ -233,23 +176,17 @@ export function DocumentView({ workspace, explainabilityMode = 'summary', onOpen
 
                 {/* TipTap Editor (fully interactive) */}
                 <DocumentEditor
-                  initialContent={workspace === 'plan' ? initialBaselineText : initialCaseworkText}
+                  initialContent={workspace === 'plan' ? planBaselineDeliverableHtml : caseworkOfficerReportHtml}
                   stageId={workspace === 'plan' ? 'baseline' : 'casework'}
                   explainabilityMode={explainabilityMode}
                   onOpenTrace={onOpenTrace}
+                  onOpenCoDrafter={onOpenCoDrafter}
+                  onRequestPatchBundle={onRequestPatchBundle}
                   placeholder="Start drafting your planning document..."
-                  templateToInsert={templateToInsert}
                 />
               </div>
             </div>
           </div>
-
-          {/* Guide Sidebar */}
-          {showGuide && (
-            <div className="w-80 border-l bg-slate-50 flex-shrink-0 flex flex-col h-full min-h-0 overflow-hidden">
-              <NarrativeGuide onInsertTemplate={(content) => setTemplateToInsert({ content, id: Date.now() })} />
-            </div>
-          )}
         </div>
       </div>
     </div>
