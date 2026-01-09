@@ -1,6 +1,11 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import random
+import time
+from pathlib import Path
 from uuid import uuid4, UUID
 from typing import Any
 
@@ -11,6 +16,34 @@ from tpa_api.services.prompts import PromptService
 from tpa_api.evidence import _ensure_evidence_ref_row
 from tpa_api.ingestion.vectorization import _bbox_from_geometry
 from tpa_api.ingestion.policy_extraction import run_llm_prompt # Reusing helper logic or duplication? Duplication is safer for decoupling.
+from tpa_api.text_utils import _extract_json_object
+from jsonschema import validate as _validate_schema
+from jsonschema import ValidationError
+
+logger = logging.getLogger(__name__)
+
+
+def _load_schema_ref(schema_ref: str | dict[str, Any] | None) -> dict[str, Any] | None:
+    if not schema_ref:
+        return None
+    if isinstance(schema_ref, dict):
+        return schema_ref
+    base = Path(__file__).resolve()
+    root = None
+    for parent in base.parents:
+        if (parent / "schemas").is_dir() or (parent / "spec" / "schemas").is_dir():
+            root = parent
+            break
+    if root is None:
+        root = base.parent
+    schema_path = root / schema_ref
+    if not schema_path.is_file():
+        schema_path = root / "schemas" / schema_ref
+    if not schema_path.is_file():
+        schema_path = root / "spec" / schema_ref
+    if not schema_path.is_file():
+        raise FileNotFoundError(f"Schema not found: {schema_ref}")
+    return json.loads(schema_path.read_text(encoding="utf-8"))
 
 
 def _run_vlm_prompt(
@@ -28,6 +61,8 @@ def _run_vlm_prompt(
     """
     Helper to run VLM via Provider + PromptService.
     """
+    max_attempts = 3
+    base_delay_seconds = 2.0
     prompt_svc = PromptService()
     template_to_store = f"SYSTEM: {system_template}\nUSER: {user_text}" if system_template else user_text
     
@@ -47,19 +82,67 @@ def _run_vlm_prompt(
         messages.append({"role": "system", "content": system_template})
     messages.append({"role": "user", "content": user_text})
     
-    try:
-        result = provider.generate_structured(
-            messages=messages,
-            images=[image_bytes],
-            options={
+    errors: list[str] = []
+    last_tool_run_id: str | None = None
+    use_response_format = True
+    temperature = float(os.environ.get("TPA_VLM_TEMPERATURE", "0.3"))
+    schema_obj = _load_schema_ref(output_schema)
+    for attempt in range(1, max_attempts + 1):
+        try:
+            options = {
                 "run_id": run_id,
                 "ingest_batch_id": ingest_batch_id,
-                "temperature": 0.0
+                "temperature": temperature,
+                "attempt": attempt,
+                "max_attempts": max_attempts,
             }
-        )
-        return result.get("json"), result.get("tool_run_id"), []
-    except Exception as e:
-        return None, None, [str(e)]
+            if use_response_format:
+                if schema_obj:
+                    schema_name = schema_obj.get("title") or "StructuredOutput"
+                    options["response_format"] = {
+                        "type": "json_schema",
+                        "json_schema": {
+                            "name": schema_name,
+                            "schema": schema_obj,
+                            "strict": True,
+                        },
+                    }
+                else:
+                    options["response_format"] = {"type": "json_object"}
+            result = provider.generate_structured(
+                messages=messages,
+                images=[image_bytes],
+                json_schema=schema_obj,
+                options=options,
+            )
+            last_tool_run_id = result.get("tool_run_id")
+            payload = result.get("json")
+            if not isinstance(payload, dict):
+                raw_text = result.get("raw_text")
+                if isinstance(raw_text, str) and raw_text.strip():
+                    payload = _extract_json_object(raw_text)
+            if isinstance(payload, dict):
+                if schema_obj:
+                    try:
+                        _validate_schema(payload, schema_obj)
+                        return payload, last_tool_run_id, []
+                    except ValidationError as exc:
+                        errors.append(f"vlm_schema_validation_failed:attempt={attempt}:{exc.message}")
+                else:
+                    return payload, last_tool_run_id, []
+            errors.append(f"vlm_json_parse_failed:attempt={attempt}")
+        except Exception as exc:
+            err_text = str(exc)
+            if use_response_format and "response_format" in err_text.lower():
+                use_response_format = False
+            errors.append(f"attempt={attempt}:{err_text}")
+            logger.warning("VLM prompt %s failed on attempt %s/%s: %s", prompt_id, attempt, max_attempts, err_text)
+        if attempt < max_attempts:
+            delay = base_delay_seconds * (2 ** (attempt - 1))
+            delay += random.random() * 0.6
+            logger.info("Retrying VLM prompt %s in %.1fs", prompt_id, delay)
+            time.sleep(delay)
+    return None, last_tool_run_id, errors
 
 
 def _upsert_visual_semantic_output(
@@ -113,12 +196,12 @@ def _upsert_visual_semantic_output(
                 output_kind,
                 asset_type,
                 asset_subtype,
-                json.dumps(canonical_facts, ensure_ascii=False) if canonical_facts is not None else None,
-                json.dumps(asset_specific_facts, ensure_ascii=False) if asset_specific_facts is not None else None,
-                json.dumps(assertions, ensure_ascii=False) if assertions is not None else None,
-                json.dumps(agent_findings, ensure_ascii=False) if agent_findings is not None else None,
-                json.dumps(material_index, ensure_ascii=False) if material_index is not None else None,
-                json.dumps(metadata, ensure_ascii=False),
+                json.dumps(canonical_facts, ensure_ascii=False, default=str) if canonical_facts is not None else None,
+                json.dumps(asset_specific_facts, ensure_ascii=False, default=str) if asset_specific_facts is not None else None,
+                json.dumps(assertions, ensure_ascii=False, default=str) if assertions is not None else None,
+                json.dumps(agent_findings, ensure_ascii=False, default=str) if agent_findings is not None else None,
+                json.dumps(material_index, ensure_ascii=False, default=str) if material_index is not None else None,
+                json.dumps(metadata, ensure_ascii=False, default=str),
                 tool_run_id,
                 existing["id"],
             ),
@@ -145,12 +228,12 @@ def _upsert_visual_semantic_output(
             output_kind,
             asset_type,
             asset_subtype,
-            json.dumps(canonical_facts or {}, ensure_ascii=False),
-            json.dumps(asset_specific_facts or {}, ensure_ascii=False),
-            json.dumps(assertions or [], ensure_ascii=False),
-            json.dumps(agent_findings or {}, ensure_ascii=False),
-            json.dumps(material_index or {}, ensure_ascii=False),
-            json.dumps(metadata_update or {}, ensure_ascii=False),
+            json.dumps(canonical_facts or {}, ensure_ascii=False, default=str),
+            json.dumps(asset_specific_facts or {}, ensure_ascii=False, default=str),
+            json.dumps(assertions or [], ensure_ascii=False, default=str),
+            json.dumps(agent_findings or {}, ensure_ascii=False, default=str),
+            json.dumps(material_index or {}, ensure_ascii=False, default=str),
+            json.dumps(metadata_update or {}, ensure_ascii=False, default=str),
             tool_run_id,
             _utc_now(),
         ),
@@ -208,6 +291,7 @@ Rules:
         system_template=None,
         user_text=prompt,
         image_bytes=file_bytes,
+        output_schema="schemas/VisualAssetEnrichment.schema.json",
         run_id=run_id,
         ingest_batch_id=ingest_batch_id
     )
@@ -227,7 +311,7 @@ def _merge_visual_asset_metadata(*, visual_asset_id: str, patch: dict[str, Any])
             updated_at = NOW()
         WHERE id = %s::uuid
         """,
-        (json.dumps(patch, ensure_ascii=False), visual_asset_id),
+        (json.dumps(patch, ensure_ascii=False, default=str), visual_asset_id),
     )
 
 
@@ -252,7 +336,7 @@ def _update_visual_asset_identity(
             updated_at = NOW()
         WHERE id = %s::uuid
         """,
-        (asset_type, json.dumps(patch, ensure_ascii=False), visual_asset_id),
+        (asset_type, json.dumps(patch, ensure_ascii=False, default=str), visual_asset_id),
     )
 
 
@@ -338,6 +422,7 @@ def extract_visual_asset_facts(
             system_template=None,
             user_text=prompt,
             image_bytes=image_bytes,
+            output_schema="schemas/VisualAssetFacts.schema.json",
             run_id=run_id,
             ingest_batch_id=ingest_batch_id
         )
@@ -430,6 +515,7 @@ def extract_visual_text_snippets(
             system_template=None,
             user_text=prompt,
             image_bytes=image_bytes,
+            output_schema="schemas/VisualTextSnippets.schema.json",
             run_id=run_id,
             ingest_batch_id=ingest_batch_id
         )
@@ -485,7 +571,7 @@ def extract_visual_text_snippets(
                     visual_asset_id,
                     run_id,
                     "text_snippet",
-                    json.dumps(bbox, ensure_ascii=False) if bbox else None,
+                    json.dumps(bbox, ensure_ascii=False, default=str) if bbox else None,
                     bbox_quality,
                     None,
                     text.strip(),
@@ -496,6 +582,7 @@ def extract_visual_text_snippets(
                             "source": "vlm_text",
                         },
                         ensure_ascii=False,
+                        default=str,
                     ),
                     _utc_now(),
                 ),
@@ -630,9 +717,9 @@ def extract_visual_region_assertions(
                 "water.flood_risk, water.drainage_suds, construction.phasing_logistics,\n"
                 "evidence.representation_limits.\n"
                 f"Asset type: {asset_type or 'unknown'}; asset subtype: {asset_subtype or 'null'}.\n"
-                f"Canonical facts: {json.dumps(canonical_facts, ensure_ascii=False)}\n"
-                f"Asset-specific facts: {json.dumps(asset_specific, ensure_ascii=False)}\n"
-                f"Region bbox: {json.dumps(region.get('bbox'), ensure_ascii=False)}\n"
+                f"Canonical facts: {json.dumps(canonical_facts, ensure_ascii=False, default=str)}\n"
+                f"Asset-specific facts: {json.dumps(asset_specific, ensure_ascii=False, default=str)}\n"
+                f"Region bbox: {json.dumps(region.get('bbox'), ensure_ascii=False, default=str)}\n"
                 f"Region caption: {region.get('caption_text') or ''}\n"
             )
 
@@ -644,7 +731,7 @@ def extract_visual_region_assertions(
                 system_template=None,
                 user_text=prompt,
                 image_bytes=image_bytes,
-                output_schema=None,
+                output_schema="schemas/VisualRegionAssertions.schema.json",
                 run_id=run_id,
                 ingest_batch_id=ingest_batch_id,
             )
@@ -870,6 +957,7 @@ def detect_redline_boundary_mask(
         system_template=None,
         user_text=prompt,
         image_bytes=image_bytes,
+        output_schema="schemas/VisualRedlineDetection.schema.json",
         run_id=run_id,
         ingest_batch_id=ingest_batch_id
     )
@@ -986,8 +1074,8 @@ def detect_redline_boundary_mask(
             "red_line_boundary",
             "bbox_prompt",
             mask_blob_path,
-            json.dumps(mask_rle, ensure_ascii=False),
-            json.dumps(bbox, ensure_ascii=False),
+            json.dumps(mask_rle, ensure_ascii=False, default=str),
+            json.dumps(bbox, ensure_ascii=False, default=str),
             "exact",
             mask.get("confidence"),
             tool_run_id,
@@ -1013,7 +1101,7 @@ def detect_redline_boundary_mask(
             visual_asset_id,
             run_id,
             "red_line_boundary",
-            json.dumps(bbox, ensure_ascii=False),
+            json.dumps(bbox, ensure_ascii=False, default=str),
             "exact",
             mask_id,
             None,
@@ -1025,6 +1113,7 @@ def detect_redline_boundary_mask(
                     "tool_run_id": tool_run_id,
                 },
                 ensure_ascii=False,
+                default=str,
             ),
             _utc_now(),
         ),

@@ -211,6 +211,13 @@ def debug_reset_ingest(body: DebugIngestReset) -> JSONResponse:
     )
 
 
+@router.post("/debug/ingest/reset-stale")
+def debug_reset_stale(max_age_hours: float = 2.0, note: str | None = None) -> JSONResponse:
+    from ..services.debug import reset_stale_ingest_runs as service_reset_stale_ingest_runs
+
+    return service_reset_stale_ingest_runs(max_age_hours=max_age_hours, note=note)
+
+
 @router.post("/debug/ingest/requeue")
 def debug_requeue_ingest(body: DebugIngestRequeue) -> JSONResponse:
     from ..services.debug import requeue_ingest_job as service_requeue_ingest_job

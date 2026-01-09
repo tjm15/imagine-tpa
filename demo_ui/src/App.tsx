@@ -10,7 +10,7 @@ import { ModalManager } from './components/modals/ModalDialogs';
 import { processDroppedEvidence } from './lib/aiSimulation';
 
 export type WorkspaceMode = 'plan' | 'casework' | 'monitoring';
-export type ViewMode = 'studio' | 'strategy' | 'monitoring';
+export type ViewMode = 'overview' | 'studio' | 'map' | 'scenarios' | 'visuals' | 'monitoring';
 
 // Main app content with DnD handling
 function AppContent() {
@@ -20,19 +20,21 @@ function AppContent() {
   const [activeProject, setActiveProject] = useState<string | null>(null);
   const [draggedItem, setDraggedItem] = useState<{ id: string; type: string } | null>(null);
 
+  const defaultViewForWorkspace = useCallback((mode: WorkspaceMode): ViewMode => {
+    if (mode === 'monitoring') return 'monitoring';
+    if (mode === 'plan') return 'overview';
+    return 'studio';
+  }, []);
+
   const handleWorkspaceChange = useCallback((next: WorkspaceMode) => {
     setWorkspace(next);
     setActiveProject(null);
-    setActiveView((prev) => {
-      if (next === 'monitoring') return 'monitoring';
-      if (prev === 'monitoring') return 'studio';
-      return prev;
-    });
-  }, []);
+    setActiveView(defaultViewForWorkspace(next));
+  }, [defaultViewForWorkspace]);
 
   const handleOpenProject = (projectId: string) => {
     setActiveProject(projectId);
-    setActiveView(workspace === 'monitoring' ? 'monitoring' : 'studio');
+    setActiveView(defaultViewForWorkspace(workspace));
   };
 
   const handleBackToDashboard = () => {

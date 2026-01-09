@@ -210,7 +210,7 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
       </div>
 
       {/* Phase List */}
-      <div className="flex-1 min-h-0 overflow-y-auto pr-1">
+      <ScrollArea className="flex-1 min-h-0 pr-1">
         <div className="p-2 space-y-2">
           {phases.map((phase) => {
             const isExpanded = expandedPhases.includes(phase.id);
@@ -339,7 +339,7 @@ export function ProcessRail({ onStageSelect }: ProcessRailProps) {
             );
           })}
         </div>
-      </div>
+      </ScrollArea>
 
       {/* Gateway Result Panel */}
       {gatewayResult && (

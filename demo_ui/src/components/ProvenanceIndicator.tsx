@@ -7,6 +7,7 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "./ui/popover";
 import { Separator } from "./ui/separator";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
 import { 
   getEvidenceById, 
   mockToolRuns,
@@ -239,33 +240,40 @@ function ProvenanceDetail({ provenance, onOpenTrace, onClose }: ProvenanceDetail
       
       {/* Actions */}
       <div className="p-3 flex items-center justify-between">
-        <Button 
-          variant="ghost" 
-          size="sm" 
-          className="h-7 text-xs gap-1"
-          onClick={() => {
-            const primaryEvidenceId = provenance.evidenceIds?.[0];
-            if (primaryEvidenceId) {
-              onOpenTrace?.({
-                kind: 'evidence',
-                id: primaryEvidenceId,
-                label: getEvidenceById(primaryEvidenceId)?.title ?? primaryEvidenceId,
-              });
-              onClose?.();
-              return;
-            }
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                aria-label="Open trace"
+                onClick={() => {
+                  const primaryEvidenceId = provenance.evidenceIds?.[0];
+                  if (primaryEvidenceId) {
+                    onOpenTrace?.({
+                      kind: 'evidence',
+                      id: primaryEvidenceId,
+                      label: getEvidenceById(primaryEvidenceId)?.title ?? primaryEvidenceId,
+                    });
+                    onClose?.();
+                    return;
+                  }
 
-            onOpenTrace?.({
-              kind: 'run',
-              label: 'Current run',
-              note: provenance.toolRunId ? `Focus: tool run ${provenance.toolRunId}` : undefined,
-            });
-            onClose?.();
-          }}
-        >
-          <HelpCircle className="w-3 h-3" />
-          Why?
-        </Button>
+                  onOpenTrace?.({
+                    kind: 'run',
+                    label: 'Current run',
+                    note: provenance.toolRunId ? `Focus: tool run ${provenance.toolRunId}` : undefined,
+                  });
+                  onClose?.();
+                }}
+              >
+                <HelpCircle className="w-3 h-3" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">Open trace</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         <Button 
           variant="outline" 
           size="sm" 

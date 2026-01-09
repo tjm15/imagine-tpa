@@ -7,6 +7,8 @@ from uuid import uuid4
 
 from tpa_api.db import _db_execute, _db_fetch_all, _db_fetch_one
 from tpa_api.evidence import _ensure_evidence_ref_row
+import os
+
 from tpa_api.prompting import _llm_structured_sync
 from tpa_api.spec_io import _read_yaml, _spec_root
 from tpa_api.time_utils import _utc_now
@@ -196,6 +198,7 @@ def enrich_advice_cards_for_documents(
             "- Do not invent policy outcomes.\n"
         )
 
+        temperature = float(os.environ.get("TPA_LLM_ADVICE_TEMPERATURE", "0.3"))
         obj, tool_run_id, errs = _llm_structured_sync(
             prompt_id="advice_cards.match_document",
             prompt_version=1,
@@ -206,6 +209,7 @@ def enrich_advice_cards_for_documents(
             output_schema_ref="schemas/AdviceCardMatch.schema.json",
             run_id=run_id,
             ingest_batch_id=None,
+            temperature=temperature,
         )
         if errs:
             errors.extend([f"advice_cards:{document_id}:{err}" for err in errs])

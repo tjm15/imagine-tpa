@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualAssetEnrichment",
+  "type": "object",
+  "properties": {
+    "asset_category": { "type": "string" },
+    "map_scale_declared": { "type": ["string", "null"] },
+    "orientation": { "type": "string" },
+    "detected_layers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "layer_name": { "type": "string" },
+          "layer_type": { "type": "string" },
+          "representation_style": { "type": "string" },
+          "color_hex_guess": { "type": ["string", "null"] },
+          "is_legend_item": { "type": "boolean" }
+        },
+        "required": ["layer_name"],
+        "additionalProperties": true
+      }
+    },
+    "extracted_toponyms": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "linked_policy_codes": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "legibility_score": { "type": "number" },
+    "interpretation_notes": { "type": "string" }
+  },
+  "required": [
+    "asset_category",
+    "map_scale_declared",
+    "orientation",
+    "detected_layers",
+    "extracted_toponyms",
+    "linked_policy_codes",
+    "legibility_score",
+    "interpretation_notes"
+  ],
+  "additionalProperties": false
+}

@@ -16,15 +16,27 @@ import StarterKit from '@tiptap/starter-kit';
 import Placeholder from '@tiptap/extension-placeholder';
 import Highlight from '@tiptap/extension-highlight';
 import { 
-  Bold, Italic, List, ListOrdered, Quote, Heading1, Heading2, 
-  MessageSquare, Bookmark, Sparkles, Undo, Redo, FileText, 
-  Type, Link, Code, CheckCircle2, AlertCircle, ChevronDown, Loader2, HelpCircle
+  Bold,
+  Italic,
+  List,
+  ListOrdered,
+  Quote,
+  Heading1,
+  Heading2,
+  MessageSquare,
+  Bookmark,
+  Sparkles,
+  Undo,
+  Redo,
+  FileText,
+  AlertCircle,
+  Loader2,
+  HelpCircle,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { useDroppable } from '@dnd-kit/core';
 import { useAppState, useAppDispatch } from '../../lib/appState';
-import { simulateDraft, getStageSuggestions } from '../../lib/aiSimulation';
 import { toast } from 'sonner';
 import type { TraceTarget } from '../../lib/trace';
 
@@ -35,17 +47,12 @@ interface DocumentEditorProps {
   explainabilityMode?: ExplainabilityMode;
   templateToInsert?: { content: string; id: number } | null;
   onOpenTrace?: (target?: TraceTarget) => void;
+  onOpenCoDrafter?: () => void;
+  onRequestPatchBundle?: () => void;
   onSave?: (content: string, html: string) => void;
 }
 
 type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
-
-interface AISuggestion {
-  id: string;
-  text: string;
-  type: 'inline' | 'block' | 'rewrite';
-  accepted: boolean;
-}
 
 type AIHintSeverity = 'info' | 'provisional' | 'risk';
 
@@ -99,13 +106,13 @@ export function DocumentEditor({
   explainabilityMode = 'summary',
   templateToInsert,
   onOpenTrace,
+  onOpenCoDrafter,
+  onRequestPatchBundle,
   onSave 
 }: DocumentEditorProps) {
   const dispatch = useAppDispatch();
-  const { document, aiState } = useAppState();
+  const { document } = useAppState();
   
-  const [showAISuggestions, setShowAISuggestions] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState<AISuggestion[]>([]);
   const [commentDraft, setCommentDraft] = useState('');
   const [activeCommentRange, setActiveCommentRange] = useState<{ from: number; to: number } | null>(null);
 
@@ -127,12 +134,12 @@ export function DocumentEditor({
         multicolor: true,
       }),
     ],
-    content: initialContent || document.content,
+    content: document.html || initialContent,
     onUpdate: ({ editor }) => {
       // Auto-save draft
       dispatch({
         type: 'UPDATE_DOCUMENT',
-        payload: { content: editor.getText() }
+        payload: { html: editor.getHTML(), text: editor.getText() }
       });
     },
     editorProps: {
@@ -144,25 +151,25 @@ export function DocumentEditor({
 
   useEffect(() => {
     if (!editor) return;
+    const html = editor.getHTML();
     const text = editor.getText();
-    if (text && text !== document.content) {
+
+    if (!document.html && html) {
       dispatch({
         type: 'UPDATE_DOCUMENT',
-        payload: { content: text },
+        payload: { html, text },
       });
     }
-  }, [editor, dispatch, document.content]);
+  }, [editor, dispatch, document.html]);
 
-  // Load AI suggestions for current stage
   useEffect(() => {
-    const suggestions = getStageSuggestions(stageId);
-    setAiSuggestions(suggestions.map((s, i) => ({
-      id: `suggestion-${i}`,
-      text: s.text,
-      type: s.type as 'inline' | 'block' | 'rewrite',
-      accepted: false,
-    })));
-  }, [stageId]);
+    if (!editor) return;
+    if (!document.html) return;
+
+    const current = editor.getHTML();
+    if (current === document.html) return;
+    editor.commands.setContent(document.html, false);
+  }, [editor, document.html]);
 
   // Handle template insertion
   useEffect(() => {
@@ -173,7 +180,7 @@ export function DocumentEditor({
   }, [templateToInsert, editor]);
 
   const aiHints = useMemo<AIHint[]>(() => {
-    const text = document.content || '';
+    const text = document.text || '';
     const citationCount = document.citations?.length ?? 0;
     const hints: AIHint[] = [];
 
@@ -215,54 +222,19 @@ export function DocumentEditor({
     }
 
     return hints.slice(0, 3);
-  }, [document.content, document.citations, stageId]);
+  }, [document.text, document.citations, stageId]);
 
-  const handleAIDraft = useCallback(async () => {
-    dispatch({ type: 'START_AI_GENERATION', payload: { task: 'draft' } });
-    toast.info('Generating draft...');
-
-    await simulateDraft(
-      stageId,
-      (text, progress) => {
-        dispatch({ type: 'UPDATE_AI_STREAM', payload: { text, progress } });
-      },
-      () => {
-        dispatch({ type: 'COMPLETE_AI_GENERATION' });
-        toast.success('Draft generated successfully');
+  const proposePatch = useCallback(
+    (hint?: AIHint) => {
+      if (onRequestPatchBundle) {
+        onRequestPatchBundle();
+        return;
       }
-    );
-  }, [stageId, dispatch]);
 
-  const insertAISuggestion = useCallback((suggestion: AISuggestion) => {
-    if (!editor) return;
-    
-    if (suggestion.type === 'block') {
-      editor.chain().focus().insertContent(`\n\n${suggestion.text}\n\n`).run();
-    } else {
-      editor.chain().focus().insertContent(suggestion.text).run();
-    }
-    
-    setAiSuggestions(prev => 
-      prev.map(s => s.id === suggestion.id ? { ...s, accepted: true } : s)
-    );
-    toast.success('Suggestion inserted');
-  }, [editor]);
-
-  const insertStreamedDraft = useCallback(() => {
-    if (!editor || !aiState.streamedText) return;
-    editor.chain().focus().insertContent(aiState.streamedText).run();
-    dispatch({ type: 'UPDATE_AI_STREAM', payload: { text: '', progress: 0 } });
-    toast.success('Draft inserted into document');
-  }, [editor, aiState.streamedText, dispatch]);
-
-  const applyHint = useCallback(
-    (hint: AIHint) => {
-      if (!editor) return;
-      if (!hint.insertText) return;
-      editor.chain().focus().insertContent(hint.insertText).run();
-      toast.success('Inserted suggested text');
+      onOpenCoDrafter?.();
+      toast.info(hint ? `Open Co‑Drafter to resolve: ${hint.title}` : 'Open Co‑Drafter to request a patch bundle');
     },
-    [editor]
+    [onOpenCoDrafter, onRequestPatchBundle],
   );
 
   const addCitation = useCallback(() => {
@@ -407,27 +379,13 @@ export function DocumentEditor({
           <Button
             variant="ghost"
             size="sm"
-            onClick={handleAIDraft}
-            disabled={aiState.isGenerating}
-            className="gap-2 text-violet-700 hover:bg-violet-50"
+            onClick={() => onOpenCoDrafter?.()}
+            disabled={!onOpenCoDrafter}
+            className="gap-2 text-violet-700 hover:bg-violet-50 disabled:opacity-40"
           >
-            {aiState.isGenerating ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
-            ) : (
-              <Sparkles className="w-4 h-4" />
-            )}
-            {aiState.isGenerating ? 'Generating...' : 'AI Draft'}
+            <Sparkles className="w-4 h-4" />
+            Co‑Drafter
           </Button>
-          <button
-            onClick={() => setShowAISuggestions(!showAISuggestions)}
-            className={`p-2 rounded flex items-center gap-1 text-sm ${
-              showAISuggestions ? 'bg-violet-100 text-violet-700' : 'hover:bg-slate-100'
-            }`}
-            title="Toggle AI Suggestions"
-          >
-            <Type className="w-4 h-4" />
-            <ChevronDown className={`w-3 h-3 transition-transform ${showAISuggestions ? 'rotate-180' : ''}`} />
-          </button>
         </div>
 
         {/* Undo/Redo */}
@@ -480,14 +438,14 @@ export function DocumentEditor({
                     <div className="text-[11px] text-slate-600 mt-0.5">{hint.detail}</div>
                   ) : null}
                 </div>
-                {hint.insertText ? (
+                {hint.insertText || hint.traceTarget ? (
                   <Button
                     variant="outline"
                     size="sm"
                     className="h-7 text-xs"
-                    onClick={() => applyHint(hint)}
+                    onClick={() => proposePatch(hint)}
                   >
-                    Insert
+                    Propose patch
                   </Button>
                 ) : null}
                 <WhyIconButton
@@ -497,57 +455,6 @@ export function DocumentEditor({
                 />
               </div>
             ))}
-          </div>
-        </div>
-      )}
-
-      {/* AI Suggestions Panel */}
-      {showAISuggestions && aiSuggestions.length > 0 && (
-        <div className="border-b border-neutral-200 bg-violet-50/50 p-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="w-4 h-4 text-violet-600" />
-            <span className="text-sm font-medium text-violet-800">AI Suggestions for {stageId}</span>
-          </div>
-          <div className="space-y-2">
-            {aiSuggestions.filter(s => !s.accepted).map((suggestion) => (
-              <div 
-                key={suggestion.id}
-                className="bg-white rounded-lg p-3 border border-violet-200 flex items-start gap-3"
-              >
-                <div className="flex-1">
-                  <Badge variant="outline" className="text-[10px] mb-1">
-                    {suggestion.type}
-                  </Badge>
-                  <p className="text-sm text-slate-700 line-clamp-2">{suggestion.text}</p>
-                </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => insertAISuggestion(suggestion)}
-                  className="flex-shrink-0"
-                >
-                  Insert
-                </Button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Streaming Draft Preview */}
-      {aiState.streamedText && (
-        <div className="border-b border-neutral-200 bg-green-50/50 p-3">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-2">
-              <CheckCircle2 className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-medium text-green-800">Generated Draft</span>
-            </div>
-            <Button variant="default" size="sm" onClick={insertStreamedDraft}>
-              Insert into Document
-            </Button>
-          </div>
-          <div className="bg-white rounded-lg p-3 border border-green-200 max-h-40 overflow-y-auto">
-            <p className="text-sm text-slate-700 whitespace-pre-wrap">{aiState.streamedText}</p>
           </div>
         </div>
       )}
@@ -602,17 +509,10 @@ export function DocumentEditor({
           <span>{document.comments?.length ?? 0} comments</span>
         </div>
         <div className="flex items-center gap-2">
-          {aiState.isGenerating ? (
-            <span className="flex items-center gap-1 text-violet-600">
-              <Loader2 className="w-3 h-3 animate-spin" />
-              AI generating...
-            </span>
-          ) : (
-            <span className="text-green-600 flex items-center gap-1">
-              <CheckCircle2 className="w-3 h-3" />
-              Ready
-            </span>
-          )}
+          <span className="flex items-center gap-1 text-emerald-700">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Ready
+          </span>
         </div>
       </div>
     </div>

@@ -92,14 +92,15 @@ def _llm_structured_sync(
     raw_text: str | None = None
     obj: dict[str, Any] | None = None
 
+    temperature = temperature if temperature is not None else float(os.environ.get("TPA_LLM_DEFAULT_TEMPERATURE", "0.6"))
     payload = {
         "model": model_id,
         "messages": [
             {"role": "system", "content": system_template},
             {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
         ],
+        "temperature": temperature,
     }
-    _ = temperature
     _ = max_tokens
 
     span_attributes = {
@@ -136,6 +137,7 @@ def _llm_structured_sync(
         "purpose": purpose,
         "model_id": model_id,
         "output_schema_ref": output_schema_ref,
+        "temperature": temperature,
         "messages": payload.get("messages"),
     }
 

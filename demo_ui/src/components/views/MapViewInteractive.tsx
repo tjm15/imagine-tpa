@@ -132,27 +132,46 @@ export function MapView({
   omittedSiteIds,
 }: MapViewProps) {
   const mapRef = useRef<MapRef>(null);
-  const { openModal, notify } = useAppState();
+  const { openModal, notify, adjustedSiteIds, highlightedSiteId } = useAppState();
   
   // When in scenario mode, filter sites by allocated/omitted
   const isScenarioMode = Boolean(scenarioId && allocatedSiteIds);
   
   // Create scenario-aware site data
   const scenarioSiteAllocations = useMemo(() => {
-    if (!isScenarioMode) return siteAllocations;
-    
-    // Add an 'allocated' property to each feature for styling
     return {
       ...siteAllocations,
       features: siteAllocations.features.map(f => ({
         ...f,
         properties: {
           ...f.properties,
-          allocated: allocatedSiteIds?.includes(f.properties.id) ?? false,
+          adjusted: adjustedSiteIds.has(f.properties.id),
+          ...(isScenarioMode ? { allocated: allocatedSiteIds?.includes(f.properties.id) ?? false } : null),
         },
       })),
     };
-  }, [isScenarioMode, allocatedSiteIds]);
+  }, [adjustedSiteIds, isScenarioMode, allocatedSiteIds]);
+
+  const sitesOutlineStyleWithAdjustments = useMemo(() => {
+    return {
+      ...sitesOutlineStyle,
+      paint: {
+        ...sitesOutlineStyle.paint,
+        'line-color': [
+          'case',
+          ['get', 'adjusted'],
+          '#f59e0b',
+          '#1e293b',
+        ] as unknown as string,
+        'line-width': [
+          'case',
+          ['get', 'adjusted'],
+          3,
+          2,
+        ] as unknown as number,
+      },
+    };
+  }, []);
   
   // Scenario-aware site styles
   const scenarioSitesStyle = useMemo(() => {
@@ -179,7 +198,7 @@ export function MapView({
   }, [isScenarioMode]);
   
   const scenarioSitesOutlineStyle = useMemo(() => {
-    if (!isScenarioMode) return sitesOutlineStyle;
+    if (!isScenarioMode) return sitesOutlineStyleWithAdjustments;
     
     return {
       ...sitesOutlineStyle,
@@ -187,19 +206,36 @@ export function MapView({
         ...sitesOutlineStyle.paint,
         'line-color': [
           'case',
+          ['get', 'adjusted'],
+          '#f59e0b',
           ['get', 'allocated'],
           '#059669', // darker emerald
           '#64748b', // grey
         ] as unknown as string,
         'line-width': [
           'case',
+          ['get', 'adjusted'],
+          3,
           ['get', 'allocated'],
           2.5,
           1.5,
         ] as unknown as number,
       },
     };
-  }, [isScenarioMode]);
+  }, [isScenarioMode, sitesOutlineStyleWithAdjustments]);
+
+  const highlightOutlineStyle = useMemo(() => {
+    return {
+      id: 'site-highlight',
+      type: 'line' as const,
+      filter: highlightedSiteId ? ['==', ['get', 'id'], highlightedSiteId] : ['==', ['get', 'id'], '__none__'],
+      paint: {
+        'line-color': '#2563eb',
+        'line-width': 4,
+        'line-opacity': highlightedSiteId ? 0.95 : 0,
+      },
+    };
+  }, [highlightedSiteId]);
   
   const [viewState, setViewState] = useState({
     longitude: 0.1218,
@@ -407,6 +443,7 @@ export function MapView({
             <Source type="geojson" data={scenarioSiteAllocations}>
               <Layer {...scenarioSitesStyle} />
               <Layer {...scenarioSitesOutlineStyle} />
+              <Layer {...highlightOutlineStyle} />
             </Source>
           )}
 

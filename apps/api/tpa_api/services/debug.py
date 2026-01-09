@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -1004,6 +1005,80 @@ def upload_and_ingest_file(file_bytes: bytes, filename: str) -> JSONResponse:
     return JSONResponse(content={"ingest_job_id": ingest_job_id, "ingest_batch_id": ingest_batch_id})
 
 
+
+
+def reset_stale_ingest_runs(max_age_hours: float = 2.0, note: str | None = None) -> JSONResponse:
+    """
+    Mark stale running ingest jobs/runs/batches as error to reduce dashboard noise.
+    """
+    cutoff = _utc_now() - timedelta(hours=max_age_hours)
+    note_text = note or f"auto-marked stale > {max_age_hours:.1f}h"
+    jobs_updated = _db_fetch_all(
+        """
+        UPDATE ingest_jobs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            completed_at = COALESCE(completed_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    runs_updated = _db_fetch_all(
+        """
+        UPDATE ingest_runs
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = COALESCE(ended_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    steps_updated = _db_fetch_all(
+        """
+        UPDATE ingest_run_steps
+        SET status = 'error',
+            error_text = COALESCE(error_text, %s),
+            ended_at = COALESCE(ended_at, NOW())
+        WHERE run_id IN (
+            SELECT id
+            FROM ingest_runs
+            WHERE status = 'running'
+              AND started_at IS NOT NULL
+              AND started_at < %s
+        )
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    batches_updated = _db_fetch_all(
+        """
+        UPDATE ingest_batches
+        SET status = 'error',
+            notes = COALESCE(notes, %s),
+            completed_at = COALESCE(completed_at, NOW())
+        WHERE status = 'running'
+          AND started_at IS NOT NULL
+          AND started_at < %s
+        RETURNING id
+        """,
+        (note_text, cutoff),
+    )
+    payload = {
+        "jobs_updated": len(jobs_updated),
+        "runs_updated": len(runs_updated),
+        "steps_updated": len(steps_updated),
+        "batches_updated": len(batches_updated),
+        "cutoff": cutoff.isoformat(),
+        "note": note_text,
+    }
+    return JSONResponse(content=jsonable_encoder(payload))
+
 def reset_ingest_state(
     *,
     scope: str = "running",
@@ -1042,6 +1117,7 @@ def reset_ingest_state(
         job_clauses.append("plan_cycle_id = %s::uuid")
         job_params.append(plan_cycle_val)
     job_where = " AND ".join(job_clauses) if job_clauses else "TRUE"
+    update_jobs = bool(job_id or batch_id or authority_id or plan_cycle_val)
 
     run_clauses: list[str] = []
     run_params: list[Any] = []
@@ -1091,18 +1167,21 @@ def reset_ingest_state(
         batch_clauses.append("plan_cycle_id = %s::uuid")
         batch_params.append(plan_cycle_val)
     batch_where = " AND ".join(batch_clauses) if batch_clauses else "TRUE"
+    update_batches = bool(batch_id or authority_id or plan_cycle_val)
 
-    jobs_updated = _db_fetch_all(
-        f"""
-        UPDATE ingest_jobs
-        SET status = 'error',
-            error_text = COALESCE(error_text, %s),
-            completed_at = NOW()
-        WHERE {job_where}
-        RETURNING id
-        """,
-        tuple([note_text] + job_params),
-    )
+    jobs_updated: list[dict[str, Any]] = []
+    if update_jobs:
+        jobs_updated = _db_fetch_all(
+            f"""
+            UPDATE ingest_jobs
+            SET status = 'error',
+                error_text = COALESCE(error_text, %s),
+                completed_at = NOW()
+            WHERE {job_where}
+            RETURNING id
+            """,
+            tuple([note_text] + job_params),
+        )
 
     runs_updated = _db_fetch_all(
         f"""
@@ -1130,17 +1209,19 @@ def reset_ingest_state(
         tuple([note_text] + step_params),
     )
 
-    batches_updated = _db_fetch_all(
-        f"""
-        UPDATE ingest_batches
-        SET status = 'error',
-            notes = COALESCE(notes, %s),
-            completed_at = NOW()
-        WHERE {batch_where}
-        RETURNING id
-        """,
-        tuple([note_text] + batch_params),
-    )
+    batches_updated: list[dict[str, Any]] = []
+    if update_batches:
+        batches_updated = _db_fetch_all(
+            f"""
+            UPDATE ingest_batches
+            SET status = 'error',
+                notes = COALESCE(notes, %s),
+                completed_at = NOW()
+            WHERE {batch_where}
+            RETURNING id
+            """,
+            tuple([note_text] + batch_params),
+        )
 
     return JSONResponse(
         content=jsonable_encoder(

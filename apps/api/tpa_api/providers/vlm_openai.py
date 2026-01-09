@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 from datetime import datetime
 from typing import Any
 from uuid import uuid4
@@ -150,8 +151,24 @@ class OpenAIVLMProvider(VLMProvider):
             "model": model_id,
             "messages": final_messages,
             "temperature": options.get("temperature", 0.0),
-            "max_tokens": options.get("max_tokens", 4000)
+            "max_tokens": options.get("max_tokens", 4000),
         }
+        response_format = options.get("response_format")
+        if not response_format and isinstance(json_schema, dict):
+            schema_name = json_schema.get("title") or "StructuredOutput"
+            safe_name = re.sub(r"[^a-zA-Z0-9_-]+", "_", str(schema_name)).strip("_")
+            if not safe_name:
+                safe_name = "StructuredOutput"
+            response_format = {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": safe_name[:64],
+                    "schema": json_schema,
+                    "strict": True,
+                },
+            }
+        if response_format:
+            payload["response_format"] = response_format
 
         # Logging inputs (don't log full base64 images!)
         inputs_logged = {
@@ -159,7 +176,8 @@ class OpenAIVLMProvider(VLMProvider):
             "messages": messages, # Log the original text-only messages struct
             "image_count": len(images),
             "image_sizes_bytes": [len(b) for b in images],
-            "options": options
+            "options": options,
+            "response_format": response_format,
         }
 
         try:

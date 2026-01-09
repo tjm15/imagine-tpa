@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "VisualRegionAssertions",
+  "type": "object",
+  "properties": {
+    "assertions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "assertion_id": { "type": "string" },
+          "assertion_type": { "type": "string" },
+          "statement": { "type": "string" },
+          "polarity": { "type": "string" },
+          "basis": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "confidence": { "type": "number" },
+          "risk_flags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "material_consideration_tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "follow_up_requests": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "evidence_region_id": { "type": "string" }
+        },
+        "required": ["statement"],
+        "additionalProperties": true
+      }
+    }
+  },
+  "required": ["assertions"],
+  "additionalProperties": false
+}

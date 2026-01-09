@@ -14,7 +14,6 @@ import {
   Search, FileText, Map, Image, MessageSquare, 
   Users, ChevronRight, ExternalLink, GripVertical, 
   Plus, Eye, Star, BookOpen, LayoutGrid, List as ListIcon, HelpCircle,
-  Map as MapIcon
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -25,7 +24,6 @@ import { Badge } from '../ui/badge';
 import { Input } from '../ui/input';
 import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
-import { MapViewInteractive } from '../views/MapViewInteractive';
 import { 
   mockPhotosForLightbox,
   mockPolicyDetails, 
@@ -50,7 +48,7 @@ interface ContextMarginProps {
 
 type ViewMode = 'grid' | 'list';
 type ExplainabilityMode = 'summary' | 'inspect' | 'forensic';
-type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed' | 'map';
+type ContextSection = 'evidence' | 'policy' | 'constraints' | 'feed';
 type EvidenceCategory = 'all' | 'documents' | 'photos' | 'responses';
 type DemoFilter = 'members-briefed' | 'site-shlaa' | 'consultation-heat';
 
@@ -325,6 +323,7 @@ export function ContextMarginInteractive({
   section = 'evidence',
   explainabilityMode = 'summary',
   onOpenTrace,
+  workspace = 'plan',
 }: ContextMarginProps) {
   const { citedEvidence: citedEvidenceIds } = useAppState();
   const dispatch = useAppDispatch();
@@ -337,7 +336,7 @@ export function ContextMarginInteractive({
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
-  const [demoFilter, setDemoFilter] = useState<DemoFilter | null>('members-briefed');
+  const [demoFilter, setDemoFilter] = useState<DemoFilter | null>(() => (workspace === 'plan' ? 'members-briefed' : null));
 
   // Policy UI state
   const [policySearchQuery, setPolicySearchQuery] = useState('');
@@ -517,7 +516,7 @@ export function ContextMarginInteractive({
       </div>
 
       {/* Content */}
-      <div className="flex-1 min-h-0 overflow-y-auto">
+      <ScrollArea className="flex-1 min-h-0">
         <div className="p-3 space-y-4 pb-6">
           {section === 'evidence' && (
             <>
@@ -696,7 +695,7 @@ export function ContextMarginInteractive({
             </div>
           )}
         </div>
-      </div>
+      </ScrollArea>
 
       {/* Lightbox */}
       <Lightbox
